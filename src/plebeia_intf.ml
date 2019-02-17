@@ -1,3 +1,5 @@
+module type S = sig
+
 (** Module manipulating patricia trees and persisting them to disk *)
 
 
@@ -73,3 +75,5 @@ val commit: cursor -> hash
 
 val hash: cursor -> hash
 (** Computes the hash of the cursor without committing. *)
+
+end

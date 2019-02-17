@@ -1,0 +1,4 @@
+(test
+ (name plebeia_test)
+ (libraries plebeia))
+
