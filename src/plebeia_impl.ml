@@ -579,17 +579,15 @@ let rec go_side side (Cursor (trail, node, context)) =
   | View vnode -> begin
       match vnode with
       | Internal (left, right, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
-        begin
-          match side with
+          Ok (match side with
           | Path.Right ->
-            Ok (Cursor (Right (left, trail,
-                               Unmodified (indexing_rule, hashed_is_transitive),
-                               indexed_implies_hashed), right, context))
+              Cursor (Right (left, trail,
+                             Unmodified (indexing_rule, hashed_is_transitive),
+                             indexed_implies_hashed), right, context)
           | Path.Left ->
-            Ok (Cursor (Left (trail, right,
-                              Unmodified (indexing_rule, hashed_is_transitive),
-                              indexed_implies_hashed), left, context))
-        end
+              Cursor (Left (trail, right,
+                            Unmodified (indexing_rule, hashed_is_transitive),
+                            indexed_implies_hashed), left, context))
       | _ -> Error "Attempted to navigate right or left of a non internal node"
     end
 
@@ -900,7 +898,7 @@ let alter cursor segment alteration =
                     (* This one we complextely wrap in a node existential
                        type. *)
                 in
-                let internal = begin
+                let internal =
                   let insert_into_internal n = function
                     | Path.Left ->
                       Internal(n, other_node, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)
@@ -909,33 +907,28 @@ let alter cursor segment alteration =
                   in match (my_dir, other_dir) with
                   | (Left, Right) ->
                     begin
-                      match my_node with
-                      | Error e -> Error e
-                      | Ok (Not_Extender my_node) -> Ok (insert_into_internal my_node Left)
-                      | Ok (Is_Extender my_node)-> Ok (insert_into_internal my_node Left)
+                      my_node >>| function
+                      | Not_Extender my_node -> insert_into_internal my_node Left
+                      | Is_Extender my_node-> insert_into_internal my_node Left
                       (* again, very silly *)
                     end
                   | (Right, Left) ->
                     begin
-                      match my_node with
-                      | Error e -> Error e
-                      | Ok (Not_Extender my_node) -> Ok (insert_into_internal my_node Right)
-                      | Ok (Is_Extender my_node) -> Ok (insert_into_internal my_node Right)
+                      my_node >>| function
+                      | Not_Extender my_node -> insert_into_internal my_node Right
+                      | Is_Extender my_node -> insert_into_internal my_node Right
                     end
 
                   | _ -> assert false
-                end
                 in
-                match internal with
-                | Error e -> Error e
-                | Ok internal -> begin
-                    if common_segment = Path.empty then
-                      Ok (Not_Extender (View internal))
-                    else
-                      let e = Extender ( common_segment, View internal,
-                                         Not_Indexed, Not_Hashed, Not_Indexed_Any)
-                      in Ok (Is_Extender (View e))
-                  end
+                internal >>| fun internal -> begin
+                  if common_segment = Path.empty then
+                    Not_Extender (View internal)
+                  else
+                    let e = Extender ( common_segment, View internal,
+                                       Not_Indexed, Not_Hashed, Not_Indexed_Any)
+                    in Is_Extender (View e)
+                end
             end
         end
   in
@@ -989,15 +982,15 @@ let delete cursor segment =
           (* If I don't go fully down that segment, that's an error *)
           let _, rest, rest_other = Path.common_prefix segment other_segment in
           if rest_other = Path.empty then begin
-            match delete_aux (Node node) rest with
-            | Error e -> Error e
-            | Ok None -> Ok None
-            | Ok (Some (Not_Extender node)) -> Ok (Some (Is_Extender (View (
-                Extender(other_segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any)))))
-            | Ok (Some (Is_Extender (View (Extender (next_segment, node, _, _, _))))) ->
-              Ok (Some (Is_Extender (View (
-                  Extender( Path.(other_segment @ next_segment), node, Not_Indexed, Not_Hashed,
-                            Not_Indexed_Any)))))
+            delete_aux (Node node) rest >>| function (* XXX Use Option.map *)
+            | None -> None
+            | Some (Not_Extender node) -> 
+                Some (Is_Extender (View (
+                    Extender(other_segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+            | Some (Is_Extender (View (Extender (next_segment, node, _, _, _)))) ->
+                Some (Is_Extender (View (
+                    Extender( Path.(other_segment @ next_segment), node, Not_Indexed, Not_Hashed,
+                              Not_Indexed_Any))))
           end else
             Error (Printf.sprintf "no leaf at this location %s" (Path.to_string rest_other))
 
@@ -1006,17 +999,17 @@ let delete cursor segment =
             | None -> Error "didn't reach a leaf"
             | Some (Left, rest_of_segment) -> begin
                 let new_node new_left right =
-                  Ok (Some ( Not_Extender (View (Internal (
-                      new_left, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)))))
+                  Some ( Not_Extender (View (Internal (
+                      new_left, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))))
                 in
-                match delete_aux (Node left) rest_of_segment with
-                | Error e -> Error e
-                | Ok None -> begin
-                    let extend ?(segafter=Path.empty) right =
-                      Ok (Some (Is_Extender (View (
-                          Extender (Path.((of_side_list [Right]) @ segafter),
-                                    right, Not_Indexed, Not_Hashed, Not_Indexed_Any)))))
-                    in match right with
+                let extend ?(segafter=Path.empty) right =
+                 Some (Is_Extender (View (
+                      Extender (Path.((of_side_list [Right]) @ segafter),
+                                right, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+                in              
+                delete_aux (Node left) rest_of_segment >>| function
+                | None -> begin
+                    match right with
                     | Disk (index, wit) -> begin
                         match load_node context index wit with
                         | Extender (segment, node, _, _, _) -> extend ~segafter:segment (node)
@@ -1024,40 +1017,41 @@ let delete cursor segment =
                         | Bud _ as right -> extend (View right)
                         | Leaf _ as right -> extend (View right)
                       end
-                    | View (Extender (segment, node, _, _, _)) -> extend ~segafter:segment (node)
+                    | View (Extender (segment, node, _, _, _)) -> extend ~segafter:segment node
                     | View (Internal _) -> extend right
                     | View (Bud _)      -> extend right
                     | View (Leaf _)     -> extend right
                   end
-                | Ok (Some  (Is_Extender new_left))-> new_node new_left right
-                | Ok (Some  (Not_Extender new_left))-> new_node new_left right
+                | Some  (Is_Extender new_left) -> new_node new_left right
+                | Some  (Not_Extender new_left) -> new_node new_left right
               end
             | Some (Right, rest_of_segment) -> begin
                 let new_node left new_right =
-                  Ok (Some ( Not_Extender (View (Internal (
-                      left, new_right, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any)))))
-                in match delete_aux (Node right) rest_of_segment with
-                | Error e -> Error e
-                | Ok None -> begin
-                    let extend ?(segafter=Path.empty) left =
-                      Ok (Some (Is_Extender (View (
-                          Extender (Path.((of_side_list [Left]) @ segafter),
-                                    left, Not_Indexed, Not_Hashed, Not_Indexed_Any)))))
-                    in match left with
+                  Some ( Not_Extender (View (Internal (
+                      left, new_right, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+                in 
+                let extend ?(segafter=Path.empty) left =
+                  Some (Is_Extender (View (
+                      Extender (Path.((of_side_list [Left]) @ segafter),
+                                left, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+                in
+                delete_aux (Node right) rest_of_segment >>| function
+                | None -> begin
+                    match left with
                     | Disk (index, wit) -> begin
                         match load_node context index wit with
-                        | Extender (segment, node, _, _, _) -> extend ~segafter:segment (node)
+                        | Extender (segment, node, _, _, _) -> extend ~segafter:segment node
                         | Internal _ as right -> extend (View right)
                         | Bud _ as right -> extend (View right)
                         | Leaf _ as right -> extend (View right)
                       end
-                    | View (Extender (segment, node, _, _, _)) -> extend ~segafter:segment (node)
+                    | View (Extender (segment, node, _, _, _)) -> extend ~segafter:segment node
                     | View (Internal _) -> extend left
                     | View (Bud _) -> extend left
                     | View (Leaf _) -> extend left
                   end
-                | Ok (Some (Is_Extender new_right)) -> new_node left new_right
-                | Ok (Some  (Not_Extender new_right))-> new_node left new_right
+                | Some (Is_Extender new_right) -> new_node left new_right
+                | Some  (Not_Extender new_right)-> new_node left new_right
 
               end
           end
@@ -1068,18 +1062,18 @@ let delete cursor segment =
     (* If we're deleting from a bud that has nothing below... *)
     Error "nothing to delete"
   | Cursor (trail, View (Bud (Some deletion_point, _, _, _)), context) ->
-    let result = delete_aux (Node deletion_point) segment in begin
-      match result with
-      | Error e -> Error e
-      | Ok None -> Ok (attach trail (
-          View (Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context)
-      | Ok (Some (Is_Extender result)) ->
-        Ok (attach trail (
-            View (Bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context)
-      | Ok (Some (Not_Extender result)) ->
-        Ok (attach trail (
-            View (Bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context)
-    end
+      begin 
+        delete_aux (Node deletion_point) segment >>| function
+        | None -> 
+            attach trail (
+              View (Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+        | Some (Is_Extender result) ->
+            attach trail (
+              View (Bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+        | Some (Not_Extender result) ->
+            attach trail (
+                View (Bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+      end
   | _ -> Error "Must insert from a bud"
 
 (* How to merge alter and delete *)
@@ -1090,13 +1084,12 @@ type mogrify = ex_node option -> (ex_node option, error) result
 
 
 let upsert cursor segment value =
-  alter cursor segment (function _ -> (Ok value))
+  alter cursor segment (function _ -> Ok value)
 
 let insert cursor segment value =
-  alter cursor segment (
-    function
-    | None -> (Ok value)
-    | Some _ -> Error "leaf already present for this path")
+  alter cursor segment (function
+      | None -> Ok value
+      | Some _ -> Error "leaf already present for this path")
 
 (*
 let attach_hashed trail node h context = match trail with
