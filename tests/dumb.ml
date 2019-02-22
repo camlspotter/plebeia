@@ -105,7 +105,7 @@ let subtree ntrail seg =
   check_node ntrail >>= fun ntrail -> aux ntrail seg
 
 (* Find the Tree above, cleaning Node (Null, Null) *)
-let rec go_up_node (n, trail) =
+let rec go_up_tree (n, trail) =
   let trim_null = function
     | Node (Null, Null) -> Null
     | t -> t
@@ -113,12 +113,12 @@ let rec go_up_node (n, trail) =
   match trail with
   | Treed trail -> Ok (Tree n, trail)
   | Root -> Error "Root"
-  | Left (r, trail) -> go_up_node (trim_null (Node (n,r)), trail)
-  | Right (l, trail) -> go_up_node (trim_null (Node (l, n)), trail)
+  | Left (r, trail) -> go_up_tree (trim_null (Node (n,r)), trail)
+  | Right (l, trail) -> go_up_tree (trim_null (Node (l, n)), trail)
   
 let parent ((n, _) as ntrail) =
   match n with
-  | Tree _ -> go_up_node ntrail
+  | Tree _ -> go_up_tree ntrail
   | _ -> Error "not Tree"
   
 let get_node ntrail seg =
@@ -170,7 +170,7 @@ let alter ntrail seg f =
   in
   let open Error in
   check_node ntrail >>= fun ntrail -> 
-  aux ntrail seg >>= go_up_node
+  aux ntrail seg >>= go_up_tree
 
 let insert ntrail seg v = 
   let f = function
@@ -196,7 +196,7 @@ let create_subtree ntrail seg =
 let delete ntrail seg = 
   let open Error in
   get_node ntrail seg >>= function
-  | ((Leaf _ | Tree _), trail) -> go_up_node (Null, trail)
+  | ((Leaf _ | Tree _), trail) -> go_up_tree (Null, trail)
   | _ -> Error "Not Leaf nor Tree"
 
 (* Graphviz's dot file format *)
