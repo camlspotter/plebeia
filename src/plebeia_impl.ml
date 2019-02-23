@@ -665,12 +665,13 @@ let parent c =
   in
   aux c
     
-let get_gen cursor segment =
+(* follow the segment from the cursor *)
+let access_gen cursor segment =
   (* returns the cursor found by following the segment from the given cursor *)
   let rec aux cursor segment =
     let Viewed_Cursor (trail, vnode, context) = view_cursor cursor in
     match Path.cut segment with
-    | None -> Ok cursor
+    | None -> Ok (cursor, None)
     | Some (dir, segment_rest) ->
         match vnode with
         | Leaf _ -> Error "Reached a leaf before finishing"
@@ -703,7 +704,7 @@ let get_gen cursor segment =
                     indexing_rule,
                     hashed_is_transitive,
                     indexed_implies_hashed) ->
-          let _, remaining_extender, remaining_segment =
+          let (_, remaining_extender, remaining_segment) as common_prefix =
             Path.common_prefix extender segment in
           if remaining_extender = Path.empty then
             let new_trail =
@@ -714,25 +715,33 @@ let get_gen cursor segment =
                        indexed_implies_hashed) in
             aux (Cursor (new_trail, node_below, context)) remaining_segment
           else
-            Error "No bud at this location, diverged while going down an extender."
+            if remaining_segment = Path.empty then
+              Error "Finished in the middle of an Extender"
+            else
+              (* diverge *)
+              Ok (cursor, Some common_prefix)
   in
   match go_below_bud cursor with
   | Error e -> Error e
   | Ok c -> aux c segment
 
 let subtree cursor segment =
-  get_gen cursor segment >>= function (Cursor (_, n, _) as c) ->
-  match n with
-  | Disk _ -> assert false
-  | View (Bud _) -> Ok c
-  | _ -> Error "Reached to a non Bud"
+  access_gen cursor segment >>= function 
+  | (_, Some _) -> Error "Diverged in the middle of an Extender"
+  | (c, None) -> 
+      let Viewed_Cursor (trail, v, context) = view_cursor c in
+      match v with
+      | Bud _ -> Ok (Cursor (trail, View v, context))
+      | _ -> Error "Reached to a non Bud"
 
 let get cursor segment = 
-  get_gen cursor segment >>= function Cursor (_, n, _) ->
-  match n with
-  | Disk _ -> assert false
-  | View (Leaf (v, _, _, _)) -> Ok v
-  | _ -> Error "Reached to a non Leaf"
+  access_gen cursor segment >>= function 
+  | (_, Some _) -> Error "Diverged in the middle of an Extender"
+  | (c, None) -> 
+      let Viewed_Cursor (_trail, v, _context) = view_cursor c in
+      match v with
+      | Leaf (v, _, _, _) -> Ok v
+      | _ -> Error "Reached to a non Leaf"
   
 let empty context =
   (* A bud with nothing underneath, i.e. an empty tree or an empty sub-tree. *)
@@ -966,102 +975,99 @@ let delete cursor segment =
      it is replaced by the other child. We may thus need to merge extenders but that's OK
   *)
   let Cursor (_, _, context) = cursor in
-  let rec delete_aux0 : type a b c. (a,b,c) node -> segment ->  ((not_indexed, not_hashed) ex_extender_node option, string) result = fun node segment ->
+  let rec delete_aux : type a b c. (a,b,c) node -> segment ->  ((not_indexed, not_hashed) ex_extender_node option, string) result = fun node segment ->
     match node with
     | Disk (i, wit) -> 
         let view = load_node context i wit in
-        let node = View view in
-        delete_aux node segment
-    | View _vnode -> delete_aux node segment
+        delete_aux' view segment
+    | View vnode -> delete_aux' vnode segment
 
-  and delete_aux : type a b c . (a,b,c) node -> segment -> ((not_indexed, not_hashed) ex_extender_node option, string) result = fun node segment ->
-    match node with
-    | Disk (i, wit) -> delete_aux (View (load_node context i wit)) segment
-    | View vnode ->
-        match vnode with
-        | Leaf _ ->
-          if segment = Path.empty then
-            Ok None
-          else
-            Error "reached leaf before end of segment"
-        | Bud _ ->  Error "reached a bud and not a leaf"
-        | Extender (other_segment, node, _, _, _) ->
-          (* If I don't go fully down that segment, that's an error *)
-          let _, rest, rest_other = Path.common_prefix segment other_segment in
-          if rest_other = Path.empty then begin
-            delete_aux node rest >>| function (* XXX Use Option.map *)
-            | None -> None
-            | Some (Not_Extender node) -> 
-                Some (Is_Extender (View (
-                    Extender(other_segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
-            | Some (Is_Extender (View (Extender (next_segment, node, _, _, _)))) ->
-                Some (Is_Extender (View (
-                    Extender( Path.(other_segment @ next_segment), node, Not_Indexed, Not_Hashed,
-                              Not_Indexed_Any))))
-          end else
-            Error (Printf.sprintf "no leaf at this location %s" (Path.to_string rest_other))
+  and delete_aux' : type a b c . (a,b,c) view -> segment -> ((not_indexed, not_hashed) ex_extender_node option, string) result = fun vnode segment ->
+    match vnode with
+    | Leaf _ ->
+      if segment = Path.empty then
+        Ok None
+      else
+        Error "reached leaf before end of segment"
+    | Bud _ ->  Error "reached a bud and not a leaf"
+    | Extender (other_segment, node, _, _, _) ->
+      (* If I don't go fully down that segment, that's an error *)
+      let _, rest, rest_other = Path.common_prefix segment other_segment in
+      if rest_other = Path.empty then begin
+        delete_aux node rest >>| function (* XXX Use Option.map *)
+        | None -> None
+        | Some (Not_Extender node) -> 
+            Some (Is_Extender (View (
+                Extender(other_segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+        | Some (Is_Extender (View (Extender (next_segment, node, _, _, _)))) ->
+            Some (Is_Extender (View (
+                Extender( Path.(other_segment @ next_segment), node, Not_Indexed, Not_Hashed,
+                          Not_Indexed_Any))))
+      end else
+        Error (Printf.sprintf "no leaf at this location %s" (Path.to_string rest_other))
 
-        | Internal (left, right, _, _, _) -> begin
-            match Path.cut segment with
-            | None -> Error "didn't reach a leaf"
-            | Some (Left, rest_of_segment) -> begin
-                let new_node new_left right =
-                  Some ( Not_Extender (View (Internal (
-                      new_left, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))))
-                in
-                let extend ?(segafter=Path.empty) right =
-                 Some (Is_Extender (View (
-                      Extender (Path.((of_side_list [Right]) @ segafter),
-                                right, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
-                in              
-                delete_aux left rest_of_segment >>| function
-                | None -> begin
-                    match right with
-                    | Disk (index, wit) -> begin
-                        match load_node context index wit with
-                        | Extender (segment, node, _, _, _) -> extend ~segafter:segment (node)
-                        | Internal _ as right -> extend (View right)
-                        | Bud _ as right -> extend (View right)
-                        | Leaf _ as right -> extend (View right)
-                      end
-                    | View (Extender (segment, node, _, _, _)) -> extend ~segafter:segment node
-                    | View (Internal _) -> extend right
-                    | View (Bud _)      -> extend right
-                    | View (Leaf _)     -> extend right
+    | Internal (left, right, _, _, _) -> begin
+        match Path.cut segment with
+        | None -> Error "didn't reach a leaf"
+        | Some (Left, rest_of_segment) -> begin
+            let new_node new_left right =
+              Some ( Not_Extender (View (Internal (
+                  new_left, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+            in
+            let extend ?(segafter=Path.empty) right =
+             Some (Is_Extender (View (
+                  Extender (Path.((of_side_list [Right]) @ segafter),
+                            right, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+            in              
+            delete_aux left rest_of_segment >>| function
+            | None -> begin
+                
+                match right with
+                | Disk (index, wit) -> begin
+                    match load_node context index wit with
+                    | Extender (segment, node, _, _, _) -> extend ~segafter:segment node
+                    | Internal _ as right -> extend (View right)
+                    | Bud _ as right -> extend (View right)
+                    | Leaf _ as right -> extend (View right)
                   end
-                | Some  (Is_Extender new_left) -> new_node new_left right
-                | Some  (Not_Extender new_left) -> new_node new_left right
+                | View (Extender (segment, node, _, _, _)) -> extend ~segafter:segment node
+                | View (Internal _) -> extend right
+                | View (Bud _)      -> extend right
+                | View (Leaf _)     -> extend right
               end
-            | Some (Right, rest_of_segment) -> begin
-                let new_node left new_right =
-                  Some ( Not_Extender (View (Internal (
-                      left, new_right, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))))
-                in 
-                let extend ?(segafter=Path.empty) left =
-                  Some (Is_Extender (View (
-                      Extender (Path.((of_side_list [Left]) @ segafter),
-                                left, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
-                in
-                delete_aux right rest_of_segment >>| function
-                | None -> begin
-                    match left with
-                    | Disk (index, wit) -> begin
-                        match load_node context index wit with
-                        | Extender (segment, node, _, _, _) -> extend ~segafter:segment node
-                        | Internal _ as right -> extend (View right)
-                        | Bud _ as right -> extend (View right)
-                        | Leaf _ as right -> extend (View right)
-                      end
-                    | View (Extender (segment, node, _, _, _)) -> extend ~segafter:segment node
-                    | View (Internal _) -> extend left
-                    | View (Bud _) -> extend left
-                    | View (Leaf _) -> extend left
-                  end
-                | Some (Is_Extender new_right) -> new_node left new_right
-                | Some  (Not_Extender new_right)-> new_node left new_right
-
-              end
+            | Some  (Is_Extender new_left) -> new_node new_left right
+            | Some  (Not_Extender new_left) -> new_node new_left right
           end
+        | Some (Right, rest_of_segment) -> begin
+            let new_node left new_right =
+              Some ( Not_Extender (View (Internal (
+                  left, new_right, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+            in 
+            let extend ?(segafter=Path.empty) left =
+              Some (Is_Extender (View (
+                  Extender (Path.((of_side_list [Left]) @ segafter),
+                            left, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+            in
+            delete_aux right rest_of_segment >>| function
+            | None -> begin
+                match left with
+                | Disk (index, wit) -> begin
+                    match load_node context index wit with
+                    | Extender (segment, node, _, _, _) -> extend ~segafter:segment node
+                    | Internal _ as right -> extend (View right)
+                    | Bud _ as right -> extend (View right)
+                    | Leaf _ as right -> extend (View right)
+                  end
+                | View (Extender (segment, node, _, _, _)) -> extend ~segafter:segment node
+                | View (Internal _) -> extend left
+                | View (Bud _) -> extend left
+                | View (Leaf _) -> extend left
+              end
+            | Some (Is_Extender new_right) -> new_node left new_right
+            | Some  (Not_Extender new_right)-> new_node left new_right
+
+          end
+      end
   in
   let Viewed_Cursor (trail, vnode, context) = view_cursor cursor in
   match vnode with
@@ -1070,7 +1076,7 @@ let delete cursor segment =
     Error "nothing to delete"
   | Bud (Some deletion_point, _, _, _)->
       begin 
-        delete_aux0 deletion_point segment >>| function
+        delete_aux deletion_point segment >>| function
         | None -> 
             attach trail (
               View (Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
@@ -1115,8 +1121,10 @@ let attach_hashed trail node h context = match trail with
 
 let hash (Cursor (_trail, node, context)) =
   let rec hash_aux : type i h e.  (i, h, e) node -> ((i, hashed, e) node * hash) = function
-    | Disk (index, wit) -> let v, h = hash_aux' (load_node context index wit) in View v, h
-    | View vnode -> let v, h = hash_aux' vnode in View v, h
+    | Disk (index, wit) -> 
+        let v, h = hash_aux' (load_node context index wit) in View v, h
+    | View vnode -> 
+        let v, h = hash_aux' vnode in View v, h
 
   and hash_aux' : type i h e.  (i, h, e) view -> ((i, hashed, e) view * hash) = fun vnode -> 
     match vnode with
