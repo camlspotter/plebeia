@@ -10,7 +10,7 @@ type t =
     
 type trail = Root | Treed of trail | Left of t * trail | Right of t * trail
 
-type segment = Plebeia.Plebeia_impl.Path.side list
+type segment = Plebeia.Plebeia_impl.Path.segment
 type error = string
 type value = Plebeia.Plebeia_impl.value
 type context = unit
@@ -36,50 +36,13 @@ let rec of_plebeia_node : type a b c . P.context -> (a,b,c) P.node -> t = fun co
   
 let empty () = (Tree Null, Root) (* not just Null *)
   
-(*
-let rec go_down (n, trail) dir = match n with
-  | Null -> Error "Null"
-  | Leaf _ -> Error "Leaf"
-  | Tree t -> go_down (t, Treed trail) dir
-  | Node (l, r) ->
-      match dir with
-      | `Left -> Ok (l, Left (r, trail))
-      | `Right -> Ok (r, Right (l, trail))
-*)
-
-(*
-let rec access ((n, trail) as cur) seg = 
-  match seg with
-  | [] -> Ok cur
-  | Path.Left :: seg' ->
-      begin match n with
-      | Null -> Error "Null"
-      | Leaf _ -> Error "Leaf"
-      | Tree n -> access (n, Treed trail) seg
-      | Node (l, r) -> access (l, Left (r, trail)) seg'
-      end
-  | Path.Right :: seg' ->
-      begin match n with
-      | Null -> Error "Null"
-      | Leaf _ -> Error "Leaf"
-      | Tree n -> access (n, Treed trail) seg
-      | Node (l, r) -> access (r, Right (l, trail)) seg'
-      end
-
-let go_up (n, trail) = 
-  match trail with
-  | Root -> Error "Root"
-  | Treed trail -> Ok (Tree n, trail)
-  | Left (r, trail) -> Ok (Node (n, r), trail)
-  | Right (l, trail) -> Ok (Node (l, n), trail)
-*)
-
 let check_node (n, trail) =
   match n with
   | Tree n -> Ok (n, Treed trail)
   | _ -> Error "Start node is not Tree"
 
 let subtree ntrail seg =
+  let seg = (seg : P.Path.segment :> P.Path.side list) in
   let rec aux ((n, trail) as cur) = function
     | [] -> 
         begin match n with
@@ -122,6 +85,7 @@ let parent ((n, _) as ntrail) =
   | _ -> Error "not Tree"
   
 let get_node ntrail seg =
+  let seg = (seg : P.Path.segment :> P.Path.side list) in
   let rec aux ((n, trail) as ntrail) = function
     | [] -> Ok ntrail
     | Path.Left :: seg' ->
@@ -150,6 +114,7 @@ let get ntrail seg =
   | _ -> Error "Not Leaf"
 
 let alter ntrail seg f =
+  let seg = (seg : P.Path.segment :> P.Path.side list) in
   let open Error in
   let rec aux (n, trail) = function
     | [] -> f n >>= fun v -> Ok (v, trail)

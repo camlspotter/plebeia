@@ -35,6 +35,15 @@ let () =
   assert (v = Value.of_string "RRRR");
   return () (* once failed here due to a bug. Now fixed. *)
 
+let () = 
+  ignore @@ from_Ok @@ test_with_context @@ fun c ->
+  let c = from_Ok @@ insert c (path_of_string "RR") (Value.of_string "RR") in
+  let _ = 
+    (* It succeeded by putting a Leaf at "RR" instead at "RRRR"...  Now fixed. *)
+    from_Error @@ upsert c (path_of_string "RRRR") (Value.of_string "RRRR") 
+  in
+  return ()
+
 let random_insertions st sz =
   let validate context n =
     default (Debug.validate_node context n) (fun e -> 
@@ -57,14 +66,14 @@ let random_insertions st sz =
         in
 *)
         (* get *)
-        begin match get c seg, Dumb.get dumb (seg :> Path.side list) with
+        begin match get c seg, Dumb.get dumb seg with
           | Ok _, Ok _ -> ()
           | Error _, Error _ -> ()
           | _ -> assert false
         end;
 
         (* subtree *)
-        begin match subtree c seg, Dumb.subtree dumb (seg :> Path.side list) with
+        begin match subtree c seg, Dumb.subtree dumb seg with
           | Ok _, Ok _ -> ()
           | Error _, Error _ -> ()
           | _ -> assert false
@@ -73,7 +82,7 @@ let random_insertions st sz =
         (* insert *)
         match 
           insert c seg v,
-          Dumb.insert dumb (seg :> Path.side list) v
+          Dumb.insert dumb seg v
         with
         | Ok c, Ok dumb -> 
             (* print_command (); *)
@@ -105,7 +114,7 @@ let random_insertions st sz =
   let Cursor (_, n, _), _ = 
     List.fold_left (fun (c, dumb) (seg, _) ->
         let Cursor (_, n, context) as c = from_Ok @@ delete c seg in
-        let dumb = from_Ok @@ Dumb.delete dumb (seg :> Path.side list) in
+        let dumb = from_Ok @@ Dumb.delete dumb seg in
         assert (Dumb.get_root_node dumb = Dumb.of_plebeia_node context n);
         validate context n;
         (c, dumb)) (c, dumb) bindings
@@ -114,8 +123,54 @@ let random_insertions st sz =
   | View (Bud (None, _, _, _)) -> ()
   | _ -> assert false
 
+let random_upsertions st sz =
+  let validate context n =
+    default (Debug.validate_node context n) (fun e -> 
+        to_file "invalid.dot" @@ Debug.dot_of_node n;
+        prerr_endline "Saved the current node to invalid.dot";
+        failwith e);
+  in
+  test_with_context @@ fun c ->
+  let rec f c dumb i =
+    if i = sz then (c, dumb)
+    else 
+      let length = Random.State.int st 10 + 3 in
+      let seg = random_segment ~length st in
+      let c, dumb = 
+        let s = Path.to_string seg in
+        let v = Value.of_string (Path.to_string seg) in
+
+        (* upsert *)
+        match 
+          upsert c seg v,
+          Dumb.upsert dumb seg v
+        with
+        | Ok c, Ok dumb -> 
+            (* print_command (); *)
+            let Cursor (_, n, context) = c in
+            if Dumb.get_root_node dumb <> Dumb.of_plebeia_node context n then begin
+              to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
+              to_file "plebeia.dot" @@ from_Ok @@ Debug.dot_of_cursor c;
+              to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
+              assert false
+            end;
+            validate context n;
+            (c, dumb)
+        | Error _, Error _ -> (c, dumb)
+        | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
+        | Error e, Ok _ -> 
+            Format.eprintf "impl: %s (seg=%s)@." e s; 
+            Format.eprintf "%s@." @@ from_Ok @@ Debug.dot_of_cursor c;
+            assert false
+      in
+      f c dumb (i+1)
+  in
+  let dumb = Dumb.empty () in
+  let c, _dumb = f c dumb 0 in
+  to_file "random_upsertions.dot" @@ from_Ok @@ Debug.dot_of_cursor c
+
 let () = 
   let st = Random.State.make_self_init () in
-  for _ = 1 to 1000 do random_insertions st 100 done
-
+  for _ = 1 to 1000 do random_insertions st 100 done;
+  for _ = 1 to 1000 do random_upsertions st 100 done
 

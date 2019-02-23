@@ -1,4 +1,4 @@
-type segment = Plebeia.Plebeia_impl.Path.side list
+type segment = Plebeia.Plebeia_impl.Path.segment
 type value = Plebeia.Plebeia_impl.value
 
 type context = unit

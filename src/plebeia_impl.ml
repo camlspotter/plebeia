@@ -851,8 +851,16 @@ let alter cursor segment alteration =
                 (* ditto *)
               end
        end
-      | Leaf (v, _, _, _) -> leaf (Some v) >>| fun l -> Not_Extender l (* Altering *)
-      | Bud _ -> Error "Tried to alter a value into a bud"
+      | Leaf (v, _, _, _) -> 
+          begin match Path.cut segment with
+            | None -> leaf (Some v) >>| fun l -> Not_Extender l (* Altering *)
+            | _ -> Error "Reached a Leaf before reaching the destination"
+          end
+      | Bud _ -> 
+          begin match Path.cut segment with
+            | None -> Error "Tried to alter a value into a bud"
+            | _ -> Error "Reached a Bud before reaching the destination"
+          end
       | Extender (extender_segment, other_node, _, _, _) ->
         (* This is the one that is trickier to handle. *)
         let (common_segment, remaining_segment, remaining_extender) =
