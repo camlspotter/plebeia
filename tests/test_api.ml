@@ -56,6 +56,21 @@ let random_insertions st sz =
           Format.eprintf "insert c (path_of_string %S) (Value.of_string %S) >>= fun c ->@." s s
         in
 *)
+        (* get *)
+        begin match get c seg, Dumb.get dumb (seg :> Path.side list) with
+          | Ok _, Ok _ -> ()
+          | Error _, Error _ -> ()
+          | _ -> assert false
+        end;
+
+        (* subtree *)
+        begin match subtree c seg, Dumb.subtree dumb (seg :> Path.side list) with
+          | Ok _, Ok _ -> ()
+          | Error _, Error _ -> ()
+          | _ -> assert false
+        end;
+
+        (* insert *)
         match 
           insert c seg v,
           Dumb.insert dumb (seg :> Path.side list) v
