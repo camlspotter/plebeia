@@ -799,11 +799,9 @@ let tag_extender (type i h e) (node:(i,h, e) node) : (e extender_witness) =
     | View (Leaf _)     -> Not_Extender
     | View (Bud _)      -> Not_Extender
 
+type ex_view = Ex_View : ('i, 'h, 'e) view -> ex_view
+  
 let alter cursor segment alteration =
-  let leaf value =
-    alteration value >>| fun value ->
-    View (Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any)) in
-
   let Cursor (_, _, context) = cursor in
 
   let rec alter_aux :
@@ -818,7 +816,7 @@ let alter cursor segment alteration =
       | View view_node -> alter_aux' view_node segment
 
   and alter_aux' :
-    type ia ha ea . (ia, ha, ea) view->
+   type ia ha ea . (ia, ha, ea) view->
     Path.segment ->
     ((not_indexed, not_hashed) ex_extender_node , error) result =
 
@@ -851,9 +849,9 @@ let alter cursor segment alteration =
                 (* ditto *)
               end
        end
-      | Leaf (v, _, _, _) -> 
+      | Leaf (_, _, _, _) -> 
           begin match Path.cut segment with
-            | None -> leaf (Some v) >>| fun l -> Not_Extender l (* Altering *)
+            | None -> alteration (Some (Ex_View view_node)) >>| fun l -> Not_Extender l (* Altering *)
             | _ -> Error "Reached a Leaf before reaching the destination"
           end
       | Bud _ -> 
@@ -897,9 +895,9 @@ let alter cursor segment alteration =
 
             let my_node =
               if remaining_segment = Path.empty then
-                leaf None >>| fun l -> Not_Extender l
+                alteration None >>| fun l -> Not_Extender l
               else
-                leaf None >>| fun l ->
+                alteration None >>| fun l ->
                 Is_Extender
                   (View (Extender
                            (remaining_segment, l,
@@ -959,7 +957,7 @@ let alter cursor segment alteration =
     if segment = Path.empty then
       Error "Can't insert under a bud with an empty path"
     else
-      leaf None >>| fun l ->
+      alteration None >>| fun l ->
       let result =   View (Extender (segment, l, Not_Indexed, Not_Hashed, Not_Indexed_Any)) in
       attach trail (View (Bud (
           Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
@@ -993,11 +991,15 @@ let delete cursor segment =
   and delete_aux' : type a b c . (a,b,c) view -> segment -> ((not_indexed, not_hashed) ex_extender_node option, string) result = fun vnode segment ->
     match vnode with
     | Leaf _ ->
-      if segment = Path.empty then
-        Ok None
-      else
-        Error "reached leaf before end of segment"
-    | Bud _ ->  Error "reached a bud and not a leaf"
+        if segment = Path.empty then
+          Ok None
+        else
+          Error "reached leaf before end of segment"
+    | Bud _ -> 
+        if segment = Path.empty then
+          Ok None
+        else
+          Error "reached bud before end of segment"
     | Extender (other_segment, node, _, _, _) ->
       (* If I don't go fully down that segment, that's an error *)
       let _, rest, rest_other = Path.common_prefix segment other_segment in
@@ -1100,17 +1102,23 @@ let delete cursor segment =
 (* How to merge alter and delete *)
 type modifier = value option -> (value option, error) result
 
-(* Replace a part of the tree with another *)
-type mogrify = ex_node option -> (ex_node option, error) result
-
-
 let upsert cursor segment value =
-  alter cursor segment (function _ -> Ok value)
+  alter cursor segment (fun x ->
+     let y = Ok (View (Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any))) in 
+     match x with
+     | None -> y
+     | Some (Ex_View (Leaf _)) -> y
+     | Some _ -> Error "a non Leaf node already present for this path")
 
 let insert cursor segment value =
   alter cursor segment (function
-      | None -> Ok value
-      | Some _ -> Error "leaf already present for this path")
+      | None -> Ok (View (Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+      | Some _ -> Error "a node already present for this path")
+
+let create_subtree cursor segment =
+  alter cursor segment (function
+      | None -> Ok (View (Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+      | Some _ -> Error "a node already present for this path")
 
 (*
 let attach_hashed trail node h context = match trail with
@@ -1180,7 +1188,6 @@ let hash (Cursor (_trail, node, context)) =
 let commit _ = failwith "not implemented"
 let snapshot _ _ _ = failwith "not implemented"
 let update _ _ _ = failwith "not implemented"
-let create_subtree _ _ = failwith "not implemented"
 let gc ~src:_ _ ~dest:_ = failwith "not implemented"
 
 let open_context ~filename:_ = failwith "not implemented"
