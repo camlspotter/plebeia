@@ -1082,8 +1082,8 @@ let delete cursor segment =
   let Viewed_Cursor (trail, vnode, context) = view_cursor cursor in
   match vnode with
   | Bud (None, _, _, _) ->
-    (* If we're deleting from a bud that has nothing below... *)
-    Error "nothing to delete"
+      (* If we're deleting from a bud that has nothing below... *)
+      Error "tree is empty"
   | Bud (Some deletion_point, _, _, _)->
       begin 
         delete_aux deletion_point segment >>| function
