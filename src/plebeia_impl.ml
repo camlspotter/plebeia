@@ -4,6 +4,58 @@
     to maximize correctness and cares second about efficiency. Extracting
     and efficient C program from F* should be explored. *)
 
+module Error : sig
+  val return : 'a -> ('a, 'b) result
+  (** monadic return *)
+
+  val (>>=) : ('a, 'e) result -> ('a -> ('b, 'e) result) -> ('b, 'e) result
+  (** monadic bind *)
+
+  val (>>|) : ('a, 'e) result -> ('a -> 'b) -> ('b, 'e) result
+  (** monadic map *)
+
+  val from_Ok : ('a, _) result -> 'a
+  (** It raises [Failure _] when the argument is [Error _]. *)
+
+  val from_Error : (_, 'e) result -> 'e
+  (** It raises [Failure _] when the argument is [Ok _]. *)
+
+  val default : (unit, 'e) result -> ('e -> unit) -> unit
+    
+  val protect : (unit -> 'a) -> ('a, exn) result
+end = struct
+  (* "Error" monad *)
+
+  let return x = Ok x
+
+  let (>>|) y f = match y with
+    | Ok x -> Ok (f x)
+    | Error e -> Error e
+  (* Error monad operator. *)
+
+  let (>>=) x f = match x with
+    | Error e -> Error e
+    | Ok x -> f x
+
+  let from_Ok = function
+    | Ok x -> x
+    | Error _ -> failwith "Expected an Ok"
+
+  let from_Error = function
+    | Ok _ -> failwith "Expected an Error"
+    | Error e -> e
+      
+  let protect f = match f () with
+    | exception e -> Error e
+    | x -> Ok x
+             
+  let default r f = match r with
+    | Ok x -> x
+    | Error e -> f e
+end
+
+open Error
+
 module Path : sig
   (** A module encapsulating the concept of a path through the Patricia tree.
       A path is a sequence of n full segments. The n-1 first segments end in
@@ -392,7 +444,7 @@ type ('ia, 'ha, 'ib, 'hb, 'ic, 'hc, 'modified, 'internal, 'side) modified_rule =
   | Unmodified:
       ('ia, 'ib, 'ic, 'internal) indexing_rule *
       ('ha, 'hb, 'hc) hashed_is_transitive ->
-    ('ia, 'ha, 'ib, 'hb, 'ic, 'hc, unmodified, 'internal, 'side) modified_rule
+      ('ia, 'ha, 'ib, 'hb, 'ic, 'hc, unmodified, 'internal, 'side) modified_rule
 
 (* 'iXXX : indexing
    'hXXX : hashed
@@ -474,6 +526,11 @@ type ('i, 'h) ex_extender_node =
   | Not_Extender: ('i, 'h, not_extender) node -> ('i, 'h) ex_extender_node
   (* existential type hiding the extender tag *)
 
+type ('i, 'h) ex_extender_view =
+  | Is_Extender_View : ('i, 'h, extender) view -> ('i, 'h) ex_extender_view
+  | Not_Extender_View: ('i, 'h, not_extender) view-> ('i, 'h) ex_extender_view
+  (* existential type hiding the extender tag *)
+
 type cursor =
     Cursor :   ('ihole * 'iprev, 'hhole * 'hprev, 'ehole * 'eprev, 'modified) trail
                * ('ihole, 'hhole, 'ehole) node
@@ -484,58 +541,6 @@ type cursor =
    that modifies a tree. We use an existential type that keeps the .mli sane
    and enforces the most important: that the hole tags match between the trail
    and the Node *)
-
-module Error : sig
-  val return : 'a -> ('a, 'b) result
-  (** monadic return *)
-
-  val (>>=) : ('a, 'e) result -> ('a -> ('b, 'e) result) -> ('b, 'e) result
-  (** monadic bind *)
-
-  val (>>|) : ('a, 'e) result -> ('a -> 'b) -> ('b, 'e) result
-  (** monadic map *)
-
-  val from_Ok : ('a, _) result -> 'a
-  (** It raises [Failure _] when the argument is [Error _]. *)
-
-  val from_Error : (_, 'e) result -> 'e
-  (** It raises [Failure _] when the argument is [Ok _]. *)
-
-  val default : (unit, 'e) result -> ('e -> unit) -> unit
-    
-  val protect : (unit -> 'a) -> ('a, exn) result
-end = struct
-  (* "Error" monad *)
-
-  let return x = Ok x
-
-  let (>>|) y f = match y with
-    | Ok x -> Ok (f x)
-    | Error e -> Error e
-  (* Error monad operator. *)
-
-  let (>>=) x f = match x with
-    | Error e -> Error e
-    | Ok x -> f x
-
-  let from_Ok = function
-    | Ok x -> x
-    | Error _ -> failwith "Expected an Ok"
-
-  let from_Error = function
-    | Ok _ -> failwith "Expected an Error"
-    | Error e -> e
-      
-  let protect f = match f () with
-    | exception e -> Error e
-    | x -> Ok x
-             
-  let default r f = match r with
-    | Ok x -> x
-    | Error e -> f e
-end
-
-open Error
 
 let load_node (type e) (context : context) (index : int64) (ewit:e extender_witness) : (indexed,hashed,e) view =
   match ewit with
@@ -665,7 +670,10 @@ let parent c =
   in
   aux c
     
-(* follow the segment from the cursor *)
+(* Follow the segment from the cursor. If the segment terminates 
+  or diverges in the middle of an extender, it returns the common prefix
+  information. 
+*)
 let access_gen cursor segment =
   (* returns the cursor found by following the segment from the given cursor *)
   let rec aux cursor segment =
@@ -727,7 +735,7 @@ let access_gen cursor segment =
 
 let subtree cursor segment =
   access_gen cursor segment >>= function 
-  | (_, Some _) -> Error "Diverged in the middle of an Extender"
+  | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
   | (c, None) -> 
       let Viewed_Cursor (trail, v, context) = view_cursor c in
       match v with
@@ -736,7 +744,7 @@ let subtree cursor segment =
 
 let get cursor segment = 
   access_gen cursor segment >>= function 
-  | (_, Some _) -> Error "Diverged in the middle of an Extender"
+  | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
   | (c, None) -> 
       let Viewed_Cursor (_trail, v, _context) = view_cursor c in
       match v with
@@ -1192,3 +1200,46 @@ let gc ~src:_ _ ~dest:_ = failwith "not implemented"
 
 let open_context ~filename:_ = failwith "not implemented"
 let root _ _ = failwith "not implemented"
+
+let go_up2 (type itrail htrail ehole etrail) (trail:(itrail, htrail, ehole * etrail, 'm) trail) (node:('i, 'h, ehole) node) context =
+  go_up @@ attach trail node context
+    
+(*
+let alter2 c segment (vnode' : (_, _) ex_extender_view) =
+  (access_gen c segment >>| fun (c, x) ->
+  begin match x with
+  | Some _ -> assert false (* not yet *)
+  | None -> 
+      let Viewed_Cursor (trail, vnode, context) = view_cursor c in
+      match vnode, vnode' with
+      | Leaf _, Not_Extender_View vnode' -> 
+          attach trail (View vnode') context
+      | Bud _, Not_Extender_View vnode' -> 
+          attach trail (View vnode') context
+      | Internal _, Not_Extender_View vnode' ->
+          attach trail (View vnode') context
+      | Extender _, Is_Extender_View vnode' ->
+          attach trail (View vnode') context
+      | _ -> assert false
+  end) >>= parent
+
+let alter2 c segment vnode' =
+  (access_gen c segment >>| fun (c, x) ->
+  begin match x with
+  | Some _ -> assert false (* not yet *)
+  | None -> 
+      let Viewed_Cursor (trail, vnode, context) = view_cursor c in
+      match vnode, vnode' with
+      | Leaf _, Not_Extender_View vnode' -> 
+          attach trail (View vnode') context
+      | Bud _, Not_Extender_View vnode' -> 
+          attach trail (View vnode') context
+      | Internal _, Not_Extender_View vnode' ->
+          attach trail (View vnode') context
+      | Extender _, Is_Extender_View vnode' ->
+          attach trail (View vnode') context
+      | _ -> assert false
+  end) >>= parent
+)
+        
+*)
