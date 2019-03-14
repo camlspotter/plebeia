@@ -4,56 +4,6 @@
     to maximize correctness and cares second about efficiency. Extracting
     and efficient C program from F* should be explored. *)
 
-module Error : sig
-  val return : 'a -> ('a, 'b) result
-  (** monadic return *)
-
-  val (>>=) : ('a, 'e) result -> ('a -> ('b, 'e) result) -> ('b, 'e) result
-  (** monadic bind *)
-
-  val (>>|) : ('a, 'e) result -> ('a -> 'b) -> ('b, 'e) result
-  (** monadic map *)
-
-  val from_Ok : ('a, _) result -> 'a
-  (** It raises [Failure _] when the argument is [Error _]. *)
-
-  val from_Error : (_, 'e) result -> 'e
-  (** It raises [Failure _] when the argument is [Ok _]. *)
-
-  val default : (unit, 'e) result -> ('e -> unit) -> unit
-    
-  val protect : (unit -> 'a) -> ('a, exn) result
-end = struct
-  (* "Error" monad *)
-
-  let return x = Ok x
-
-  let (>>|) y f = match y with
-    | Ok x -> Ok (f x)
-    | Error e -> Error e
-  (* Error monad operator. *)
-
-  let (>>=) x f = match x with
-    | Error e -> Error e
-    | Ok x -> f x
-
-  let from_Ok = function
-    | Ok x -> x
-    | Error _ -> failwith "Expected an Ok"
-
-  let from_Error = function
-    | Ok _ -> failwith "Expected an Error"
-    | Error e -> e
-      
-  let protect f = match f () with
-    | exception e -> Error e
-    | x -> Ok x
-             
-  let default r f = match r with
-    | Ok x -> x
-    | Error e -> f e
-end
-
 open Error
 
 module Path : sig
@@ -361,7 +311,6 @@ type indexing_rule =
      disk, at least one of the child can be written adjacent to its parent. *)
 
 type extender_witness =
-  | Maybe_Extender
   | Not_Extender  
   | Is_Extender   
 
@@ -373,6 +322,20 @@ type indexed_witness =
   | Indexed of int64
   | Not_Indexed
 
+type context =
+  {
+    array : Bigstring.t ;
+    (* mmaped array where the nodes are written and indexed. *)
+    mutable length : int64 ;
+    (* Current length of the node table. *)
+    leaf_table  : KeyValueStore.t ;
+    (* Hash table  mapping leaf hashes to their values. *)
+    roots_table : (Hash.t, int64) Hashtbl.t ;
+    (* Hash table mapping root hashes to indices in the array. *)
+    fd : Unix.file_descr ; 
+    (* File descriptor to the mapped file *)
+  }
+  
 module PrivateNode : sig 
 
   type node =
@@ -501,6 +464,24 @@ module PrivateNode : sig
       * Path.segment
       * modified_rule
       * indexed_implies_hashed -> trail
+
+  val load_node : context -> int64 -> extender_witness -> view
+
+  val view : context -> node -> view
+    
+  type cursor = private
+      Cursor of trail
+                * node
+                * context
+  (* The cursor, also known as a zipper combines the information contained in a
+     trail and a subtree to represent an edit point within a tree. This is a
+     functional data structure that represents the program point in a function
+     that modifies a tree. We use an existential type that keeps the .mli sane
+     and enforces the most important: that the hole tags match between the trail
+     and the Node *)
+
+  val _Cursor : (trail * node * context) -> cursor
+
 end = struct
 
   type node =
@@ -563,7 +544,6 @@ end = struct
     | Bud (Some (View (Internal _)), _, _, _) -> Ok ()
     | Bud (Some (View (Extender _)), _, _, _) -> Ok ()
     | Extender (seg, _, _, _, _) when Path.cut seg = None -> Error "Extender: cannot have empty segment"
-    | Extender (_, Disk (_, Maybe_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
     | Extender (_, Disk (_, Not_Extender), _, _, _) -> Ok ()
     | Extender (_, Disk (_, Is_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
     | Extender (_, View _, _, _, _) -> Ok ()
@@ -761,41 +741,101 @@ end = struct
     check_trail @@ Budded (t, mr, iih)
   let extended (t, s, mr, iih) =
     check_trail @@ Extended (t, s, mr, iih)
+
+  let load_node (context : context) (index : int64) (ewit:extender_witness) : view =
+    match ewit with
+    | Not_Extender -> ignore (context, index) ; failwith "not implemented"
+    | Is_Extender -> ignore (context, index) ; failwith "not implemented"
+  (* Read the node from context.array, parse it and create a view node with it. *)
+
+  type cursor =
+      Cursor of trail
+                * node
+                * context
+  (* The cursor, also known as a zipper combines the information contained in a
+     trail and a subtree to represent an edit point within a tree. This is a
+     functional data structure that represents the program point in a function
+     that modifies a tree. We use an existential type that keeps the .mli sane
+     and enforces the most important: that the hole tags match between the trail
+     and the Node *)
+                
+  let view c = function
+    | Disk (i, wit) -> load_node c i wit
+    | View v -> v
+                       
+  let cursor_invariant (Cursor (trail, n, c)) =
+    match trail with
+    | Top -> 
+        begin match view c n with
+          | Bud _ -> Ok ()
+          | _ -> Error "Cursor: Top has no Bud"
+        end
+    | Left (_, _, Unmodified (ir, hit), _) -> 
+        begin match ir with
+          | Left_Not_Indexed when not @@ indexed n -> Ok ()
+          | Left_Not_Indexed -> Error "Cursor: invalid Left_Not_Indexed"
+          | Right_Not_Indexed -> Ok ()
+          | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
+          | Indexed _ when indexed n -> Ok ()
+          | Indexed _ -> Error "Cursor: invalid Indexed"
+        end >>= fun () ->
+        begin match hit with
+          | Hashed _ when hashed n -> Ok ()
+          | Hashed _ -> Error "Cursor: invalid Hashed"
+          | Not_Hashed -> Ok ()
+        end
+    | Left (_, _, Modified_Left, _) -> Ok ()
+    | Left (_, _, Modified_Right, _) -> Error "Left: invalid Modified_Right"
+    | Right (_, _, Unmodified (ir, hit) , _) ->
+        begin match ir with
+          | Left_Not_Indexed -> Ok ()
+          | Right_Not_Indexed when not @@ indexed n -> Ok ()
+          | Right_Not_Indexed -> Error "Cursor: invalid Right_Not_Indexed"
+          | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
+          | Indexed _ when indexed n -> Ok ()
+          | Indexed _ -> Error "Cursor: invalid Indexed"
+        end >>= fun () ->
+        begin match hit with
+          | Hashed _ when hashed n -> Ok ()
+          | Hashed _ -> Error "Cursor: invalid Hashed"
+          | Not_Hashed -> Ok ()
+        end
+    | Right (_, _, Modified_Right, _) -> Ok ()
+    | Right (_, _, Modified_Left, _) -> Error "Right: invalid Modified_Left"
+    | Budded (_, Unmodified (ir, _hit), _) ->
+        begin match ir with
+          | Indexed _ when indexed n -> Ok ()
+          | Indexed _ -> Error "Budded: invalid Indexed"
+          | Not_Indexed -> Ok ()
+          | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexing_rule"
+        end
+    | Budded (_, Modified_Left, _) -> Ok () 
+    | Budded (_, Modified_Right, _) -> Error "Budded: invalid Modified_Right"
+    | Extended (_, _, Unmodified (ir, hit), _) ->
+        begin match ir with
+          | Indexed _ when indexed n -> Ok ()
+          | Indexed _ -> Error "Extended: invalid Indexed"
+          | Not_Indexed -> Ok ()
+          | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexing_rule"
+        end >>= fun () ->
+        begin match hit with
+          | Hashed _ when hashed n -> Ok ()
+          | Hashed _ -> Error "Extended: invalid Hashed"
+          | Not_Hashed -> Ok ()
+        end
+    | Extended (_, _, Modified_Left, _) -> Ok () 
+    | Extended (_, _, Modified_Right, _) -> Error "Budded: invalid Modified_Right"
+        
+  let check_cursor c = 
+    match cursor_invariant c with
+    | Ok _ -> c
+    | Error s -> failwith s
+                   
+  let _Cursor (t, n, c) = 
+    check_cursor @@ Cursor (t, n, c)
 end
 
 include PrivateNode
-
-type context =
-  {
-    array : Bigstring.t ;
-    (* mmaped array where the nodes are written and indexed. *)
-    mutable length : int64 ;
-    (* Current length of the node table. *)
-    leaf_table  : KeyValueStore.t ;
-    (* Hash table  mapping leaf hashes to their values. *)
-    roots_table : (Hash.t, int64) Hashtbl.t ;
-    (* Hash table mapping root hashes to indices in the array. *)
-    fd : Unix.file_descr ; 
-    (* File descriptor to the mapped file *)
-  }
-
-type cursor =
-    Cursor of trail
-              * node
-              * context
-(* The cursor, also known as a zipper combines the information contained in a
-   trail and a subtree to represent an edit point within a tree. This is a
-   functional data structure that represents the program point in a function
-   that modifies a tree. We use an existential type that keeps the .mli sane
-   and enforces the most important: that the hole tags match between the trail
-   and the Node *)
-
-let load_node (context : context) (index : int64) (ewit:extender_witness) : view =
-  match ewit with
-  | Maybe_Extender  -> ignore (context, index) ; failwith "not implemented"
-  | Not_Extender -> ignore (context, index) ; failwith "not implemented"
-  | Is_Extender -> ignore (context, index) ; failwith "not implemented"
-(* Read the node from context.array, parse it and create a view node with it. *)
 
 type viewed_cursor = 
     Viewed_Cursor of trail * view * context
@@ -808,15 +848,15 @@ let attach (trail:trail) (node:node) context =
   (* Attaches a node to a trail even if the indexing type and hashing type is incompatible with
      the trail by tagging the modification. Extender types still have to match. *)
   match trail with
-  | Top -> Cursor (top, node, context)
+  | Top -> _Cursor (top, node, context)
   | Left (prev_trail, right, _, indexed_implies_hashed) ->
-      Cursor (left (prev_trail, right, Modified_Left, indexed_implies_hashed), node, context)
+      _Cursor (left (prev_trail, right, Modified_Left, indexed_implies_hashed), node, context)
   | Right (left, prev_trail, _, indexed_implies_hashed) ->
-      Cursor (right (left, prev_trail, Modified_Right, indexed_implies_hashed), node, context)
+      _Cursor (right (left, prev_trail, Modified_Right, indexed_implies_hashed), node, context)
   | Budded (prev_trail, _, indexed_implies_hashed) ->
-      Cursor (budded (prev_trail, Modified_Left, indexed_implies_hashed), node, context)
+      _Cursor (budded (prev_trail, Modified_Left, indexed_implies_hashed), node, context)
   | Extended (prev_trail, segment, _, indexed_implies_hashed) ->
-      Cursor (extended (prev_trail, segment, Modified_Left, indexed_implies_hashed), node, context)
+      _Cursor (extended (prev_trail, segment, Modified_Left, indexed_implies_hashed), node, context)
 
 
 let go_below_bud c =
@@ -826,7 +866,7 @@ let go_below_bud c =
   | Bud (None,  _, _, _) -> Error "Nothing beneath this bud"
   | Bud (Some below, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
       Ok (
-        Cursor (
+        _Cursor (
           budded (trail, Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed), below,  context))
   | _ -> Error "Attempted to navigate below a bud, but got a different kind of node."
 
@@ -837,11 +877,11 @@ let go_side side c =
   | Internal (l, r, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
       Ok (match side with
           | Path.Right ->
-              Cursor (right (l, trail,
+              _Cursor (right (l, trail,
                              Unmodified (indexing_rule, hashed_is_transitive),
                              indexed_implies_hashed), r, context)
           | Path.Left ->
-              Cursor (left (trail, r,
+              _Cursor (left (trail, r,
                             Unmodified (indexing_rule, hashed_is_transitive),
                             indexed_implies_hashed), l, context))
   | _ -> Error "Attempted to navigate right or left of a non internal node"
@@ -851,7 +891,7 @@ let go_down_extender c =
   let Viewed_Cursor (trail, vnode, context) = view_cursor c in
   match vnode with
   | Extender (segment, below, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
-      Ok (Cursor (extended (trail, segment,
+      Ok (_Cursor (extended (trail, segment,
                             Unmodified (indexing_rule, hashed_is_transitive),
                             indexed_implies_hashed), below, context))
   | _ -> Error "Attempted to go down an extender but did not find an extender"
@@ -862,25 +902,25 @@ let go_up (Cursor (trail, node, context))  = match trail with
           Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
       let new_node =
         View (internal (node, right, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
-      in Ok (Cursor (prev_trail, new_node, context))
+      in Ok (_Cursor (prev_trail, new_node, context))
 
   | Right (left, prev_trail,
            Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
       let new_node =
         View (internal (left, node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
-      in Ok (Cursor (prev_trail, new_node, context))
+      in Ok (_Cursor (prev_trail, new_node, context))
 
   | Budded (prev_trail,
             Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
       let new_node =
         View (bud (Some node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
-      in Ok (Cursor (prev_trail, new_node, context))
+      in Ok (_Cursor (prev_trail, new_node, context))
 
   | Extended (prev_trail, segment,
               Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
     let new_node =
       View (extender (segment, node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
-    in Ok (Cursor (prev_trail, new_node, context))
+    in Ok (_Cursor (prev_trail, new_node, context))
 
   (* Modified cases. *)
 
@@ -944,7 +984,7 @@ let access_gen cursor segment =
                     internal_node_indexing_rule,
                     hashed_is_transitive),
                   indexed_implies_hashed) in
-              aux (Cursor (new_trail, l, context)) segment_rest
+              aux (_Cursor (new_trail, l, context)) segment_rest
             | Right ->
               let new_trail = 
                 right (
@@ -953,7 +993,7 @@ let access_gen cursor segment =
                     internal_node_indexing_rule, 
                     hashed_is_transitive),
                   indexed_implies_hashed) in
-              aux (Cursor (new_trail, r, context)) segment_rest
+              aux (_Cursor (new_trail, r, context)) segment_rest
           end
         | Extender (extender, node_below,
                     indexing_rule,
@@ -968,7 +1008,7 @@ let access_gen cursor segment =
                          indexing_rule,
                          hashed_is_transitive),
                        indexed_implies_hashed) in
-            aux (Cursor (new_trail, node_below, context)) remaining_segment
+            aux (_Cursor (new_trail, node_below, context)) remaining_segment
           else
             if remaining_segment = Path.empty then
               Error "Finished in the middle of an Extender"
@@ -986,7 +1026,7 @@ let subtree cursor segment =
   | (c, None) -> 
       let Viewed_Cursor (trail, v, context) = view_cursor c in
       match v with
-      | Bud _ -> Ok (Cursor (trail, View v, context))
+      | Bud _ -> Ok (_Cursor (trail, View v, context))
       | _ -> Error "Reached to a non Bud"
 
 let get cursor segment = 
@@ -1001,7 +1041,7 @@ let get cursor segment =
 let empty context =
   (* A bud with nothing underneath, i.e. an empty tree or an empty sub-tree. *)
   let empty_bud = View (bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any)) in
-  Cursor (top, empty_bud, context)
+  _Cursor (top, empty_bud, context)
 
 let make_context ?pos ?(shared=false) ?(length=(-1)) fn =
   let fd = Unix.openfile fn [O_RDWR] 0o644 in
@@ -1044,14 +1084,10 @@ end = struct
     View (internal (n1, n2, i, Not_Hashed, Not_Indexed_Any))
 end
 
-(* todo, implement get / insert / upsert by using
-   a function returning a zipper and then separate
-   functions to do the edit *)
-
 let tag_extender (node:node) : extender_witness =
   match node with
     | Disk (_, wit) -> wit
-    | View (Extender _) -> Maybe_Extender
+    | View (Extender _) -> Is_Extender
     | View (Internal _) -> Not_Extender
     | View (Leaf _)     -> Not_Extender
     | View (Bud _)      -> Not_Extender
@@ -1282,21 +1318,6 @@ let create_subtree cursor segment =
   alter cursor segment (function
       | None -> Ok (Utils.bud None)
       | Some _ -> Error "a node already present for this path")
-
-(*
-let attach_hashed trail node h context = match trail with
-  | Top -> Cursor (Top, node, context)
-  | Budded (prev_trail, Unmodified (indexing_rule, _), indexed_implies_hashed) ->
-    Cursor (
-      Budded (prev_trail, Unmodified (indexing_rule, Hashed h),
-              indexed_implies_hashed), node, context)
-  | Budded (prev_trail, Modified_Left, indexed_implies_hashed) ->
-    Cursor (
-      Budded (prev_trail, Modified_Left, indexed_implies_hashed), node, context)
-  | _ -> failwith "moo"
-(*  Need to think of what it means to be "modified" when I may have hashed what's
-    underneath, probably need a more fine grained concept *)
-         *)
 
 let hash (Cursor (_trail, node, context)) =
   let rec hash_aux : node -> (node * hash) = function
