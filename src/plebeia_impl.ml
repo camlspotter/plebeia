@@ -334,25 +334,25 @@ type extender type not_extender
 
 (* /!\ Beware, GADT festivities below. *)
 
-type ('ia, 'ha) indexed_implies_hashed =
-  | Indexed_and_Hashed : (indexed, hashed) indexed_implies_hashed
-  | Not_Indexed_Any : (not_indexed, 'ha) indexed_implies_hashed
+type indexed_implies_hashed =
+  | Indexed_and_Hashed
+  | Not_Indexed_Any
   (* Type used to prove that all indexed nodes have been hashed. *)
 
-type ('ha, 'hb, 'hc) hashed_is_transitive =
-  | Hashed : Hash.t -> (hashed, hashed, hashed) hashed_is_transitive
-  | Not_Hashed : (not_hashed, 'hb, 'hc) hashed_is_transitive
+type hashed_is_transitive =
+  | Hashed of Hash.t
+  | Not_Hashed
   (* Type used to prove that if a node is hashed then so are its children.
      The type also provides the hash as a witness.*)
 
 type internal
 type not_internal
 
-type ('ia, 'ib, 'ic, 'internal) indexing_rule =
-  | Indexed : int64 -> (indexed, indexed, indexed, 'internal) indexing_rule
-  | Left_Not_Indexed  : (not_indexed, not_indexed, 'ic, internal) indexing_rule (* Right may not be indexed either *)
-  | Right_Not_Indexed : (not_indexed, 'ib, not_indexed, internal) indexing_rule (* Left may not be indexed either *)
-  | Not_Indexed       : (not_indexed, 'ib, 'ib, not_internal) indexing_rule
+type indexing_rule =
+  | Indexed of int64
+  | Left_Not_Indexed (* Right may not be indexed either *)
+  | Right_Not_Indexed (* Left may not be indexed either *)
+  | Not_Indexed
   (* This rule expresses the following invariant : if a node is indexed, then
      its children are necessarily indexed. Less trivially, if an internal node is not
      indexed then at least one of its children is not yet indexed. The reason
@@ -360,93 +360,237 @@ type ('ia, 'ib, 'ic, 'internal) indexing_rule =
      This property guarantees that when we write internal nodes on
      disk, at least one of the child can be written adjacent to its parent. *)
 
-type 'e extender_witness =
-  | Maybe_Extender : 'e extender_witness
-  | Not_Extender   : not_extender extender_witness
-  | Is_Extender    : extender extender_witness
+type extender_witness =
+  | Maybe_Extender
+  | Not_Extender  
+  | Is_Extender   
 
-type 'h hashed_witness =
-  | Hashed : Hash.t -> hashed hashed_witness
-  | Not_Hashed : not_hashed hashed_witness
+type hashed_witness =
+  | Hashed of Hash.t
+  | Not_Hashed
 
-type 'i indexed_witness =
-  | Indexed : int64 -> indexed indexed_witness
-  | Not_Indexed : not_indexed indexed_witness
+type indexed_witness =
+  | Indexed of int64
+  | Not_Indexed
 
-type ('i, 'h, 'e) node_ty  =
-  { indexed : 'i indexed_witness ; hashed : 'h hashed_witness ; extender : 'e extender_witness }
+module PrivateNode : sig 
 
-type ('ia, 'ha, 'ea) node =
-  | Disk : int64 * ('ea extender_witness) -> (indexed, hashed, 'ea) node
-  (* Represents a node stored on the disk at a given index, the node hasn't
-     been loaded yet. Although it's considered hash for simplicity's sake,
-     reading the hash requires a disk access and is expensive. *)
+  type node =
+    | Disk of int64 * extender_witness
+    (* Represents a node stored on the disk at a given index, the node hasn't
+       been loaded yet. Although it's considered hash for simplicity's sake,
+       reading the hash requires a disk access and is expensive. *)
+  
+    | View of view
+    (* A view node is the in-memory structure manipulated by programs in order
+       to compute edits to the context. New view nodes can be commited to disk
+       once the computations are done. *)
+  
+  and view = private
+    | Internal of node * node
+                 * indexing_rule
+                 * hashed_is_transitive
+                 * indexed_implies_hashed
+  
+    (* An internal node , left and right children and an internal path segment
+       to represent part of the path followed by the key in the tree. *)
+  
+    | Bud of node option
+            * indexing_rule
+            * hashed_is_transitive
+            * indexed_implies_hashed
+    (* Buds represent the end of a segment and the beginning of a new tree. They
+       are used whenever there is a natural hierarchical separation in the key
+       or, in general, when one wants to be able to grab sub-trees. For instance
+       the big_map storage of a contract in Tezos would start from a bud. *)
+  
+    | Leaf of Value.t
+            * indexing_rule
+            * hashed_is_transitive
+            * indexed_implies_hashed
+    (* Leaf of a tree, the end of a path, contains or points to a value.
+       The current implementation is a bit hackish and leaves are written
+       on *two* cells, not one. This is important to keep in mind when
+       committing the tree to disk.
+    *)
+  
+    | Extender of Path.segment
+                  * node
+                  * indexing_rule
+                  * hashed_is_transitive
+                  * indexed_implies_hashed
+    (* Extender node, contains a path to the next node. Represents implicitely
+       a collection of internal nodes where one child is Null. *)
+  
+  (* A trail represents the content of the memory stack when recursively exploring a tree.
+     Constructing these trails from closure would be easier, but it would make it harder
+     to port the code to C. The type parameters of the trail keep track of the type of each
+     element on the "stack" using a product type. *)
 
-  | View : ('ia, 'ha, 'ea) view  -> ('ia, 'ha, 'ea) node
-  (* A view node is the in-memory structure manipulated by programs in order
-     to compute edits to the context. New view nodes can be commited to disk
-     once the computations are done. *)
+  val indexed : node -> bool
+  val hashed : node -> bool
 
-and ('ia, 'ha, 'ea) view =
-  | Internal : ('ib, 'hb, 'eb) node * ('ic, 'hc, 'ec) node
-               * ('ia, 'ib, 'ic, internal) indexing_rule
-               * ('ha, 'hb, 'hc) hashed_is_transitive
-               * ('ia, 'ha) indexed_implies_hashed
-    -> ('ia, 'ha, not_extender) view
+  val internal : node * node
+                 * indexing_rule
+                 * hashed_is_transitive
+                 * indexed_implies_hashed -> view
+  val bud : node option
+          * indexing_rule
+          * hashed_is_transitive
+          * indexed_implies_hashed -> view
 
-  (* An internal node , left and right children and an internal path segment
-     to represent part of the path followed by the key in the tree. *)
+  val leaf : Value.t
+          * indexing_rule
+          * hashed_is_transitive
+          * indexed_implies_hashed -> view
 
-  | Bud : ('ib, 'hb, 'eb) node option
-          * ('ia, 'ib, 'ib, not_internal) indexing_rule
-          * ('ha, 'hb, 'hb) hashed_is_transitive
-          * ('ia, 'ha) indexed_implies_hashed
-    -> ('ia, 'ha, not_extender) view
-  (* Buds represent the end of a segment and the beginning of a new tree. They
-     are used whenever there is a natural hierarchical separation in the key
-     or, in general, when one wants to be able to grab sub-trees. For instance
-     the big_map storage of a contract in Tezos would start from a bud. *)
+  val extender : Path.segment
+                 * node
+                 * indexing_rule
+                 * hashed_is_transitive
+                 * indexed_implies_hashed -> view
 
-  | Leaf: Value.t
-          * ('ia, 'ia, 'ia, not_internal) indexing_rule
-          * ('ha, 'ha, 'ha) hashed_is_transitive
-          * ('ia, 'ha) indexed_implies_hashed
-    -> ('ia, 'ha, not_extender) view
-  (* Leaf of a tree, the end of a path, contains or points to a value.
-     The current implementation is a bit hackish and leaves are written
-     on *two* cells, not one. This is important to keep in mind when
-     committing the tree to disk.
-  *)
+end = struct
 
-  | Extender : Path.segment
-                * ('ib, 'hb, not_extender) node
-                * ('ia, 'ib, 'ib, not_internal) indexing_rule
-                * ('ha, 'hb, 'hb) hashed_is_transitive
-                * ('ia, 'ha) indexed_implies_hashed
-    -> ('ia, 'ha, extender) view
-  (* Extender node, contains a path to the next node. Represents implicitely
-     a collection of internal nodes where one child is Null. *)
+  type node =
+    | Disk of int64 * extender_witness
+    (* Represents a node stored on the disk at a given index, the node hasn't
+       been loaded yet. Although it's considered hash for simplicity's sake,
+       reading the hash requires a disk access and is expensive. *)
+  
+    | View of view
+    (* A view node is the in-memory structure manipulated by programs in order
+       to compute edits to the context. New view nodes can be commited to disk
+       once the computations are done. *)
+  
+  and view =
+    | Internal of node * node
+                 * indexing_rule
+                 * hashed_is_transitive
+                 * indexed_implies_hashed
+  
+    (* An internal node , left and right children and an internal path segment
+       to represent part of the path followed by the key in the tree. *)
+  
+    | Bud of node option
+            * indexing_rule
+            * hashed_is_transitive
+            * indexed_implies_hashed
+    (* Buds represent the end of a segment and the beginning of a new tree. They
+       are used whenever there is a natural hierarchical separation in the key
+       or, in general, when one wants to be able to grab sub-trees. For instance
+       the big_map storage of a contract in Tezos would start from a bud. *)
+  
+    | Leaf of Value.t
+            * indexing_rule
+            * hashed_is_transitive
+            * indexed_implies_hashed
+    (* Leaf of a tree, the end of a path, contains or points to a value.
+       The current implementation is a bit hackish and leaves are written
+       on *two* cells, not one. This is important to keep in mind when
+       committing the tree to disk.
+    *)
+  
+    | Extender of Path.segment
+                  * node
+                  * indexing_rule
+                  * hashed_is_transitive
+                  * indexed_implies_hashed
+    (* Extender node, contains a path to the next node. Represents implicitely
+       a collection of internal nodes where one child is Null. *)
+  
+  (* A trail represents the content of the memory stack when recursively exploring a tree.
+     Constructing these trails from closure would be easier, but it would make it harder
+     to port the code to C. The type parameters of the trail keep track of the type of each
+     element on the "stack" using a product type. *)
 
-(* A trail represents the content of the memory stack when recursively exploring a tree.
-   Constructing these trails from closure would be easier, but it would make it harder
-   to port the code to C. The type parameters of the trail keep track of the type of each
-   element on the "stack" using a product type. *)
+  let view_shape_invariant : view -> (unit, error) result = function
+    | Bud (None, _, _, _) -> Ok ()
+    | Bud (Some (Disk _), _, _, _) -> Error "Bud: cannot have Disk" (* or, we must load the Disk and check *)
+    | Bud (Some (View (Bud _)), _, _, _) -> Error "Bud: cannot have Bud"
+    | Bud (Some (View (Leaf _)), _, _, _) -> Error "Bud: cannot have Leaf"
+    | Bud (Some (View (Internal _)), _, _, _) -> Ok ()
+    | Bud (Some (View (Extender _)), _, _, _) -> Ok ()
+    | Extender (seg, _, _, _, _) when Path.cut seg = None -> Error "Extender: cannot have empty segment"
+    | Extender (_, Disk (_, Maybe_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
+    | Extender (_, Disk (_, Not_Extender), _, _, _) -> Ok ()
+    | Extender (_, Disk (_, Is_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
+    | Extender (_, View _, _, _, _) -> Ok ()
+    | Leaf _ -> Ok ()
+    | Internal _ -> Ok ()
+  
+  let indexed = function
+    | Disk _ -> true
+    | View (Bud (_, Indexed _, _, _)) -> true
+    | View (Leaf (_, Indexed _, _, _)) -> true
+    | View (Internal (_, _, Indexed _, _, _)) -> true
+    | View (Extender (_, _, Indexed _, _, _)) -> true
+    | _ -> false
+      
+  let view_indexing_rule_invariant : view -> (unit, error) result = function
+    | Bud (None, Indexed _, _, _) -> Ok ()
+    | Bud (Some n, Indexed _, _, _) when indexed n -> Ok ()
+    | Bud (_, (Left_Not_Indexed | Right_Not_Indexed), _, _) -> Error "Bud: invalid indexing_rule"
+    | Bud (_, Not_Indexed, _, _) -> Ok ()
+    | Leaf (_, Indexed _, _, _) -> Ok ()
+    | Leaf (_, Not_Indexed, _, _) -> Ok ()
+    | Leaf (_, (Left_Not_Indexed | Right_Not_Indexed), _, _) -> Error "Leaf: invalid indexing_rule"
+    | Internal (l, r, Indexed _, _, _) when indexed l && indexed r -> Ok ()
+    | Internal (l, _r, Left_Not_Indexed, _, _) when not @@ indexed l -> Ok ()
+    | Internal (_l, r, Right_Not_Indexed, _, _) when not @@ indexed r -> Ok ()
+    | Internal (_l, _r, Not_Indexed, _, _) -> Error "Internal: invalid indexing_rule"
+    | Extender (_, n, Indexed _, _, _) when indexed n -> Ok ()
+    | Extender (_, _, Not_Indexed, _, _) -> Ok ()
+    | Extender (_, _, (Left_Not_Indexed | Right_Not_Indexed), _, _) -> Error "Bud: invalid indexing_rule"
+    | Bud (_, Indexed _, _, _)  
+    | Internal (_, _, Indexed _, _, _)
+    | Extender (_, _, Indexed _, _, _)  -> Error "Invalid Indexed"
+    | Internal (_, _, Left_Not_Indexed, _, _) -> Error "Internal: invalid Left_Not_Indexed"
+    | Internal (_, _, Right_Not_Indexed, _, _) -> Error "Internal: invalid Right_Not_Indexed"
+  
+  let hashed = function
+    | Disk _ -> true
+    | View (Bud (_, _, Hashed _, _)) -> true
+    | View (Leaf (_, _, Hashed _, _)) -> true
+    | View (Internal (_, _, _, Hashed _, _)) -> true
+    | View (Extender (_, _, _, Hashed _, _)) -> true
+    | _ -> false
+      
+  let view_hashed_is_transitive_invariant : view -> (unit, error) result = function
+    | Leaf _ -> Ok ()
+    | Bud (None, _, _, _) -> Ok ()
+    | Bud (_, _, Not_Hashed, _) -> Ok ()
+    | Bud (Some n, _, Hashed _, _) when hashed n -> Ok ()
+    | Internal (l, r, _, Hashed _, _) when hashed l && hashed r -> Ok ()
+    | Internal (_, _, _, Not_Hashed, _) -> Ok ()
+    | Extender (_, n, _, Hashed _, _) when hashed n -> Ok ()
+    | Extender (_, _, _, Not_Hashed, _) -> Ok ()
+    | _ -> Error "Invalid Hashed"
+  
+  let view_invariant : view -> (unit, error) result = fun v ->
+    view_shape_invariant v >>= fun () ->
+    view_indexing_rule_invariant v >>= fun () ->
+    view_hashed_is_transitive_invariant v
 
-let view_shape_invariant : type e. ('a, 'b, e) view -> (unit, error) result = function
-  | Bud (None, _, _, _) -> Ok ()
-  | Bud (Some (Disk _), _, _, _) -> Error "Bud: cannot have Disk" (* or, we must load the Disk and check *)
-  | Bud (Some (View (Bud _)), _, _, _) -> Error "Bud: cannot have Bud"
-  | Bud (Some (View (Leaf _)), _, _, _) -> Error "Bud: cannot have Leaf"
-  | Bud (Some (View (Internal _)), _, _, _) -> Ok ()
-  | Bud (Some (View (Extender _)), _, _, _) -> Ok ()
-  | Extender (_, Disk (_, Maybe_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
-  | Extender (_, Disk (_, Not_Extender), _, _, _) -> Ok ()
-  (* excluded by the type system
-  | Extender (_, Disk (_, Is_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
-  *)
-  | Extender (_, View _, _, _, _) -> Ok ()
-  | Leaf _ -> Ok ()
-  | Internal _ -> Ok ()
+  let check_view v = 
+    match view_invariant v with
+    | Ok _ -> v
+    | Error s -> failwith s
+    
+  let internal (n1, n2, ir, hit, iih) =
+    check_view @@ Internal (n1, n2, ir, hit, iih)
+
+  let bud (nopt, ir, hit, iih) =
+    check_view @@ Bud (nopt, ir, hit, iih)
+
+  let leaf (v, ir, hit, iih) =
+    check_view @@ Leaf (v, ir, hit, iih)
+
+  let extender (p, n, ir, hit, iih) =
+    check_view @@ Extender (p, n, ir, hit, iih)
+end
+
+open PrivateNode
 
 type modified
 type unmodified
@@ -459,72 +603,102 @@ type unmodified
 type left type right
 type dummy_side = left
 
-type ('ia, 'ha, 'ib, 'hb, 'ic, 'hc, 'modified, 'internal, 'side) modified_rule =
-  | Modified_Left: ('ia, 'ha, not_indexed, not_hashed, 'ic, 'hc,  modified, 'internal, left) modified_rule
-  | Modified_Right: ('ia, 'ha, 'ib, 'hb, not_indexed, not_hashed, modified, 'internal, right) modified_rule
-  | Unmodified:
-      ('ia, 'ib, 'ic, 'internal) indexing_rule *
-      ('ha, 'hb, 'hc) hashed_is_transitive ->
-      ('ia, 'ha, 'ib, 'hb, 'ic, 'hc, unmodified, 'internal, 'side) modified_rule
+type modified_rule =
+  | Modified_Left
+  | Modified_Right
+  | Unmodified of
+      indexing_rule *
+      hashed_is_transitive
 
 (* 'iXXX : indexing
    'hXXX : hashed
    'eXXX : extender
 *)
-type ('itrail, 'htrail, 'etrail, 'modified) trail =
-  | Top      : ('ihole * ('iprev_hole * 'itrail),
-                'hhole * ('hprev_hole * 'htrail),
-                'ehole * ('eprov_hole * 'etrail), 'modified) trail
-  | Left     : (* we took the left branch of an internal node *)
-      ('iprev_hole * 'iprev_trail,
-       'hprev_hole * 'hprev_trail,
-       not_extender * 'eprev_trail, 'mod_pred) trail
-      * ('iright, 'hright, 'eright) node
-      * ('iprev_hole, 'hprev_hole,
-         'ihole, 'hhole, 'iright,
-         'hright, 'modified, internal, left) modified_rule
-      * ('iprev_hole, 'hprev_hole) indexed_implies_hashed
-    -> ('ihole * ('iprev_hole * 'iprev_trail),
-        'hhole * ('hprev_hole * 'hprev_trail),
-        'ehole * (not_extender * 'eprev_trail), 'modified) trail
+type trail =
+  | Top
+  | Left of (* we took the left branch of an internal node *)
+      trail
+      * node
+      * modified_rule
+      * indexed_implies_hashed
 
-  | Right     : (* we took the right branch of an internal node *)
-      ('ileft, 'hleft, 'eleft) node
-      * ('iprev_hole * 'iprev_trail,
-         'hprev_hole * 'hprev_trail,
-         not_extender * 'eprev_trail, 'mod_pred) trail
-      * ('iprev_hole, 'hprev_hole, 'ileft, 'hleft, 'ihole, 'hhole,
-          'modified, internal, right) modified_rule
-      *  ('iprev_hole, 'hprev_hole) indexed_implies_hashed
-    -> ('ihole * ('iprev_hole * 'iprev_trail),
-        'hhole * ('hprev_hole * 'hprev_trail),
-        'ehole * (not_extender * 'eprev_trail), 'modified) trail
+  | Right of (* we took the right branch of an internal node *)
+      node
+      * trail
+      * modified_rule
+      * indexed_implies_hashed
 
-  | Budded   :
-      ('iprev_hole * 'iprev_trail,
-       'hprev_hole * 'hprev_trail,
-       not_extender * 'eprev_trail, 'mod_pred) trail
-      * ('iprev_hole, 'hprev_hole,
-         'ihole, 'hhole, 'ihole, 'hhole, 'modified, not_internal, dummy_side) modified_rule
-      * ('iprev_hole, 'hprev_hole) indexed_implies_hashed
-    -> ('ihole * ('iprev_hole * 'iprev_trail),
-        'hhole * ('hprev_hole * 'hprev_trail),
-        'ehole * (not_extender * 'eprev_trail), 'modified) trail
+  | Budded of
+      trail
+      * modified_rule
+      * indexed_implies_hashed
 
-  | Extended :
-      ('iprev_hole * 'iprev_trail,
-       'hprev_hole * 'hprev_trail,
-       extender * 'eprev_trail, 'mod_pred) trail
+  | Extended of
+      trail
       * Path.segment
-      * ('iprev_hole, 'hprev_hole,
-         'ihole, 'hhole, 'ihole, 'hhole, 'modified, not_internal, dummy_side) modified_rule
-      * ('iprev_hole, 'hprev_hole) indexed_implies_hashed
-    -> ('ihole * ('iprev_hole * 'iprev_trail),
-        'hhole * ('hprev_hole * 'hprev_trail),
-        not_extender * (extender * 'eprev_trail), 'modified) trail
+      * modified_rule
+      * indexed_implies_hashed
   (* not the use of the "extender" and "not extender" type to enforce
      that two extenders cannot follow each other *)
 
+let trail_shape_invariant = function
+  | Extended (Extended _, _, _, _) -> Error "Extended: cannot have Extended"
+  | Extended (_, seg, _, _) when Path.cut seg = None -> Error "Extended: invalid empty segment"
+  | _ -> Ok ()
+
+let trail_modified_rule_invariant = function
+  | Top -> Ok ()
+  | Left (_, n, Unmodified (ir, hit), _) -> 
+      begin match ir with
+        | Left_Not_Indexed -> Ok ()
+        | Right_Not_Indexed when not @@ indexed n -> Ok ()
+        | Right_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
+        | Not_Indexed -> Error "Left: invalid Not_Indexed"
+        | Indexed _ when indexed n -> Ok ()
+        | Indexed _ -> Error "Left: invalid Indexed"
+      end >>= fun () ->
+      begin match hit with
+        | Hashed _ when hashed n -> Ok ()
+        | Hashed _ -> Error "Left: invalid Hashed"
+        | Not_Hashed -> Ok ()
+      end
+  | Left (_, _, Modified_Left, _) -> Ok ()
+  | Left (_, _, Modified_Right, _) -> Error "Left: invalid Modified_Right"
+  | Right (n, _, Unmodified (ir, hit) , _) ->
+      begin match ir with
+        | Right_Not_Indexed -> Ok ()
+        | Left_Not_Indexed when not @@ indexed n -> Ok ()
+        | Left_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
+        | Not_Indexed -> Error "Right: invalid Not_Indexed"
+        | Indexed _ when indexed n -> Ok ()
+        | Indexed _ -> Error "Right: invalid Indexed"
+      end >>= fun () ->
+      begin match hit with
+        | Hashed _ when hashed n -> Ok ()
+        | Hashed _ -> Error "Right: invalid Hashed"
+        | Not_Hashed -> Ok ()
+      end
+  | Right (_, _, Modified_Right, _) -> Ok ()
+  | Right (_, _, Modified_Left, _) -> Error "Right: invalid Modified_Left"
+  | Budded (_, Unmodified (ir, _hit), _) ->
+      begin match ir with
+        | Indexed _ | Not_Indexed -> Ok ()
+        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexing_rule"
+      end
+  | Budded (_, Modified_Left, _) -> Ok () 
+  | Budded (_, Modified_Right, _) -> Error "Budded: invalid Modified_Right"
+  | Extended (_, _, Unmodified (ir, _hit), _) ->
+      begin match ir with
+        | Indexed _ | Not_Indexed -> Ok ()
+        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexing_rule"
+      end
+  | Extended (_, _, Modified_Left, _) -> Ok () 
+  | Extended (_, _, Modified_Right, _) -> Error "Budded: invalid Modified_Right"
+
+let trail_invariant t = 
+  trail_shape_invariant t >>= fun () ->
+  trail_modified_rule_invariant t
+    
 type context =
   {
     array : Bigstring.t ;
@@ -539,23 +713,10 @@ type context =
     (* File descriptor to the mapped file *)
   }
 
-type ex_node = Node : ('i, 'h, 'e) node -> ex_node
-(* existential type for a node *)
-
-type ('i, 'h) ex_extender_node =
-  | Is_Extender : ('i, 'h, extender) node -> ('i, 'h) ex_extender_node
-  | Not_Extender: ('i, 'h, not_extender) node -> ('i, 'h) ex_extender_node
-  (* existential type hiding the extender tag *)
-
-type ('i, 'h) ex_extender_view =
-  | Is_Extender_View : ('i, 'h, extender) view -> ('i, 'h) ex_extender_view
-  | Not_Extender_View: ('i, 'h, not_extender) view-> ('i, 'h) ex_extender_view
-  (* existential type hiding the extender tag *)
-
 type cursor =
-    Cursor :   ('ihole * 'iprev, 'hhole * 'hprev, 'ehole * 'eprev, 'modified) trail
-               * ('ihole, 'hhole, 'ehole) node
-               * context  -> cursor
+    Cursor of trail
+              * node
+              * context
 (* The cursor, also known as a zipper combines the information contained in a
    trail and a subtree to represent an edit point within a tree. This is a
    functional data structure that represents the program point in a function
@@ -563,7 +724,7 @@ type cursor =
    and enforces the most important: that the hole tags match between the trail
    and the Node *)
 
-let load_node (type e) (context : context) (index : int64) (ewit:e extender_witness) : (indexed,hashed,e) view =
+let load_node (context : context) (index : int64) (ewit:extender_witness) : view =
   match ewit with
   | Maybe_Extender  -> ignore (context, index) ; failwith "not implemented"
   | Not_Extender -> ignore (context, index) ; failwith "not implemented"
@@ -571,16 +732,13 @@ let load_node (type e) (context : context) (index : int64) (ewit:e extender_witn
 (* Read the node from context.array, parse it and create a view node with it. *)
 
 type viewed_cursor = 
-    Viewed_Cursor : ('ihole * 'iprev, 'hhole * 'hprev, 'ehole * 'eprev, 'modified) trail
-    * ('ihole, 'hhole, 'ehole) view 
-    * context -> viewed_cursor
+    Viewed_Cursor of trail * view * context
   
 let view_cursor (Cursor (trail, node, context)) = match node with
   | Disk (i, wit) -> Viewed_Cursor (trail, load_node context i wit, context)
   | View vnode -> Viewed_Cursor (trail, vnode, context)
 
-let attach (type itrail htrail ehole etrail) (trail:(itrail, htrail, ehole * etrail, 'm) trail)
-    (node:('i, 'h, ehole) node) context =
+let attach (trail:trail) (node:node) context =
   (* Attaches a node to a trail even if the indexing type and hashing type is incompatible with
      the trail by tagging the modification. Extender types still have to match. *)
   match trail with
@@ -632,50 +790,52 @@ let go_down_extender c =
                           indexed_implies_hashed), below, context))
   | _ -> Error "Attempted to go down an extender but did not find an extender"
 
-let go_up (Cursor (trail, node, context))  =
-  match trail with
+let go_up (Cursor (trail, node, context))  = match trail with
   | Top -> Error "cannot go above top"
   | Left (prev_trail, right,
           Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
     let new_node =
-      View (Internal (node, right, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
+      View (internal (node, right, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
     in Ok (Cursor (prev_trail, new_node, context))
 
   | Right (left, prev_trail,
            Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
     let new_node =
-      View (Internal (left, node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
+      View (internal (left, node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
     in Ok (Cursor (prev_trail, new_node, context))
 
   | Budded (prev_trail,
             Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
     let new_node =
-      View (Bud (Some node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
+      View (bud (Some node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
     in Ok (Cursor (prev_trail, new_node, context))
 
   | Extended (prev_trail, segment,
               Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
     let new_node =
-      View ( Extender (segment, node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
+      View (extender (segment, node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
     in Ok (Cursor (prev_trail, new_node, context))
 
   (* Modified cases. *)
 
   | Left (prev_trail, right, Modified_Left, _) ->
-    let internal = View (Internal (node, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))
+    let internal = View (internal (node, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))
     in Ok (attach prev_trail internal context)
 
   | Right (left, prev_trail, Modified_Right, _) ->
-    let internal = View (Internal (left, node, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))
+    let internal = View (internal (left, node, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))
     in Ok (attach prev_trail internal context)
 
   | Budded (prev_trail, Modified_Left, _) ->
-    let bud = View ( Bud (Some node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+    let bud = View (bud (Some node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
     in Ok (attach prev_trail bud context)
 
   | Extended (prev_trail, segment, Modified_Left, _) ->
-    let extender =  View ( Extender (segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+    let extender =  View (extender (segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
     in Ok (attach prev_trail extender context)
+
+  | Left (_, _, Modified_Right, _)|Right (_, _, Modified_Left, _)|
+    Budded (_, Modified_Right, _)|Extended (_, _, Modified_Right, _) -> assert false
 
 let rec go_top (Cursor (trail, _, _) as c) =
   match trail with
@@ -774,7 +934,7 @@ let get cursor segment =
   
 let empty context =
   (* A bud with nothing underneath, i.e. an empty tree or an empty sub-tree. *)
-  let empty_bud = View (Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any)) in
+  let empty_bud = View (bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any)) in
   Cursor (Top, empty_bud, context)
 
 let make_context ?pos ?(shared=false) ?(length=(-1)) fn =
@@ -799,23 +959,24 @@ let make_context ?pos ?(shared=false) ?(length=(-1)) fn =
 let free_context { fd ; _ } = Unix.close fd
 
 module Utils : sig
-  val extend : Path.segment -> (not_indexed, not_hashed, not_extender) node -> ex_node
-
+  val extend : Path.segment -> node -> node
 end = struct
 
-  let extend : Path.segment -> ('i, 'h, not_extender) node ->  ex_node =
-    fun segment node ->
-      if segment = Path.empty then
-        Node node
-      else
-        Node (View (Extender (segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+  let extend : Path.segment -> node -> node = fun segment node ->
+    if segment = Path.empty then node
+    else 
+      match node with
+      | View (Extender (seg, n, _, _, _)) ->
+          View (extender (Path.(@) segment seg, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+      | _ ->
+          View (extender (segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
 end
 
 (* todo, implement get / insert / upsert by using
    a function returning a zipper and then separate
    functions to do the edit *)
 
-let tag_extender (type i h e) (node:(i,h, e) node) : (e extender_witness) =
+let tag_extender (node:node) : extender_witness =
   match node with
     | Disk (_, wit) -> wit
     | View (Extender _) -> Maybe_Extender
@@ -823,17 +984,14 @@ let tag_extender (type i h e) (node:(i,h, e) node) : (e extender_witness) =
     | View (Leaf _)     -> Not_Extender
     | View (Bud _)      -> Not_Extender
 
-type ex_view = Ex_View : ('i, 'h, 'e) view -> ex_view
-  
 let alter cursor segment 
-    (alteration : ex_view option -> ((not_indexed, not_hashed) ex_extender_node, error) result) =
+    (alteration : view option -> (node, error) result) =
 
   let Cursor (_, _, context) = cursor in
 
-  let rec alter_aux :
-    type ia ha ea . (ia, ha, ea) node 
+  let rec alter_aux : node 
                     -> Path.segment 
-                    -> ((not_indexed, not_hashed) ex_extender_node , error) result =
+                    -> (node , error) result =
     fun node segment -> match node with
       | Disk (index, wit) ->
           let view = load_node context index wit in
@@ -841,40 +999,35 @@ let alter cursor segment
           (* If we encounter a node still on the disk, load it and retry. *)
       | View view_node -> alter_aux' view_node segment
 
-  and alter_aux' :
-   type ia ha ea . (ia, ha, ea) view
+  and alter_aux' : view
                    -> Path.segment 
-                   -> ((not_indexed, not_hashed) ex_extender_node , error) result =
+                   -> (node , error) result =
     fun view_node segment -> match view_node with
       | Internal (left, right, _, _, _) -> begin
           let insert_new_node new_node = function
             | Path.Left ->
-                Not_Extender (View (Internal (
-                    new_node, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+                View (internal (
+                    new_node, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))
             | Path.Right ->
-                Not_Extender (View (Internal (
-                    left, new_node, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+                View (internal (
+                    left, new_node, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))
           in 
           match Path.cut segment with
           | None -> Error "A segment ended on an internal node"
           | Some (Left, remaining_segment) ->
               begin 
-                alter_aux left remaining_segment >>| function 
-                | Is_Extender new_left -> insert_new_node new_left Left
-                | Not_Extender new_left -> insert_new_node new_left Left
-                (* this pattern feels silly, surely these is a better way *)
+                alter_aux left remaining_segment >>| fun n ->
+                insert_new_node n Left
               end
           | Some (Right, remaining_segment) ->
               begin
-                alter_aux right remaining_segment >>| function
-                | Is_Extender new_right -> insert_new_node new_right Right
-                | Not_Extender new_right -> insert_new_node new_right Right
-                (* ditto *)
+                alter_aux right remaining_segment >>| fun n ->
+                insert_new_node n Right
               end
        end
       | Leaf (_, _, _, _) -> 
           begin match Path.cut segment with
-            | None -> alteration (Some (Ex_View view_node)) (* Altering *)
+            | None -> alteration (Some view_node) (* Altering *)
             | _ -> Error "Reached a Leaf before reaching the destination"
           end
       | Bud _ -> 
@@ -901,106 +1054,54 @@ let alter cursor segment
           | (_, None) -> 
               (* we traveled the length of the extender *)
               alter_aux other_node remaining_segment >>| fun x ->
-              begin match Path.cut common_segment with
-              | None -> x
-              | Some _ ->
-                  match x with
-                  | Is_Extender (View (Extender (seg, n, a, b, c))) ->
-                      Is_Extender (View (Extender (Path.(@) common_segment seg, n, a, b, c)))
-                  | Not_Extender n -> 
-                      Is_Extender (View (Extender (common_segment, n, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
-              end
+              Utils.extend common_segment x
           | (None, Some _) ->
               Error "The segment is a prefix to some other path in the tree."
           | (Some (my_dir, remaining_segment),
              Some (other_dir, remaining_extender)) ->
 
-            let my_node =
-              if remaining_segment = Path.empty then
-                alteration None
-              else
-                alteration None >>| function
-                | Is_Extender (View (Extender (seg, n, _, _, _))) ->
-                    Is_Extender
-                      (View (Extender
-                               (Path.(@) remaining_segment seg, n,
-                                Not_Indexed, Not_Hashed, Not_Indexed_Any)))
-                | Not_Extender n ->
-                    Is_Extender
-                      (View (Extender
-                               (remaining_segment, n,
-                                Not_Indexed, Not_Hashed, Not_Indexed_Any)))
-                      (* wrap inside an extender existnetial time, this seems
-                         silly but I don't know a better way. *)
-            in
-            let Node other_node =
-              if remaining_extender = Path.empty then
-                Node other_node
-              else
-                Node (View (Extender
-                              (remaining_extender, other_node,
-                               Not_Indexed, Not_Hashed, Not_Indexed_Any)))
-                (* This one we complextely wrap in a node existential
-                   type. *)
-            in
-            let internal =
-              let insert_into_internal n = function
-                | Path.Left ->
-                  Internal(n, other_node, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)
-                | Path.Right ->
-                  Internal(other_node, n, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any)
-              in match (my_dir, other_dir) with
-              | (Left, Right) ->
-                begin
-                  my_node >>| function
-                  | Not_Extender my_node -> insert_into_internal my_node Left
-                  | Is_Extender my_node-> insert_into_internal my_node Left
-                  (* again, very silly *)
-                end
-              | (Right, Left) ->
-                begin
-                  my_node >>| function
-                  | Not_Extender my_node -> insert_into_internal my_node Right
-                  | Is_Extender my_node -> insert_into_internal my_node Right
-                end
+              let my_node =
+                alteration None >>| fun en -> Utils.extend remaining_segment en
+              in
+              let other_node =
+                Utils.extend remaining_extender other_node
+              in
+              let internal =
+                let insert_into_internal n = function
+                  | Path.Left ->
+                      internal(n, other_node, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)
+                  | Path.Right ->
+                      internal(other_node, n, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any)
+                in match (my_dir, other_dir) with
+                | (Left, Right) ->
+                    my_node >>| fun my_node -> insert_into_internal my_node Left
+                | (Right, Left) ->
+                    my_node >>| fun my_node -> insert_into_internal my_node Right
 
-              | _ -> assert false
-            in
-            internal >>| fun internal ->
-              if common_segment = Path.empty then
-                Not_Extender (View internal)
-              else
-                let e = Extender ( common_segment, View internal,
-                                   Not_Indexed, Not_Hashed, Not_Indexed_Any)
-                in Is_Extender (View e)
+                | _ -> assert false
+              in
+              internal >>| fun internal -> Utils.extend common_segment (View internal)
   in
 
   (* When we insert, we expect the cursor to be above a bud, but
      we first have to must past it. However, that's only if there is
      something underneath. *)
   let Viewed_Cursor (trail, view, context) = view_cursor cursor in
+
   match view with
   | Bud (None, _, _, _) ->
-    (* If we're inserting from a bud that is empty below, create the node directly. *)
-    if segment = Path.empty then
-      Error "Can't insert under a bud with an empty path"
-    else begin
-      alteration None 
-      >>| (function
-          | Is_Extender (View (Extender (seg, n, _, _, _))) ->
-              View (Extender (Path.(@) segment seg, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))
-          | Not_Extender n -> View (Extender (segment, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))) 
-      >>| fun result ->
-      attach trail (View (Bud (
-        Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
-    end
+      (* If we're inserting from a bud that is empty below, create the node directly. *)
+      if segment = Path.empty then
+        Error "Can't insert under a bud with an empty path"
+      else begin
+        alteration None 
+        >>| Utils.extend segment
+        >>| fun result ->
+        attach trail (View (bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+      end
   | Bud (Some insertion_point, _, _, _) ->
-    alter_aux insertion_point segment >>| begin function
-      | Is_Extender result ->
-          attach trail (View (Bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
-      | Not_Extender result ->
-          attach trail (View (Bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
-    end
+      alter_aux insertion_point segment >>| fun result ->
+      attach trail (View (bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
   | _ -> Error "Must insert from a bud"
 
 let delete cursor segment =
@@ -1014,14 +1115,14 @@ let delete cursor segment =
      it is replaced by the other child. We may thus need to merge extenders but that's OK
   *)
   let Cursor (_, _, context) = cursor in
-  let rec delete_aux : type a b c. (a,b,c) node -> segment ->  ((not_indexed, not_hashed) ex_extender_node option, string) result = fun node segment ->
+  let rec delete_aux : node -> segment ->  (node option, string) result = fun node segment ->
     match node with
     | Disk (i, wit) -> 
         let view = load_node context i wit in
         delete_aux' view segment
     | View vnode -> delete_aux' vnode segment
 
-  and delete_aux' : type a b c . (a,b,c) view -> segment -> ((not_indexed, not_hashed) ex_extender_node option, string) result = fun vnode segment ->
+  and delete_aux' : view -> segment -> (node option, string) result = fun vnode segment ->
     match vnode with
     | Leaf _ ->
         if segment = Path.empty then
@@ -1039,13 +1140,10 @@ let delete cursor segment =
       if rest_other = Path.empty then begin
         delete_aux node rest >>| function (* XXX Use Option.map *)
         | None -> None
-        | Some (Not_Extender node) -> 
-            Some (Is_Extender (View (
-                Extender(other_segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
-        | Some (Is_Extender (View (Extender (next_segment, node, _, _, _)))) ->
-            Some (Is_Extender (View (
-                Extender( Path.(other_segment @ next_segment), node, Not_Indexed, Not_Hashed,
-                          Not_Indexed_Any))))
+        | Some (View (Extender (next_segment, node, _, _, _))) ->
+            Some (Utils.extend (Path.(@) other_segment next_segment) node)
+        | Some node -> 
+            Some (Utils.extend other_segment node)
       end else
         Error (Printf.sprintf "no leaf at this location %s" (Path.to_string rest_other))
 
@@ -1054,13 +1152,11 @@ let delete cursor segment =
         | None -> Error "didn't reach a leaf"
         | Some (Left, rest_of_segment) -> begin
             let new_node new_left right =
-              Some ( Not_Extender (View (Internal (
-                  new_left, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+              Some ( View (internal (
+                  new_left, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
             in
             let extend ?(segafter=Path.empty) right =
-             Some (Is_Extender (View (
-                  Extender (Path.((of_side_list [Right]) @ segafter),
-                            right, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+              Some (Utils.extend Path.((of_side_list [Right]) @ segafter) right)
             in              
             delete_aux left rest_of_segment >>| function
             | None -> begin
@@ -1078,18 +1174,15 @@ let delete cursor segment =
                 | View (Bud _)      -> extend right
                 | View (Leaf _)     -> extend right
               end
-            | Some  (Is_Extender new_left) -> new_node new_left right
-            | Some  (Not_Extender new_left) -> new_node new_left right
+            | Some  new_left -> new_node new_left right
           end
         | Some (Right, rest_of_segment) -> begin
             let new_node left new_right =
-              Some ( Not_Extender (View (Internal (
-                  left, new_right, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+              Some (View (internal (
+                  left, new_right, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
             in 
             let extend ?(segafter=Path.empty) left =
-              Some (Is_Extender (View (
-                  Extender (Path.((of_side_list [Left]) @ segafter),
-                            left, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+              Some (Utils.extend (Path.((of_side_list [Left]) @ segafter)) left)
             in
             delete_aux right rest_of_segment >>| function
             | None -> begin
@@ -1106,8 +1199,7 @@ let delete cursor segment =
                 | View (Bud _) -> extend left
                 | View (Leaf _) -> extend left
               end
-            | Some (Is_Extender new_right) -> new_node left new_right
-            | Some  (Not_Extender new_right)-> new_node left new_right
+            | Some new_right -> new_node left new_right
 
           end
       end
@@ -1122,13 +1214,10 @@ let delete cursor segment =
         delete_aux deletion_point segment >>| function
         | None -> 
             attach trail (
-              View (Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
-        | Some (Is_Extender result) ->
+              View (bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+        | Some result ->
             attach trail (
-              View (Bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
-        | Some (Not_Extender result) ->
-            attach trail (
-                View (Bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+              View (bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
       end
   | _ -> Error "Must insert from a bud"
 
@@ -1137,20 +1226,20 @@ type modifier = value option -> (value option, error) result
 
 let upsert cursor segment value =
   alter cursor segment (fun x ->
-     let y = Ok (Not_Extender (View (Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any)))) in 
+     let y = Ok (View (leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any))) in 
      match x with
      | None -> y
-     | Some (Ex_View (Leaf _)) -> y
+     | Some (Leaf _) -> y
      | Some _ -> Error "a non Leaf node already present for this path")
 
 let insert cursor segment value =
   alter cursor segment (function
-      | None -> Ok (Not_Extender (View (Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+      | None -> Ok (View (leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
       | Some _ -> Error "a node already present for this path")
 
 let create_subtree cursor segment =
   alter cursor segment (function
-      | None -> Ok (Not_Extender (View (Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
+      | None -> Ok (View (bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
       | Some _ -> Error "a node already present for this path")
 
 (*
@@ -1169,13 +1258,13 @@ let attach_hashed trail node h context = match trail with
          *)
 
 let hash (Cursor (_trail, node, context)) =
-  let rec hash_aux : type i h e.  (i, h, e) node -> ((i, hashed, e) node * hash) = function
+  let rec hash_aux : node -> (node * hash) = function
     | Disk (index, wit) -> 
         let v, h = hash_aux' (load_node context index wit) in View v, h
     | View vnode -> 
         let v, h = hash_aux' vnode in View v, h
 
-  and hash_aux' : type i h e.  (i, h, e) view -> ((i, hashed, e) view * hash) = fun vnode -> 
+  and hash_aux' : view -> (view * hash) = fun vnode -> 
     match vnode with
     (* easy case where it's already hashed *)
     | Leaf (_, _, Hashed h, _) -> (vnode, h)
@@ -1186,32 +1275,37 @@ let hash (Cursor (_trail, node, context)) =
     (* hashing is necessary below *)
     | Leaf (value, Not_Indexed, _, _) ->
         let h = Hash.of_leaf value in
-        (Leaf (value, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+        (leaf (value, Not_Indexed, Hashed h, Not_Indexed_Any), h)
 
     | Bud (Some underneath, Not_Indexed, _, _) ->
         let (node, h) = hash_aux underneath in
-        (Bud (Some node, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+        (bud (Some node, Not_Indexed, Hashed h, Not_Indexed_Any), h)
 
     | Bud (None, Not_Indexed, _, _) ->
-        (Bud (None, Not_Indexed, Hashed Hash.of_empty_bud, Not_Indexed_Any), Hash.of_empty_bud)
+        (bud (None, Not_Indexed, Hashed Hash.of_empty_bud, Not_Indexed_Any), Hash.of_empty_bud)
 
     | Internal (left, right, Left_Not_Indexed, _, _) -> (
         let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
         let h = Hash.of_internal_node hl hr in
-        (Internal (left, right, Left_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+        (internal (left, right, Left_Not_Indexed, Hashed h, Not_Indexed_Any), h))
 
     | Internal (left, right, Right_Not_Indexed, _, _) -> (
         let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
         (* XXX avoid string concatenation *)
         let h = Hash.of_internal_node hl hr in
-        (Internal (left, right, Right_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+        (internal (left, right, Right_Not_Indexed, Hashed h, Not_Indexed_Any), h))
 
     | Extender (segment, underneath, Not_Indexed, _, _)  ->
         let (underneath, h) = hash_aux underneath in
         let h = Hash.of_extender segment h in
-        (Extender (segment, underneath, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+        (extender (segment, underneath, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+    | Leaf (_, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
+      Bud (None, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
+      Bud (Some _, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
+      Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed, _)|
+      Extender
+        (_, _, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _) -> assert false
 
-    | _ -> .
   in 
   let (_node, h) =  hash_aux node in 
   h
@@ -1226,5 +1320,5 @@ let gc ~src:_ _ ~dest:_ = failwith "not implemented"
 let open_context ~filename:_ = failwith "not implemented"
 let root _ _ = failwith "not implemented"
 
-let go_up2 (type itrail htrail ehole etrail) (trail:(itrail, htrail, ehole * etrail, 'm) trail) (node:('i, 'h, ehole) node) context =
+let go_up2 (type itrail htrail ehole etrail) (trail:trail) (node:node) context =
   go_up @@ attach trail node context

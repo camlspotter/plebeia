@@ -19,7 +19,7 @@ type cursor = t * trail
 
 let get_root_node (t, _) = t
   
-let rec of_plebeia_node : type a b c . P.context -> (a,b,c) P.node -> t = fun context -> function
+let rec of_plebeia_node : P.context -> P.PrivateNode.node -> t = fun context -> function
   | Disk (i, wit) -> of_plebeia_node context (View (load_node context i wit))
   | View n  -> 
       match n with
@@ -28,11 +28,14 @@ let rec of_plebeia_node : type a b c . P.context -> (a,b,c) P.node -> t = fun co
       | Internal (l, r, _, _, _) -> Node (of_plebeia_node context l,
                                           of_plebeia_node context r)
       | Leaf (v, _, _, _) -> Leaf v
-      | Extender (seg, n, a, b, c) ->
-          match Path.cut seg with
-          | None -> of_plebeia_node context n
-          | Some (Path.Left, seg) -> Node (of_plebeia_node context (View (Extender (seg, n, a, b, c))), Null)
-          | Some (Path.Right, seg) -> Node (Null, of_plebeia_node context (View (Extender (seg, n, a, b, c))))
+      | Extender (seg, n, _, _, _) ->
+          let rec aux n seg =
+            match Path.cut seg with
+            | None -> n
+            | Some (Path.Left, seg) -> Node (aux n seg, Null)
+            | Some (Path.Right, seg) -> Node (Null, aux n seg)
+          in 
+          aux (of_plebeia_node context n) seg
   
 let empty () = (Tree Null, Root) (* not just Null *)
   

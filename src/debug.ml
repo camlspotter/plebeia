@@ -1,10 +1,11 @@
 open Plebeia_impl
+open Plebeia_impl.PrivateNode
 
 (* What follows is just for debugging purposes, to be removed. *)
 
 open Error
 
-let rec string_of_node : type a b c. (a, b, c) node -> int -> string = fun node indent ->
+let rec string_of_node : node -> int -> string = fun node indent ->
   (* pretty prints a tree to a string *)
   let indent_string = String.concat "" (List.init indent (fun _ -> " . ")) in
   match node with
@@ -28,7 +29,7 @@ let rec string_of_node : type a b c. (a, b, c) node -> int -> string = fun node 
 
 (* Graphviz's dot file format *)
 let dot_of_node root =
-  let rec aux : type a b c. int -> (a, b, c) node -> (string * string list * int) = fun cntr -> function
+  let rec aux : int -> node -> (string * string list * int) = fun cntr -> function
     | Disk (index, _) -> 
         let n = Printf.sprintf "Disk%Ld" index in
         (n, [Printf.sprintf "%s [shape=box];" n], cntr)
@@ -75,19 +76,19 @@ let dot_of_cursor c =
   go_top c >>= function Cursor (_, n, _) -> return @@ dot_of_node n
 
 (* Bud -> Leaf and Bud -> Bud are invalid, but not excluded by the GADT *)
-let validate_node (type a b c) context (node : (a, b, c) node) =
+let validate_node context (node : node) =
   let rec aux 
-    : type a b c . (a, b, c) node -> ((a, b, c) view, string) result = 
+    : node -> (view, string) result = 
     (* XXX Todo: No check of indexed_implies_hashed *)
     fun node ->
-      let indexing_rule : type a b c . (a,b,c) view -> bool = function
+      let indexing_rule : view -> bool = function
         | Internal (_, _, Indexed _, _, _) -> true
         | Bud (_, Indexed _, _, _) -> true
         | Leaf (_, Indexed _, _, _) -> true
         | Extender (_, _, Indexed _, _, _) -> true
         | _ -> false
       in
-      let hashed_is_transitive : type a b c . (a,b,c) view -> bool = function
+      let hashed_is_transitive : view -> bool = function
         | Internal (_, _, _, Hashed _, _) -> true
         | Bud (_, _, Hashed _, _) -> true
         | Leaf (_, _, Hashed _, _) -> true
