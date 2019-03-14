@@ -1,5 +1,6 @@
 open Plebeia.Plebeia_impl
 module P = Plebeia.Plebeia_impl
+open Plebeia.Error
   
 (* unoptimized tree *)
 type t = 
@@ -67,7 +68,6 @@ let subtree ntrail seg =
         | Node (l, r) -> aux (r, Right (l, trail)) seg'
         end
   in
-  let open Error in
   check_node ntrail >>= fun ntrail -> aux ntrail seg
 
 (* Find the Tree above, cleaning Node (Null, Null) *)
@@ -106,19 +106,16 @@ let get_node ntrail seg =
         | Node (l, r) -> aux (r, Right (l, trail)) seg'
         end
   in
-  let open Error in
   check_node ntrail >>= fun ntrail -> 
   aux ntrail seg
 
 let get ntrail seg =
-  let open Error in
   get_node ntrail seg >>= function
   | (Leaf v, _) -> Ok v
   | _ -> Error "Not Leaf"
 
 let alter ntrail seg f =
   let seg = (seg : P.Path.segment :> P.Path.side list) in
-  let open Error in
   let rec aux (n, trail) = function
     | [] -> f n >>= fun v -> Ok (v, trail)
     | Path.Left :: seg' ->
@@ -136,7 +133,6 @@ let alter ntrail seg f =
         | Node (l, r) -> aux (r, Right (l, trail)) seg'
         end
   in
-  let open Error in
   check_node ntrail >>= fun ntrail -> 
   aux ntrail seg >>= go_up_tree
 
@@ -162,7 +158,6 @@ let create_subtree ntrail seg =
   alter ntrail seg f 
 
 let delete ntrail seg = 
-  let open Error in
   get_node ntrail seg >>= function
   | ((Leaf _ | Tree _), trail) -> go_up_tree (Null, trail)
   | _ -> Error "Not Leaf nor Tree"

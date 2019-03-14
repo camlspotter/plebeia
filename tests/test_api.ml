@@ -1,4 +1,5 @@
 open Plebeia.Plebeia_impl
+module Error = Plebeia.Error
 open Error
 open Test_utils
 
