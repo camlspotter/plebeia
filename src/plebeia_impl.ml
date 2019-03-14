@@ -323,6 +323,11 @@ end = struct
       Hashtbl.replace table h (v, count-1)
 end
 
+type error = string
+type value = Value.t
+type segment = Path.segment
+type hash = Hash.t
+
 type indexed type not_indexed
 type hashed type not_hashed
 type extender type not_extender
@@ -351,8 +356,8 @@ type ('ia, 'ib, 'ic, 'internal) indexing_rule =
   (* This rule expresses the following invariant : if a node is indexed, then
      its children are necessarily indexed. Less trivially, if an internal node is not
      indexed then at least one of its children is not yet indexed. The reason
-     is that we never construct new nodes that just point to only existing
-     nodes. This property guarantees that when we write internal nodes on
+     is that we never construct new nodes that just point to only existing nodes. 
+     This property guarantees that when we write internal nodes on
      disk, at least one of the child can be written adjacent to its parent. *)
 
 type 'e extender_witness =
@@ -426,6 +431,22 @@ and ('ia, 'ha, 'ea) view =
    Constructing these trails from closure would be easier, but it would make it harder
    to port the code to C. The type parameters of the trail keep track of the type of each
    element on the "stack" using a product type. *)
+
+let view_shape_invariant : type e. ('a, 'b, e) view -> (unit, error) result = function
+  | Bud (None, _, _, _) -> Ok ()
+  | Bud (Some (Disk _), _, _, _) -> Error "Bud: cannot have Disk" (* or, we must load the Disk and check *)
+  | Bud (Some (View (Bud _)), _, _, _) -> Error "Bud: cannot have Bud"
+  | Bud (Some (View (Leaf _)), _, _, _) -> Error "Bud: cannot have Leaf"
+  | Bud (Some (View (Internal _)), _, _, _) -> Ok ()
+  | Bud (Some (View (Extender _)), _, _, _) -> Ok ()
+  | Extender (_, Disk (_, Maybe_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
+  | Extender (_, Disk (_, Not_Extender), _, _, _) -> Ok ()
+  (* excluded by the type system
+  | Extender (_, Disk (_, Is_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
+  *)
+  | Extender (_, View _, _, _, _) -> Ok ()
+  | Leaf _ -> Ok ()
+  | Internal _ -> Ok ()
 
 type modified
 type unmodified
@@ -777,11 +798,6 @@ let make_context ?pos ?(shared=false) ?(length=(-1)) fn =
 
 let free_context { fd ; _ } = Unix.close fd
 
-type error = string
-type value = Value.t
-type segment = Path.segment
-type hash = Hash.t
-
 module Utils : sig
   val extend : Path.segment -> (not_indexed, not_hashed, not_extender) node -> ex_node
 
@@ -809,13 +825,15 @@ let tag_extender (type i h e) (node:(i,h, e) node) : (e extender_witness) =
 
 type ex_view = Ex_View : ('i, 'h, 'e) view -> ex_view
   
-let alter cursor segment alteration =
+let alter cursor segment 
+    (alteration : ex_view option -> ((not_indexed, not_hashed) ex_extender_node, error) result) =
+
   let Cursor (_, _, context) = cursor in
 
   let rec alter_aux :
-    type ia ha ea . (ia, ha, ea) node ->
-    Path.segment ->
-    ((not_indexed, not_hashed) ex_extender_node , error) result =
+    type ia ha ea . (ia, ha, ea) node 
+                    -> Path.segment 
+                    -> ((not_indexed, not_hashed) ex_extender_node , error) result =
     fun node segment -> match node with
       | Disk (index, wit) ->
           let view = load_node context index wit in
@@ -824,34 +842,31 @@ let alter cursor segment alteration =
       | View view_node -> alter_aux' view_node segment
 
   and alter_aux' :
-   type ia ha ea . (ia, ha, ea) view->
-    Path.segment ->
-    ((not_indexed, not_hashed) ex_extender_node , error) result =
-
+   type ia ha ea . (ia, ha, ea) view
+                   -> Path.segment 
+                   -> ((not_indexed, not_hashed) ex_extender_node , error) result =
     fun view_node segment -> match view_node with
       | Internal (left, right, _, _, _) -> begin
           let insert_new_node new_node = function
             | Path.Left ->
-              Not_Extender (View (Internal (
-                  new_node, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+                Not_Extender (View (Internal (
+                    new_node, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
             | Path.Right ->
-              Not_Extender (View (Internal (
-                  left, new_node, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+                Not_Extender (View (Internal (
+                    left, new_node, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
           in 
           match Path.cut segment with
           | None -> Error "A segment ended on an internal node"
           | Some (Left, remaining_segment) ->
               begin 
-                alter_aux left remaining_segment >>|
-                function 
+                alter_aux left remaining_segment >>| function 
                 | Is_Extender new_left -> insert_new_node new_left Left
                 | Not_Extender new_left -> insert_new_node new_left Left
                 (* this pattern feels silly, surely these is a better way *)
               end
           | Some (Right, remaining_segment) ->
               begin
-                alter_aux right remaining_segment >>|
-                function
+                alter_aux right remaining_segment >>| function
                 | Is_Extender new_right -> insert_new_node new_right Right
                 | Not_Extender new_right -> insert_new_node new_right Right
                 (* ditto *)
@@ -859,7 +874,7 @@ let alter cursor segment alteration =
        end
       | Leaf (_, _, _, _) -> 
           begin match Path.cut segment with
-            | None -> alteration (Some (Ex_View view_node)) >>| fun l -> Not_Extender l (* Altering *)
+            | None -> alteration (Some (Ex_View view_node)) (* Altering *)
             | _ -> Error "Reached a Leaf before reaching the destination"
           end
       | Bud _ -> 
@@ -890,28 +905,33 @@ let alter cursor segment alteration =
               | None -> x
               | Some _ ->
                   match x with
-                  | Is_Extender _ -> assert false
-                  | Not_Extender x -> 
-                      Is_Extender (View (Extender (common_segment, 
-                                                   x,
-                                                   Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+                  | Is_Extender (View (Extender (seg, n, a, b, c))) ->
+                      Is_Extender (View (Extender (Path.(@) common_segment seg, n, a, b, c)))
+                  | Not_Extender n -> 
+                      Is_Extender (View (Extender (common_segment, n, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
               end
           | (None, Some _) ->
-            Error "The segment is a prefix to some other path in the tree."
+              Error "The segment is a prefix to some other path in the tree."
           | (Some (my_dir, remaining_segment),
              Some (other_dir, remaining_extender)) ->
 
             let my_node =
               if remaining_segment = Path.empty then
-                alteration None >>| fun l -> Not_Extender l
+                alteration None
               else
-                alteration None >>| fun l ->
-                Is_Extender
-                  (View (Extender
-                           (remaining_segment, l,
-                            Not_Indexed, Not_Hashed, Not_Indexed_Any)))
-                  (* wrap inside an extender existnetial time, this seems
-                     silly but I don't know a better way. *)
+                alteration None >>| function
+                | Is_Extender (View (Extender (seg, n, _, _, _))) ->
+                    Is_Extender
+                      (View (Extender
+                               (Path.(@) remaining_segment seg, n,
+                                Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+                | Not_Extender n ->
+                    Is_Extender
+                      (View (Extender
+                               (remaining_segment, n,
+                                Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+                      (* wrap inside an extender existnetial time, this seems
+                         silly but I don't know a better way. *)
             in
             let Node other_node =
               if remaining_extender = Path.empty then
@@ -964,11 +984,16 @@ let alter cursor segment alteration =
     (* If we're inserting from a bud that is empty below, create the node directly. *)
     if segment = Path.empty then
       Error "Can't insert under a bud with an empty path"
-    else
-      alteration None >>| fun l ->
-      let result =   View (Extender (segment, l, Not_Indexed, Not_Hashed, Not_Indexed_Any)) in
+    else begin
+      alteration None 
+      >>| (function
+          | Is_Extender (View (Extender (seg, n, _, _, _))) ->
+              View (Extender (Path.(@) segment seg, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+          | Not_Extender n -> View (Extender (segment, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))) 
+      >>| fun result ->
       attach trail (View (Bud (
-          Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+        Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+    end
   | Bud (Some insertion_point, _, _, _) ->
     alter_aux insertion_point segment >>| begin function
       | Is_Extender result ->
@@ -1039,7 +1064,7 @@ let delete cursor segment =
             in              
             delete_aux left rest_of_segment >>| function
             | None -> begin
-                
+
                 match right with
                 | Disk (index, wit) -> begin
                     match load_node context index wit with
@@ -1112,7 +1137,7 @@ type modifier = value option -> (value option, error) result
 
 let upsert cursor segment value =
   alter cursor segment (fun x ->
-     let y = Ok (View (Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any))) in 
+     let y = Ok (Not_Extender (View (Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any)))) in 
      match x with
      | None -> y
      | Some (Ex_View (Leaf _)) -> y
@@ -1120,12 +1145,12 @@ let upsert cursor segment value =
 
 let insert cursor segment value =
   alter cursor segment (function
-      | None -> Ok (View (Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+      | None -> Ok (Not_Extender (View (Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
       | Some _ -> Error "a node already present for this path")
 
 let create_subtree cursor segment =
   alter cursor segment (function
-      | None -> Ok (View (Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+      | None -> Ok (Not_Extender (View (Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any))))
       | Some _ -> Error "a node already present for this path")
 
 (*
@@ -1203,43 +1228,3 @@ let root _ _ = failwith "not implemented"
 
 let go_up2 (type itrail htrail ehole etrail) (trail:(itrail, htrail, ehole * etrail, 'm) trail) (node:('i, 'h, ehole) node) context =
   go_up @@ attach trail node context
-    
-(*
-let alter2 c segment (vnode' : (_, _) ex_extender_view) =
-  (access_gen c segment >>| fun (c, x) ->
-  begin match x with
-  | Some _ -> assert false (* not yet *)
-  | None -> 
-      let Viewed_Cursor (trail, vnode, context) = view_cursor c in
-      match vnode, vnode' with
-      | Leaf _, Not_Extender_View vnode' -> 
-          attach trail (View vnode') context
-      | Bud _, Not_Extender_View vnode' -> 
-          attach trail (View vnode') context
-      | Internal _, Not_Extender_View vnode' ->
-          attach trail (View vnode') context
-      | Extender _, Is_Extender_View vnode' ->
-          attach trail (View vnode') context
-      | _ -> assert false
-  end) >>= parent
-
-let alter2 c segment vnode' =
-  (access_gen c segment >>| fun (c, x) ->
-  begin match x with
-  | Some _ -> assert false (* not yet *)
-  | None -> 
-      let Viewed_Cursor (trail, vnode, context) = view_cursor c in
-      match vnode, vnode' with
-      | Leaf _, Not_Extender_View vnode' -> 
-          attach trail (View vnode') context
-      | Bud _, Not_Extender_View vnode' -> 
-          attach trail (View vnode') context
-      | Internal _, Not_Extender_View vnode' ->
-          attach trail (View vnode') context
-      | Extender _, Is_Extender_View vnode' ->
-          attach trail (View vnode') context
-      | _ -> assert false
-  end) >>= parent
-)
-        
-*)
