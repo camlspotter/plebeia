@@ -572,6 +572,7 @@ end = struct
     | Extender (seg, _, _, _, _) when Path.is_empty seg -> Error "Extender: cannot have empty segment"
     | Extender (_, Disk (_, Not_Extender), _, _, _) -> Ok ()
     | Extender (_, Disk (_, Is_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
+    | Extender (_, View (Extender _), _, _, _) -> Error "Extender: cannot have Extender"
     | Extender (_, View _, _, _, _) -> Ok ()
     | Leaf _ -> Ok ()
     | Internal _ -> Ok ()
@@ -646,17 +647,6 @@ end = struct
   let _Extender (p, n, ir, hit, iih) =
     check_view @@ Extender (p, n, ir, hit, iih)
 
-  type modified
-  type unmodified
-  (* The "modified" rule lets us tell the trail that if its children have changed, then
-     the invariants it expects may be broken. For instance, we may have indexed node in
-     our trail that should not longer be indexed because their children have been modified.
-     Conversely, knowing that a trail is unmodified lets us avoid reserializing already
-     serialized nodes. *)
-
-  type left type right
-  type dummy_side = left
-  
   type modified_rule =
     | Modified_Left
     | Modified_Right
@@ -865,7 +855,6 @@ let view context node = match node with
   | Disk (i, wit) -> load_node context i wit
   | View v -> v
 
-(* XXX Let's call it modify *)
 let attach trail node context =
   (* Attaches a node to a trail even if the indexing type and hashing type is incompatible with
      the trail by tagging the modification. Extender types still have to match. *)
@@ -991,13 +980,37 @@ let rec go_top (Cursor (trail, _, _) as c) =
 
 let parent c =
   let rec aux c =
-    go_up c >>= function
+    match c with
     | Cursor (_, Disk _, _) -> assert false (* impossible *)
-    | Cursor (_, View (Bud (_, _, _, _)), _) as c -> Ok c
-    | c -> aux c
+    | Cursor (_, View (Bud _), _) -> Ok c (* already at the top of subtree *)
+    | _ -> go_up c >>= fun c -> aux c
   in
   aux c
-    
+
+let unify_extenders prev_trail node context =
+  match node with
+  | Disk (_, Is_Extender) -> Error "unify_exenders: Disk is not allowed"
+  | View (Extender (seg, n, _, _, _)) ->
+      begin match prev_trail with
+        | Extended (prev_trail', seg', _mr, _iih) ->
+            Ok (_Cursor (prev_trail', NotHashed.extend (Path.(@) seg' seg) n, context))
+        | _ -> Ok (_Cursor (prev_trail, node, context))
+      end
+  | _ -> Ok (_Cursor (prev_trail, node, context))
+ 
+let rec remove_up trail context = match trail with
+  | Top -> Error "cannot remove top"
+  | Budded (prev_trail, _, _) ->
+      Ok (_Cursor (prev_trail, NotHashed.bud None, context))
+  | Extended (prev_trail, _, _, _) -> remove_up prev_trail context
+  (* for Left and Right, we may need to squash Extenders in prev_trail *)
+  | Left (prev_trail, right, _, _) ->
+      let n = NotHashed.extend Path.(of_side_list [Right]) right in
+      unify_extenders prev_trail n context
+  | Right (left, prev_trail, _, _) ->
+      let n = NotHashed.extend Path.(of_side_list [Left]) left in
+      unify_extenders prev_trail n context
+
 (* Follow the segment from the cursor. If the segment terminates 
   or diverges in the middle of an extender, it returns the common prefix
   information. 
@@ -1174,7 +1187,7 @@ let alter cur segment
       alter_aux insertion_point segment >>| fun result ->
       attach trail (NotHashed.bud @@ Some result) context
 
-let delete cur segment =
+let delete_old cur segment =
   (* this will likely be merged with alter, but for now it's easier to explore that code
      independently. It's also an opportunity to try and get rid of all the existential
      type wrappers *)
@@ -1271,6 +1284,14 @@ let delete cur segment =
             attach trail (NotHashed.bud @@ Some result) context
       end
 
+let delete cur segment =
+  go_below_bud cur >>= fun cur ->
+  access_gen cur segment >>= function 
+  | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
+  | (Cursor (trail, _n, context), None) -> 
+      remove_up trail context 
+      >>= parent 
+
 (* How to merge alter and delete *)
 type modifier = value option -> (value option, error) result
 
@@ -1353,10 +1374,3 @@ let gc ~src:_ _ ~dest:_ = failwith "not implemented"
 
 let open_context ~filename:_ = failwith "not implemented"
 let root _ _ = failwith "not implemented"
-
-let go_up2 (type itrail htrail ehole etrail) (trail:trail) (node:node) context =
-  go_up @@ attach trail node context
-  
-   
-  
-  

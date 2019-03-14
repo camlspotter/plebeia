@@ -174,7 +174,12 @@ let random_insertions st sz =
   let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
   let Cursor (_, n, _), _ = 
     List.fold_left (fun (c, dumb) (seg, _) ->
-        let Cursor (_, n, context) as c = from_Ok @@ delete c seg in
+        let Cursor (_, n, context) as c = match delete c seg with 
+          | Ok c -> c
+          | Error e -> 
+              to_file "deletion.dot" @@ from_Ok @@ Debug.dot_of_cursor c;
+              failwith e
+        in
         let dumb = from_Ok @@ Dumb.delete dumb seg in
         assert (Dumb.get_root_node dumb = Dumb.of_plebeia_node context n);
         validate context n;
@@ -187,4 +192,3 @@ let random_insertions st sz =
 let () = 
   let st = Random.State.make_self_init () in
   for _ = 1 to 1000 do random_insertions st 100 done
-
