@@ -21,10 +21,6 @@ type error
 
 type value
 
-type indexed type not_indexed
-type hashed type not_hashed
-type modified type unmodified
-
 val open_context : filename:string -> context
 (** Opens or creates a new context backed up at a given location
     in the filesystem. *)

@@ -450,6 +450,57 @@ module PrivateNode : sig
                  * hashed_is_transitive
                  * indexed_implies_hashed -> view
 
+  type modified_rule =
+    | Modified_Left
+    | Modified_Right
+    | Unmodified of
+        indexing_rule *
+        hashed_is_transitive
+  
+  type trail = private
+    | Top
+    | Left of (* we took the left branch of an internal node *)
+        trail
+        * node
+        * modified_rule
+        * indexed_implies_hashed
+  
+    | Right of (* we took the right branch of an internal node *)
+        node
+        * trail
+        * modified_rule
+        * indexed_implies_hashed
+  
+    | Budded of
+        trail
+        * modified_rule
+        * indexed_implies_hashed
+  
+    | Extended of
+        trail
+        * Path.segment
+        * modified_rule
+        * indexed_implies_hashed
+
+  val top : trail
+  val left : trail
+      * node
+      * modified_rule
+      * indexed_implies_hashed -> trail
+  val right : 
+      node
+      * trail
+      * modified_rule
+      * indexed_implies_hashed -> trail
+  val budded :
+      trail
+      * modified_rule
+      * indexed_implies_hashed -> trail
+  val extended :
+      trail
+      * Path.segment
+      * modified_rule
+      * indexed_implies_hashed -> trail
 end = struct
 
   type node =
@@ -588,117 +639,132 @@ end = struct
 
   let extender (p, n, ir, hit, iih) =
     check_view @@ Extender (p, n, ir, hit, iih)
+
+  type modified
+  type unmodified
+  (* The "modified" rule lets us tell the trail that if its children have changed, then
+     the invariants it expects may be broken. For instance, we may have indexed node in
+     our trail that should not longer be indexed because their children have been modified.
+     Conversely, knowing that a trail is unmodified lets us avoid reserializing already
+     serialized nodes. *)
+
+  type left type right
+  type dummy_side = left
+  
+  type modified_rule =
+    | Modified_Left
+    | Modified_Right
+    | Unmodified of
+        indexing_rule *
+        hashed_is_transitive
+  
+  (* 'iXXX : indexing
+     'hXXX : hashed
+     'eXXX : extender
+  *)
+  type trail =
+    | Top
+    | Left of (* we took the left branch of an internal node *)
+        trail
+        * node
+        * modified_rule
+        * indexed_implies_hashed
+  
+    | Right of (* we took the right branch of an internal node *)
+        node
+        * trail
+        * modified_rule
+        * indexed_implies_hashed
+  
+    | Budded of
+        trail
+        * modified_rule
+        * indexed_implies_hashed
+  
+    | Extended of
+        trail
+        * Path.segment
+        * modified_rule
+        * indexed_implies_hashed
+    (* not the use of the "extender" and "not extender" type to enforce
+       that two extenders cannot follow each other *)
+  
+  let trail_shape_invariant = function
+    | Extended (Extended _, _, _, _) -> Error "Extended: cannot have Extended"
+    | Extended (_, seg, _, _) when Path.cut seg = None -> Error "Extended: invalid empty segment"
+    | _ -> Ok ()
+  
+  let trail_modified_rule_invariant = function
+    | Top -> Ok ()
+    | Left (_, n, Unmodified (ir, hit), _) -> 
+        begin match ir with
+          | Left_Not_Indexed -> Ok ()
+          | Right_Not_Indexed when not @@ indexed n -> Ok ()
+          | Right_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
+          | Not_Indexed -> Error "Left: invalid Not_Indexed"
+          | Indexed _ when indexed n -> Ok ()
+          | Indexed _ -> Error "Left: invalid Indexed"
+        end >>= fun () ->
+        begin match hit with
+          | Hashed _ when hashed n -> Ok ()
+          | Hashed _ -> Error "Left: invalid Hashed"
+          | Not_Hashed -> Ok ()
+        end
+    | Left (_, _, Modified_Left, _) -> Ok ()
+    | Left (_, _, Modified_Right, _) -> Error "Left: invalid Modified_Right"
+    | Right (n, _, Unmodified (ir, hit) , _) ->
+        begin match ir with
+          | Right_Not_Indexed -> Ok ()
+          | Left_Not_Indexed when not @@ indexed n -> Ok ()
+          | Left_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
+          | Not_Indexed -> Error "Right: invalid Not_Indexed"
+          | Indexed _ when indexed n -> Ok ()
+          | Indexed _ -> Error "Right: invalid Indexed"
+        end >>= fun () ->
+        begin match hit with
+          | Hashed _ when hashed n -> Ok ()
+          | Hashed _ -> Error "Right: invalid Hashed"
+          | Not_Hashed -> Ok ()
+        end
+    | Right (_, _, Modified_Right, _) -> Ok ()
+    | Right (_, _, Modified_Left, _) -> Error "Right: invalid Modified_Left"
+    | Budded (_, Unmodified (ir, _hit), _) ->
+        begin match ir with
+          | Indexed _ | Not_Indexed -> Ok ()
+          | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexing_rule"
+        end
+    | Budded (_, Modified_Left, _) -> Ok () 
+    | Budded (_, Modified_Right, _) -> Error "Budded: invalid Modified_Right"
+    | Extended (_, _, Unmodified (ir, _hit), _) ->
+        begin match ir with
+          | Indexed _ | Not_Indexed -> Ok ()
+          | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexing_rule"
+        end
+    | Extended (_, _, Modified_Left, _) -> Ok () 
+    | Extended (_, _, Modified_Right, _) -> Error "Budded: invalid Modified_Right"
+  
+  let trail_invariant t = 
+    trail_shape_invariant t >>= fun () ->
+    trail_modified_rule_invariant t
+
+  let check_trail t = 
+    match trail_invariant t with
+    | Ok _ -> t
+    | Error s -> failwith s
+
+  let top = Top
+  let left (t, n, mr, iih) = 
+    check_trail @@ Left (t, n, mr, iih)
+  let right (n, t, mr, iih) =
+    check_trail @@ Right (n, t, mr, iih)
+  let budded (t, mr, iih) =
+    check_trail @@ Budded (t, mr, iih)
+  let extended (t, s, mr, iih) =
+    check_trail @@ Extended (t, s, mr, iih)
 end
 
-open PrivateNode
+include PrivateNode
 
-type modified
-type unmodified
-(* The "modified" rule lets us tell the trail that if its children have changed, then
-   the invariants it expects may be broken. For instance, we may have indexed node in
-   our trail that should not longer be indexed because their children have been modified.
-   Conversely, knowing that a trail is unmodified lets us avoid reserializing already
-   serialized nodes. *)
-
-type left type right
-type dummy_side = left
-
-type modified_rule =
-  | Modified_Left
-  | Modified_Right
-  | Unmodified of
-      indexing_rule *
-      hashed_is_transitive
-
-(* 'iXXX : indexing
-   'hXXX : hashed
-   'eXXX : extender
-*)
-type trail =
-  | Top
-  | Left of (* we took the left branch of an internal node *)
-      trail
-      * node
-      * modified_rule
-      * indexed_implies_hashed
-
-  | Right of (* we took the right branch of an internal node *)
-      node
-      * trail
-      * modified_rule
-      * indexed_implies_hashed
-
-  | Budded of
-      trail
-      * modified_rule
-      * indexed_implies_hashed
-
-  | Extended of
-      trail
-      * Path.segment
-      * modified_rule
-      * indexed_implies_hashed
-  (* not the use of the "extender" and "not extender" type to enforce
-     that two extenders cannot follow each other *)
-
-let trail_shape_invariant = function
-  | Extended (Extended _, _, _, _) -> Error "Extended: cannot have Extended"
-  | Extended (_, seg, _, _) when Path.cut seg = None -> Error "Extended: invalid empty segment"
-  | _ -> Ok ()
-
-let trail_modified_rule_invariant = function
-  | Top -> Ok ()
-  | Left (_, n, Unmodified (ir, hit), _) -> 
-      begin match ir with
-        | Left_Not_Indexed -> Ok ()
-        | Right_Not_Indexed when not @@ indexed n -> Ok ()
-        | Right_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Left: invalid Not_Indexed"
-        | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Left: invalid Indexed"
-      end >>= fun () ->
-      begin match hit with
-        | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Left: invalid Hashed"
-        | Not_Hashed -> Ok ()
-      end
-  | Left (_, _, Modified_Left, _) -> Ok ()
-  | Left (_, _, Modified_Right, _) -> Error "Left: invalid Modified_Right"
-  | Right (n, _, Unmodified (ir, hit) , _) ->
-      begin match ir with
-        | Right_Not_Indexed -> Ok ()
-        | Left_Not_Indexed when not @@ indexed n -> Ok ()
-        | Left_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Right: invalid Not_Indexed"
-        | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Right: invalid Indexed"
-      end >>= fun () ->
-      begin match hit with
-        | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Right: invalid Hashed"
-        | Not_Hashed -> Ok ()
-      end
-  | Right (_, _, Modified_Right, _) -> Ok ()
-  | Right (_, _, Modified_Left, _) -> Error "Right: invalid Modified_Left"
-  | Budded (_, Unmodified (ir, _hit), _) ->
-      begin match ir with
-        | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexing_rule"
-      end
-  | Budded (_, Modified_Left, _) -> Ok () 
-  | Budded (_, Modified_Right, _) -> Error "Budded: invalid Modified_Right"
-  | Extended (_, _, Unmodified (ir, _hit), _) ->
-      begin match ir with
-        | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexing_rule"
-      end
-  | Extended (_, _, Modified_Left, _) -> Ok () 
-  | Extended (_, _, Modified_Right, _) -> Error "Budded: invalid Modified_Right"
-
-let trail_invariant t = 
-  trail_shape_invariant t >>= fun () ->
-  trail_modified_rule_invariant t
-    
 type context =
   {
     array : Bigstring.t ;
@@ -742,15 +808,15 @@ let attach (trail:trail) (node:node) context =
   (* Attaches a node to a trail even if the indexing type and hashing type is incompatible with
      the trail by tagging the modification. Extender types still have to match. *)
   match trail with
-  | Top -> Cursor (Top, node, context)
+  | Top -> Cursor (top, node, context)
   | Left (prev_trail, right, _, indexed_implies_hashed) ->
-      Cursor (Left (prev_trail, right, Modified_Left, indexed_implies_hashed), node, context)
+      Cursor (left (prev_trail, right, Modified_Left, indexed_implies_hashed), node, context)
   | Right (left, prev_trail, _, indexed_implies_hashed) ->
-      Cursor (Right (left, prev_trail, Modified_Right, indexed_implies_hashed), node, context)
+      Cursor (right (left, prev_trail, Modified_Right, indexed_implies_hashed), node, context)
   | Budded (prev_trail, _, indexed_implies_hashed) ->
-      Cursor (Budded (prev_trail, Modified_Left, indexed_implies_hashed), node, context)
+      Cursor (budded (prev_trail, Modified_Left, indexed_implies_hashed), node, context)
   | Extended (prev_trail, segment, _, indexed_implies_hashed) ->
-      Cursor (Extended (prev_trail, segment, Modified_Left, indexed_implies_hashed), node, context)
+      Cursor (extended (prev_trail, segment, Modified_Left, indexed_implies_hashed), node, context)
 
 
 let go_below_bud c =
@@ -761,23 +827,23 @@ let go_below_bud c =
   | Bud (Some below, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
       Ok (
         Cursor (
-          Budded (trail, Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed), below,  context))
+          budded (trail, Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed), below,  context))
   | _ -> Error "Attempted to navigate below a bud, but got a different kind of node."
 
 let go_side side c =
   (* Move the cursor down left or down right in the tree, assuming we are on an internal node. *)
   let Viewed_Cursor (trail, vnode, context) = view_cursor c in
   match vnode with
-  | Internal (left, right, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
+  | Internal (l, r, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
       Ok (match side with
           | Path.Right ->
-              Cursor (Right (left, trail,
+              Cursor (right (l, trail,
                              Unmodified (indexing_rule, hashed_is_transitive),
-                             indexed_implies_hashed), right, context)
+                             indexed_implies_hashed), r, context)
           | Path.Left ->
-              Cursor (Left (trail, right,
+              Cursor (left (trail, r,
                             Unmodified (indexing_rule, hashed_is_transitive),
-                            indexed_implies_hashed), left, context))
+                            indexed_implies_hashed), l, context))
   | _ -> Error "Attempted to navigate right or left of a non internal node"
 
 let go_down_extender c =
@@ -785,7 +851,7 @@ let go_down_extender c =
   let Viewed_Cursor (trail, vnode, context) = view_cursor c in
   match vnode with
   | Extender (segment, below, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
-      Ok (Cursor (Extended (trail, segment,
+      Ok (Cursor (extended (trail, segment,
                             Unmodified (indexing_rule, hashed_is_transitive),
                             indexed_implies_hashed), below, context))
   | _ -> Error "Attempted to go down an extender but did not find an extender"
@@ -872,7 +938,7 @@ let access_gen cursor segment =
             match dir with
             | Left ->
               let new_trail =
-                Left (
+                left (
                   trail, r,
                   Unmodified (
                     internal_node_indexing_rule,
@@ -881,7 +947,7 @@ let access_gen cursor segment =
               aux (Cursor (new_trail, l, context)) segment_rest
             | Right ->
               let new_trail = 
-                Right (
+                right (
                   l, trail,
                   Unmodified (
                     internal_node_indexing_rule, 
@@ -897,7 +963,7 @@ let access_gen cursor segment =
             Path.common_prefix extender segment in
           if remaining_extender = Path.empty then
             let new_trail =
-              Extended (trail, extender,
+              extended (trail, extender,
                        Unmodified (
                          indexing_rule,
                          hashed_is_transitive),
@@ -935,7 +1001,7 @@ let get cursor segment =
 let empty context =
   (* A bud with nothing underneath, i.e. an empty tree or an empty sub-tree. *)
   let empty_bud = View (bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any)) in
-  Cursor (Top, empty_bud, context)
+  Cursor (top, empty_bud, context)
 
 let make_context ?pos ?(shared=false) ?(length=(-1)) fn =
   let fd = Unix.openfile fn [O_RDWR] 0o644 in
