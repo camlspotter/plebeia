@@ -325,20 +325,43 @@ type indexed_witness =
   | Indexed of int64
   | Not_Indexed
 
-type context =
-  {
-    array : Bigstring.t ;
-    (* mmaped array where the nodes are written and indexed. *)
-    mutable length : int64 ;
-    (* Current length of the node table. *)
-    leaf_table  : KeyValueStore.t ;
-    (* Hash table  mapping leaf hashes to their values. *)
-    roots_table : (Hash.t, int64) Hashtbl.t ;
-    (* Hash table mapping root hashes to indices in the array. *)
-    fd : Unix.file_descr ; 
-    (* File descriptor to the mapped file *)
-  }
+module Context = struct
+  type t =
+    {
+      array : Bigstring.t ;
+      (* mmaped array where the nodes are written and indexed. *)
+      mutable length : int64 ;
+      (* Current length of the node table. *)
+      leaf_table  : KeyValueStore.t ;
+      (* Hash table  mapping leaf hashes to their values. *)
+      roots_table : (Hash.t, int64) Hashtbl.t ;
+      (* Hash table mapping root hashes to indices in the array. *)
+      fd : Unix.file_descr ; 
+      (* File descriptor to the mapped file *)
+    }
   
+  let make ?pos ?(shared=false) ?(length=(-1)) fn =
+    let fd = Unix.openfile fn [O_RDWR] 0o644 in
+    let array =
+      (* length = -1 means that the size of [fn] determines the size of
+         [array]. This is almost certainly NOT what we want. Rather the array
+         should be made x% bigger than the file (say x ~ 25%). When the array
+         is close to being full, the file should be closed and reopened with
+         a bigger length.
+      *) (* FIXME *)
+      let open Bigarray in
+      array1_of_genarray @@ Unix.map_file fd ?pos
+        char c_layout shared [| length |] in
+    { array ;
+      length = 0L ;
+      leaf_table = KeyValueStore.make () ;
+      roots_table = Hashtbl.create 1 ;
+      fd = fd ;
+    }
+  
+  let free { fd ; _ } = Unix.close fd
+end
+
 module PrivateNode : sig 
 
   type node =
@@ -468,14 +491,14 @@ module PrivateNode : sig
       * modified_rule
       * indexed_implies_hashed -> trail
 
-  val load_node : context -> int64 -> extender_witness -> view
+  val load_node : Context.t -> int64 -> extender_witness -> view
 
-  val view : context -> node -> view
+  val view : Context.t -> node -> view
     
   type cursor = private
       Cursor of trail
                 * node
-                * context
+                * Context.t
   (* The cursor, also known as a zipper combines the information contained in a
      trail and a subtree to represent an edit point within a tree. This is a
      functional data structure that represents the program point in a function
@@ -483,7 +506,7 @@ module PrivateNode : sig
      and enforces the most important: that the hole tags match between the trail
      and the Node *)
 
-  val _Cursor : (trail * node * context) -> cursor
+  val _Cursor : (trail * node * Context.t) -> cursor
 
 end = struct
 
@@ -745,14 +768,14 @@ end = struct
   let extended (t, s, mr, iih) =
     check_trail @@ Extended (t, s, mr, iih)
 
-  let load_node (_context : context) (_index : int64) (_ewit:extender_witness) : view = 
+  let load_node (_context : Context.t) (_index : int64) (_ewit:extender_witness) : view = 
     failwith "not implemented"
   (* Read the node from context.array, parse it and create a view node with it. *)
 
   type cursor =
       Cursor of trail
                 * node
-                * context
+                * Context.t
   (* The cursor, also known as a zipper combines the information contained in a
      trail and a subtree to represent an edit point within a tree. This is a
      functional data structure that represents the program point in a function
@@ -1056,37 +1079,7 @@ let get cur segment =
   
 let empty context =
   (* A bud with nothing underneath, i.e. an empty tree or an empty sub-tree. *)
-  let empty_bud = View (_Bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any)) in
-  _Cursor (top, empty_bud, context)
-
-let make_context ?pos ?(shared=false) ?(length=(-1)) fn =
-  let fd = Unix.openfile fn [O_RDWR] 0o644 in
-  let array =
-    (* length = -1 means that the size of [fn] determines the size of
-       [array]. This is almost certainly NOT what we want. Rather the array
-       should be made x% bigger than the file (say x ~ 25%). When the array
-       is close to being full, the file should be closed and reopened with
-       a bigger length.
-    *) (* FIXME *)
-    let open Bigarray in
-    array1_of_genarray @@ Unix.map_file fd ?pos
-      char c_layout shared [| length |] in
-  { array ;
-    length = 0L ;
-    leaf_table = KeyValueStore.make () ;
-    roots_table = Hashtbl.create 1 ;
-    fd = fd ;
-  }
-
-let free_context { fd ; _ } = Unix.close fd
-
-let tag_extender (node:node) : extender_witness =
-  match node with
-    | Disk (_, wit) -> wit
-    | View (Extender _) -> Is_Extender
-    | View (Internal _) -> Not_Extender
-    | View (Leaf _)     -> Not_Extender
-    | View (Bud _)      -> Not_Extender
+  _Cursor (top, NotHashed.bud None, context)
 
 let check_bud n context = match view context n with
   | Bud (nopt, _, _, _) -> Ok nopt

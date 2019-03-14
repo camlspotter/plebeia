@@ -44,11 +44,11 @@ let shuffle st xs =
 let test_with_context f =
   let context =
     let fn = Filename.temp_file "plebeia" "test" in
-    make_context ~shared:true ~length:1024 fn
+    Context.make ~shared:true ~length:1024 fn
   in
   let cursor = empty context in
   let res = f cursor in
-  free_context context;
+  Context.free context;
   res
     
 let path_of_string s = from_Some @@ Path.of_string s

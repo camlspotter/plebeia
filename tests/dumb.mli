@@ -36,7 +36,7 @@ val upsert: cursor -> segment -> value -> (cursor, error) result
 val delete: cursor -> segment -> (cursor, error) result
 (** Delete a leaf or subtree. *)
 
-val of_plebeia_node : Plebeia.Plebeia_impl.context -> Plebeia.Plebeia_impl.PrivateNode.node -> t
+val of_plebeia_node : Plebeia.Plebeia_impl.Context.t -> Plebeia.Plebeia_impl.PrivateNode.node -> t
 
 val dot_of_node : t -> string
 

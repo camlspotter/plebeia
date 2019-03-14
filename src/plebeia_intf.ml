@@ -3,9 +3,11 @@ module type S = sig
 (** Module manipulating patricia trees and persisting them to disk *)
 
 
-type context
-(** A context represents the storage of a collection of trees sharing
-    nodes on disk. *)
+module Context : sig
+  type t
+  (** A context represents the storage of a collection of trees sharing
+      nodes on disk. *)
+end
 
 type hash
 (** Root hash of a tree. *)
@@ -21,19 +23,19 @@ type error
 
 type value
 
-val open_context : filename:string -> context
+val open_context : filename:string -> Context.t
 (** Opens or creates a new context backed up at a given location
     in the filesystem. *)
 
-val gc: src:context -> hash list -> dest:context -> unit
+val gc: src:Context.t -> hash list -> dest:Context.t -> unit
 (** Copies from the src context trees rooted in the hash list
     into a new context. Used for garbage collection. *)
 
-val root : context -> hash -> (cursor, error) result
+val root : Context.t -> hash -> (cursor, error) result
 (** Gets the root cursor corresponding to a given root hash in the
     context. *)
 
-val empty : context -> cursor
+val empty : Context.t -> cursor
 (** Creates a cursor to a new, empty tree. *)
 
 val subtree : cursor -> segment -> (cursor, error) result

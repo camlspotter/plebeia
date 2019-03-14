@@ -8,4 +8,4 @@ val dot_of_node : node -> string
 
 val dot_of_cursor : cursor -> (string, error) result
 
-val validate_node : context -> node -> (unit, string) result
+val validate_node : Context.t -> node -> (unit, string) result
