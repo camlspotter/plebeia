@@ -744,13 +744,13 @@ let attach (trail:trail) (node:node) context =
   match trail with
   | Top -> Cursor (Top, node, context)
   | Left (prev_trail, right, _, indexed_implies_hashed) ->
-    Cursor (Left (prev_trail, right, Modified_Left, indexed_implies_hashed), node, context)
+      Cursor (Left (prev_trail, right, Modified_Left, indexed_implies_hashed), node, context)
   | Right (left, prev_trail, _, indexed_implies_hashed) ->
-    Cursor (Right (left, prev_trail, Modified_Right, indexed_implies_hashed), node, context)
+      Cursor (Right (left, prev_trail, Modified_Right, indexed_implies_hashed), node, context)
   | Budded (prev_trail, _, indexed_implies_hashed) ->
-    Cursor (Budded (prev_trail, Modified_Left, indexed_implies_hashed), node, context)
+      Cursor (Budded (prev_trail, Modified_Left, indexed_implies_hashed), node, context)
   | Extended (prev_trail, segment, _, indexed_implies_hashed) ->
-    Cursor (Extended (prev_trail, segment, Modified_Left, indexed_implies_hashed), node, context)
+      Cursor (Extended (prev_trail, segment, Modified_Left, indexed_implies_hashed), node, context)
 
 
 let go_below_bud c =
@@ -759,9 +759,9 @@ let go_below_bud c =
   match vnode with
   | Bud (None,  _, _, _) -> Error "Nothing beneath this bud"
   | Bud (Some below, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
-    Ok (
-      Cursor (
-        Budded (trail, Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed), below,  context))
+      Ok (
+        Cursor (
+          Budded (trail, Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed), below,  context))
   | _ -> Error "Attempted to navigate below a bud, but got a different kind of node."
 
 let go_side side c =
@@ -770,14 +770,14 @@ let go_side side c =
   match vnode with
   | Internal (left, right, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
       Ok (match side with
-      | Path.Right ->
-          Cursor (Right (left, trail,
-                         Unmodified (indexing_rule, hashed_is_transitive),
-                         indexed_implies_hashed), right, context)
-      | Path.Left ->
-          Cursor (Left (trail, right,
-                        Unmodified (indexing_rule, hashed_is_transitive),
-                        indexed_implies_hashed), left, context))
+          | Path.Right ->
+              Cursor (Right (left, trail,
+                             Unmodified (indexing_rule, hashed_is_transitive),
+                             indexed_implies_hashed), right, context)
+          | Path.Left ->
+              Cursor (Left (trail, right,
+                            Unmodified (indexing_rule, hashed_is_transitive),
+                            indexed_implies_hashed), left, context))
   | _ -> Error "Attempted to navigate right or left of a non internal node"
 
 let go_down_extender c =
@@ -785,30 +785,30 @@ let go_down_extender c =
   let Viewed_Cursor (trail, vnode, context) = view_cursor c in
   match vnode with
   | Extender (segment, below, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
-    Ok (Cursor (Extended (trail, segment,
-                          Unmodified (indexing_rule, hashed_is_transitive),
-                          indexed_implies_hashed), below, context))
+      Ok (Cursor (Extended (trail, segment,
+                            Unmodified (indexing_rule, hashed_is_transitive),
+                            indexed_implies_hashed), below, context))
   | _ -> Error "Attempted to go down an extender but did not find an extender"
 
 let go_up (Cursor (trail, node, context))  = match trail with
   | Top -> Error "cannot go above top"
   | Left (prev_trail, right,
           Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
-    let new_node =
-      View (internal (node, right, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
-    in Ok (Cursor (prev_trail, new_node, context))
+      let new_node =
+        View (internal (node, right, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
+      in Ok (Cursor (prev_trail, new_node, context))
 
   | Right (left, prev_trail,
            Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
-    let new_node =
-      View (internal (left, node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
-    in Ok (Cursor (prev_trail, new_node, context))
+      let new_node =
+        View (internal (left, node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
+      in Ok (Cursor (prev_trail, new_node, context))
 
   | Budded (prev_trail,
             Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
-    let new_node =
-      View (bud (Some node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
-    in Ok (Cursor (prev_trail, new_node, context))
+      let new_node =
+        View (bud (Some node, indexing_rule, hashed_is_transitive, indexed_implies_hashed))
+      in Ok (Cursor (prev_trail, new_node, context))
 
   | Extended (prev_trail, segment,
               Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed) ->
@@ -819,20 +819,20 @@ let go_up (Cursor (trail, node, context))  = match trail with
   (* Modified cases. *)
 
   | Left (prev_trail, right, Modified_Left, _) ->
-    let internal = View (internal (node, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))
-    in Ok (attach prev_trail internal context)
+      let internal = View (internal (node, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))
+      in Ok (attach prev_trail internal context)
 
   | Right (left, prev_trail, Modified_Right, _) ->
-    let internal = View (internal (left, node, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))
-    in Ok (attach prev_trail internal context)
+      let internal = View (internal (left, node, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))
+      in Ok (attach prev_trail internal context)
 
   | Budded (prev_trail, Modified_Left, _) ->
-    let bud = View (bud (Some node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
-    in Ok (attach prev_trail bud context)
+      let bud = View (bud (Some node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+      in Ok (attach prev_trail bud context)
 
   | Extended (prev_trail, segment, Modified_Left, _) ->
-    let extender =  View (extender (segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
-    in Ok (attach prev_trail extender context)
+      let extender =  View (extender (segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+      in Ok (attach prev_trail extender context)
 
   | Left (_, _, Modified_Right, _)|Right (_, _, Modified_Left, _)|
     Budded (_, Modified_Right, _)|Extended (_, _, Modified_Right, _) -> assert false
@@ -960,6 +960,8 @@ let free_context { fd ; _ } = Unix.close fd
 
 module Utils : sig
   val extend : Path.segment -> node -> node
+  val bud : node option -> node
+  val internal : node -> node -> indexing_rule -> node
 end = struct
 
   let extend : Path.segment -> node -> node = fun segment node ->
@@ -970,6 +972,10 @@ end = struct
           View (extender (Path.(@) segment seg, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))
       | _ ->
           View (extender (segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+  let bud no = View (bud (no, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+
+  let internal n1 n2 i = 
+    View (internal (n1, n2, i, Not_Hashed, Not_Indexed_Any))
 end
 
 (* todo, implement get / insert / upsert by using
@@ -1004,27 +1010,15 @@ let alter cursor segment
                    -> (node , error) result =
     fun view_node segment -> match view_node with
       | Internal (left, right, _, _, _) -> begin
-          let insert_new_node new_node = function
-            | Path.Left ->
-                View (internal (
-                    new_node, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any))
-            | Path.Right ->
-                View (internal (
-                    left, new_node, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any))
-          in 
           match Path.cut segment with
           | None -> Error "A segment ended on an internal node"
           | Some (Left, remaining_segment) ->
-              begin 
-                alter_aux left remaining_segment >>| fun n ->
-                insert_new_node n Left
-              end
+              alter_aux left remaining_segment >>| fun n ->
+              Utils.internal n right Left_Not_Indexed
           | Some (Right, remaining_segment) ->
-              begin
-                alter_aux right remaining_segment >>| fun n ->
-                insert_new_node n Right
-              end
-       end
+              alter_aux right remaining_segment >>| fun n ->
+              Utils.internal left n Right_Not_Indexed
+        end
       | Leaf (_, _, _, _) -> 
           begin match Path.cut segment with
             | None -> alteration (Some view_node) (* Altering *)
@@ -1053,34 +1047,28 @@ let alter cursor segment
 
           | (_, None) -> 
               (* we traveled the length of the extender *)
-              alter_aux other_node remaining_segment >>| fun x ->
-              Utils.extend common_segment x
+              alter_aux other_node remaining_segment 
+              >>| Utils.extend common_segment
           | (None, Some _) ->
               Error "The segment is a prefix to some other path in the tree."
           | (Some (my_dir, remaining_segment),
              Some (other_dir, remaining_extender)) ->
 
               let my_node =
-                alteration None >>| fun en -> Utils.extend remaining_segment en
+                alteration None 
+                >>| Utils.extend remaining_segment
               in
               let other_node =
                 Utils.extend remaining_extender other_node
               in
-              let internal =
-                let insert_into_internal n = function
-                  | Path.Left ->
-                      internal(n, other_node, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)
-                  | Path.Right ->
-                      internal(other_node, n, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any)
-                in match (my_dir, other_dir) with
+              let internal = match (my_dir, other_dir) with
                 | (Left, Right) ->
-                    my_node >>| fun my_node -> insert_into_internal my_node Left
+                    my_node >>| fun my_node -> Utils.internal my_node other_node Left_Not_Indexed
                 | (Right, Left) ->
-                    my_node >>| fun my_node -> insert_into_internal my_node Right
-
+                    my_node >>| fun my_node -> Utils.internal other_node my_node Right_Not_Indexed
                 | _ -> assert false
               in
-              internal >>| fun internal -> Utils.extend common_segment (View internal)
+              internal >>| Utils.extend common_segment
   in
 
   (* When we insert, we expect the cursor to be above a bud, but
@@ -1097,11 +1085,11 @@ let alter cursor segment
         alteration None 
         >>| Utils.extend segment
         >>| fun result ->
-        attach trail (View (bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+        attach trail (Utils.bud @@ Some result) context
       end
   | Bud (Some insertion_point, _, _, _) ->
       alter_aux insertion_point segment >>| fun result ->
-      attach trail (View (bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+      attach trail (Utils.bud @@ Some result) context
   | _ -> Error "Must insert from a bud"
 
 let delete cursor segment =
@@ -1124,36 +1112,26 @@ let delete cursor segment =
 
   and delete_aux' : view -> segment -> (node option, string) result = fun vnode segment ->
     match vnode with
-    | Leaf _ ->
-        if segment = Path.empty then
-          Ok None
-        else
-          Error "reached leaf before end of segment"
-    | Bud _ -> 
-        if segment = Path.empty then
-          Ok None
-        else
-          Error "reached bud before end of segment"
+    | Leaf _ when segment = Path.empty -> Ok None
+    | Leaf _ -> Error "reached leaf before end of segment"
+    | Bud _ when segment = Path.empty -> Ok None
+    | Bud _ -> Error "reached bud before end of segment"
     | Extender (other_segment, node, _, _, _) ->
-      (* If I don't go fully down that segment, that's an error *)
-      let _, rest, rest_other = Path.common_prefix segment other_segment in
-      if rest_other = Path.empty then begin
-        delete_aux node rest >>| function (* XXX Use Option.map *)
-        | None -> None
-        | Some (View (Extender (next_segment, node, _, _, _))) ->
-            Some (Utils.extend (Path.(@) other_segment next_segment) node)
-        | Some node -> 
-            Some (Utils.extend other_segment node)
-      end else
-        Error (Printf.sprintf "no leaf at this location %s" (Path.to_string rest_other))
+        (* If I don't go fully down that segment, that's an error *)
+        let _, rest, rest_other = Path.common_prefix segment other_segment in
+        if rest_other = Path.empty then begin
+          delete_aux node rest >>| function (* XXX Use Option.map *)
+          | None -> None
+          | Some node -> Some (Utils.extend other_segment node)
+        end else
+          Error (Printf.sprintf "no leaf at this location %s" (Path.to_string rest_other))
 
     | Internal (left, right, _, _, _) -> begin
         match Path.cut segment with
         | None -> Error "didn't reach a leaf"
         | Some (Left, rest_of_segment) -> begin
             let new_node new_left right =
-              Some ( View (internal (
-                  new_left, right, Left_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+              Some ( Utils.internal new_left right Left_Not_Indexed )
             in
             let extend ?(segafter=Path.empty) right =
               Some (Utils.extend Path.((of_side_list [Right]) @ segafter) right)
@@ -1174,12 +1152,11 @@ let delete cursor segment =
                 | View (Bud _)      -> extend right
                 | View (Leaf _)     -> extend right
               end
-            | Some  new_left -> new_node new_left right
+            | Some new_left -> new_node new_left right
           end
         | Some (Right, rest_of_segment) -> begin
             let new_node left new_right =
-              Some (View (internal (
-                  left, new_right, Right_Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+              Some (Utils.internal left new_right Right_Not_Indexed)
             in 
             let extend ?(segafter=Path.empty) left =
               Some (Utils.extend (Path.((of_side_list [Left]) @ segafter)) left)
@@ -1213,11 +1190,9 @@ let delete cursor segment =
       begin 
         delete_aux deletion_point segment >>| function
         | None -> 
-            attach trail (
-              View (bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+            attach trail (Utils.bud None) context
         | Some result ->
-            attach trail (
-              View (bud (Some result, Not_Indexed, Not_Hashed, Not_Indexed_Any))) context
+            attach trail (Utils.bud @@ Some result) context
       end
   | _ -> Error "Must insert from a bud"
 
@@ -1239,7 +1214,7 @@ let insert cursor segment value =
 
 let create_subtree cursor segment =
   alter cursor segment (function
-      | None -> Ok (View (bud (None, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
+      | None -> Ok (Utils.bud None)
       | Some _ -> Error "a node already present for this path")
 
 (*
