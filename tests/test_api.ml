@@ -6,35 +6,47 @@ open Test_utils
 module Debug = Plebeia.Debug
 
 module Dumb = Dumb
-  
-let () =
-  ignore @@ from_Ok @@ test_with_context @@ fun cursor ->
-  upsert cursor (path_of_string "LR") (Value.of_string "fooLR") >>= fun cursor -> 
-  upsert cursor (path_of_string "LL") (Value.of_string "fooLL") 
-  >>= go_below_bud >>= go_down_extender >>= go_side Path.Left >>= go_up
-  >>= go_side Path.Right >>= go_up >>= go_up >>= go_up
 
-let () = ignore @@ from_Ok @@ test_with_context @@ fun c ->
-  upsert c (path_of_string "LLL") (Value.of_string "LLL") >>= fun c -> 
-  upsert c (path_of_string "RRR") (Value.of_string "RRR") >>= fun c -> 
-  upsert c (path_of_string "LLR") (Value.of_string "LLR") >>= fun c -> 
-  upsert c (path_of_string "RRL") (Value.of_string "RRL") >>= fun c -> 
-  upsert c (path_of_string "LRL") (Value.of_string "LRL") >>= fun c -> 
-  upsert c (path_of_string "RLR") (Value.of_string "RLR") >>= fun c -> 
-  upsert c (path_of_string "LRR") (Value.of_string "LRR")
+let ok_or_fail = function
+  | Ok x -> x
+  | Error s -> failwith s
+                 
+let save_to_dot name c = to_file name (Debug.dot_of_cursor c)
 
 let () = 
-  ignore @@ from_Ok @@ test_with_context @@ fun c ->
-  let c = from_Ok @@ insert c (path_of_string "RRRL") (Value.of_string "RRRL") in
-  let c = from_Ok @@ insert c (path_of_string "RLLR") (Value.of_string "RLLR") in
-  let c = from_Ok @@ insert c (path_of_string "RRRR") (Value.of_string "RRRR") in
-  let Cursor (_, n, _) = c in to_file "debug3.dot" (Debug.dot_of_node n);
-  let v = match get c (path_of_string "RRRR") with
-    | Error e -> failwith e
-    | Ok v -> v
-  in
-  assert (v = Value.of_string "RRRR");
-  return () (* once failed here due to a bug. Now fixed. *)
+  test_with_context @@ fun c ->
+  save_to_dot "test_1.dot" c;
+  let c = ok_or_fail @@ upsert c (path_of_string "LR") (Value.of_string "fooLR") in
+  save_to_dot "test_2.dot" c;
+  let c = ok_or_fail @@ upsert c (path_of_string "LL") (Value.of_string "fooLL") in
+  let c = ok_or_fail @@ go_below_bud c in
+  let c = ok_or_fail @@ go_down_extender c in
+  let c = ok_or_fail @@ go_side Path.Left c in
+  let c = ok_or_fail @@ go_up c in
+  let c = ok_or_fail @@ go_side Path.Right c in
+  let c = ok_or_fail @@ go_up c in
+  let c = ok_or_fail @@ go_up c in
+  let c = ok_or_fail @@ go_up c in
+  ignore c
+
+let () = test_with_context @@ fun c ->
+  let c = ok_or_fail @@ upsert c (path_of_string "LLL") (Value.of_string "LLL") in
+  let c = ok_or_fail @@ upsert c (path_of_string "RRR") (Value.of_string "RRR") in 
+  let c = ok_or_fail @@ upsert c (path_of_string "LLR") (Value.of_string "LLR") in 
+  let c = ok_or_fail @@ upsert c (path_of_string "RRL") (Value.of_string "RRL") in 
+  let c = ok_or_fail @@ upsert c (path_of_string "LRL") (Value.of_string "LRL") in 
+  let c = ok_or_fail @@ upsert c (path_of_string "RLR") (Value.of_string "RLR") in 
+  let c = ok_or_fail @@ upsert c (path_of_string "LRR") (Value.of_string "LRR") in
+  ignore c
+
+let () = 
+  test_with_context @@ fun c ->
+  let c = ok_or_fail @@ insert c (path_of_string "RRRL") (Value.of_string "RRRL") in
+  let c = ok_or_fail @@ insert c (path_of_string "RLLR") (Value.of_string "RLLR") in
+  let c = ok_or_fail @@ insert c (path_of_string "RRRR") (Value.of_string "RRRR") in
+  save_to_dot "debug3.dot" c;
+  let v = ok_or_fail @@ get c (path_of_string "RRRR") in
+  assert (v = Value.of_string "RRRR")
 
 let () = 
   ignore @@ from_Ok @@ test_with_context @@ fun c ->
@@ -81,7 +93,7 @@ let random_insertions st sz =
           | _ -> assert false
         end;
 
-        match Random.State.int st 3 with
+        match Random.State.int st 2 with
         | 0 -> begin
             (* insert *)
             match 
@@ -93,7 +105,7 @@ let random_insertions st sz =
                 let Cursor (_, n, context) = c in
                 if Dumb.get_root_node dumb <> Dumb.of_plebeia_node context n then begin
                   to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
-                  to_file "plebeia.dot" @@ from_Ok @@ Debug.dot_of_cursor c;
+                  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
                   to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
                   assert false
                 end;
@@ -104,7 +116,7 @@ let random_insertions st sz =
             | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
             | Error e, Ok _ -> 
                 Format.eprintf "impl: %s (seg=%s)@." e s; 
-                Format.eprintf "%s@." @@ from_Ok @@ Debug.dot_of_cursor c;
+                Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
         | 1 -> begin
@@ -118,7 +130,7 @@ let random_insertions st sz =
                 let Cursor (_, n, context) = c in
                 if Dumb.get_root_node dumb <> Dumb.of_plebeia_node context n then begin
                   to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
-                  to_file "plebeia.dot" @@ from_Ok @@ Debug.dot_of_cursor c;
+                  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
                   to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
                   assert false
                 end;
@@ -129,9 +141,10 @@ let random_insertions st sz =
             | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
             | Error e, Ok _ -> 
                 Format.eprintf "impl: %s (seg=%s)@." e s; 
-                Format.eprintf "%s@." @@ from_Ok @@ Debug.dot_of_cursor c;
+                Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
+(*
         | 2 -> begin
             (* create_subtree *)
             match 
@@ -143,7 +156,7 @@ let random_insertions st sz =
                 let Cursor (_, n, context) = c in
                 if Dumb.get_root_node dumb <> Dumb.of_plebeia_node context n then begin
                   to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
-                  to_file "plebeia.dot" @@ from_Ok @@ Debug.dot_of_cursor c;
+                  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
                   to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
                   assert false
                 end;
@@ -154,16 +167,17 @@ let random_insertions st sz =
             | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
             | Error e, Ok _ -> 
                 Format.eprintf "impl: %s (seg=%s)@." e s; 
-                Format.eprintf "%s@." @@ from_Ok @@ Debug.dot_of_cursor c;
+                Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
+*)
         | _ -> assert false
       in
       f c dumb (i+1)
   in
   let dumb = Dumb.empty () in
   let c, dumb = f c dumb 0 in
-  to_file "random_insertions.dot" @@ from_Ok @@ Debug.dot_of_cursor c;
+  to_file "random_insertions.dot" @@ Debug.dot_of_cursor c;
   Hashtbl.iter (fun seg x -> 
       match x with
       | `Value v -> assert (get c seg = Ok v)
@@ -177,7 +191,7 @@ let random_insertions st sz =
         let Cursor (_, n, context) as c = match delete c seg with 
           | Ok c -> c
           | Error e -> 
-              to_file "deletion.dot" @@ from_Ok @@ Debug.dot_of_cursor c;
+              to_file "deletion.dot" @@ Debug.dot_of_cursor c;
               failwith e
         in
         let dumb = from_Ok @@ Dumb.delete dumb seg in

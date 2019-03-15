@@ -28,7 +28,7 @@ let rec string_of_node : node -> int -> string = fun node indent ->
         (string_of_node node (indent + 1))
 
 (* Graphviz's dot file format *)
-let dot_of_node root =
+let dot_of_node_aux cntr root =
   let rec aux : int -> node -> (string * string list * int) = fun cntr -> function
     | Disk (index, _) -> 
         let n = Printf.sprintf "Disk%Ld" index in
@@ -68,13 +68,59 @@ let dot_of_node root =
          :: s,
          cntr + 1)
   in
-  let (_, s, _) = aux 0 root in
-  "digraph G {\n" ^ String.concat "\n" s ^ "\n}\n"
+  aux cntr root
 
-(* Graphviz's dot file format *)
-let dot_of_cursor c = 
-  go_top c >>= function Cursor (_, n, _) -> return @@ dot_of_node n
+let rec dot_of_trail dst cntr = function
+  | Top -> ([], cntr)
+  | Left (trail, r, _, _) ->
+      let n = Printf.sprintf "Internal%d" cntr in
+      let cntr = cntr + 1 in
+      let r, ss, cntr = dot_of_node_aux cntr r in
+      let (ss', cntr) = dot_of_trail n cntr trail in
+      ([ Printf.sprintf "%s [shape=circle, label=\"\"];" n;
+         Printf.sprintf "%s -> %s [label=\"L\"];" n dst;
+         Printf.sprintf "%s -> %s [label=\"R\"];" n r ]
+       @ ss @ ss',
+       cntr)
+  | Right (l, trail, _, _) ->
+      let n = Printf.sprintf "Internal%d" cntr in
+      let cntr = cntr + 1 in
+      let l, ss, cntr = dot_of_node_aux cntr l in
+      let (ss', cntr) = dot_of_trail n cntr trail in
+      ([ Printf.sprintf "%s [shape=circle, label=\"\"];" n;
+         Printf.sprintf "%s -> %s [label=\"L\"];" n l;
+         Printf.sprintf "%s -> %s [label=\"R\"];" n dst ]
+       @ ss @ ss',
+       cntr)
+  | Budded (trail, _, _) ->
+      let n = Printf.sprintf "Bud%d" cntr in
+      let cntr = cntr + 1 in
+      let (ss, cntr) = dot_of_trail n cntr trail in
+      ([ Printf.sprintf "%s [shape=diamond, label=\"\"];" n;
+         Printf.sprintf "%s -> %s;" n dst ]
+       @ ss,
+       cntr)
+  | Extended (trail, segment, _, _) -> 
+      let n = Printf.sprintf "Extender%d" cntr in
+      let cntr = cntr + 1 in
+      let (ss, cntr) = dot_of_trail n cntr trail in
+      ([ Printf.sprintf "%s [shape=circle, label=\"\"];" n;
+         Printf.sprintf "%s -> %s [label=%S];" n dst (Path.to_string segment) ]
+       @ ss,
+       cntr)
+  
+let make_digraph ss = "digraph G {\n" ^ String.concat "\n" ss ^ "\n}\n"
 
+let dot_of_node root =
+  let (_name, ss, _cntr) = dot_of_node_aux 0 root in
+  make_digraph ss
+
+let dot_of_cursor (Cursor (trail, node, _)) =
+  let (n, ss, cntr) = dot_of_node_aux 0 node in
+  let ss', _ = dot_of_trail n cntr trail in
+  let s = Printf.sprintf "cursor [shape=point, label=\"\"]; cursor -> %s [style=bold];" n in
+  make_digraph (s :: ss @ ss')
+    
 (* Bud -> Leaf and Bud -> Bud are invalid, but not excluded by the GADT *)
 let validate_node context (node : node) =
   let rec aux : node -> (view, string) result = 

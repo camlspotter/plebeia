@@ -1011,6 +1011,47 @@ let rec remove_up trail context = match trail with
       let n = NotHashed.extend Path.(of_side_list [Left]) left in
       unify_extenders prev_trail n context
 
+(* Let [c] is a cursor which points an Extender, whose segment is [common_prefix @ remaining_extender].
+   [diverge c (common_prefix, remaining_extender, remaining_segment)] diverges a segment of [c] in the middle
+   and create a path to [common_prefix @ remaining_segnet]. 
+   It returns the newly created trail.
+*)
+let diverge (Cursor (trail, extender, _context)) (common_prefix, remaining_extender, remaining_segment) =
+  match extender with
+  | View (Extender (_seg, n, _ir, _hit, _iih)) -> (* _seg = common_prefix @ remaining_extender *)
+      begin match Path.cut remaining_segment, Path.cut remaining_extender with
+        | None, _ -> Error "diverge: remaining_segment is empty"
+        | _, None -> Error "diverge: remaining_extender is empty"
+        | Some (side, seg), Some (side', seg') -> 
+            (* go down along common_prefix *)
+            assert (side <> side');
+(*
+            Format.eprintf "diverge: %s %s %s@."
+              (Path.to_string common_prefix)
+              (Path.to_string remaining_segment)
+              (Path.to_string remaining_extender);
+*)
+            let trail = 
+              if Path.is_empty common_prefix then trail 
+              else extended (trail, common_prefix, Modified_Left, Not_Indexed_Any)
+            in
+            let n' = NotHashed.extend seg' n in
+            match side with
+            | Path.Left -> 
+                if Path.is_empty seg then
+                  Ok (left (trail, n', Modified_Left, Not_Indexed_Any))
+                else
+                  Ok (extended (left (trail, n', Modified_Left, Not_Indexed_Any),
+                            seg, Modified_Left, Not_Indexed_Any))
+            | Path.Right -> 
+                if Path.is_empty seg then
+                  Ok (right (n', trail, Modified_Right, Not_Indexed_Any))
+                else
+                  Ok (extended (right (n', trail, Modified_Right, Not_Indexed_Any),
+                            seg, Modified_Left, Not_Indexed_Any))
+      end
+  | _ -> Error "diverge: not an Extender"
+  
 (* Follow the segment from the cursor. If the segment terminates 
   or diverges in the middle of an extender, it returns the common prefix
   information. 
@@ -1098,7 +1139,7 @@ let check_bud n context = match view context n with
   | Bud (nopt, _, _, _) -> Ok nopt
   | _ -> Error "Not a Bud"
 
-let alter cur segment 
+let alter_old cur segment 
     (alteration : view option -> (node, error) result) =
 
   let Cursor (_, _, context) = cur in
@@ -1127,45 +1168,45 @@ let alter cur segment
           | _ -> Error "Reached a Bud before reaching the destination"
         end
     | Extender (extender_segment, other_node, _, _, _) ->
-      (* This is the one that is trickier to handle. *)
-      let (common_segment, remaining_segment, remaining_extender) =
-        Path.common_prefix segment extender_segment in
-        (* here's what can happen
-           - common_prefix is empty: that means remaining segment
-             and remaining extender start with different directions.
-             So, create an internal node and inject them on each side.
+        (* This is the one that is trickier to handle. *)
+        let (common_segment, remaining_segment, remaining_extender) =
+          Path.common_prefix segment extender_segment in
+          (* here's what can happen
+             - common_prefix is empty: that means remaining segment
+               and remaining extender start with different directions.
+               So, create an internal node and inject them on each side.
 
-           - common_prefix is not empty : cut the extender to the
-              common prefix, take the remaining_extender and create a
-              second extender in succession then recursively insert
-              with the remaining_segment at the new cross point.
-        *)
-        match (Path.cut remaining_segment, Path.cut remaining_extender) with
+             - common_prefix is not empty : cut the extender to the
+                common prefix, take the remaining_extender and create a
+                second extender in succession then recursively insert
+                with the remaining_segment at the new cross point.
+          *)
+          match (Path.cut remaining_segment, Path.cut remaining_extender) with
 
-        | (_, None) -> 
-            (* we traveled the length of the extender *)
-            alter_aux other_node remaining_segment 
-            >>| NotHashed.extend common_segment
-        | (None, Some _) ->
-            Error "The segment is a prefix to some other path in the tree."
-        | (Some (my_dir, remaining_segment),
-           Some (other_dir, remaining_extender)) ->
+          | (_, None) -> 
+              (* we traveled the length of the extender *)
+              alter_aux other_node remaining_segment 
+              >>| NotHashed.extend common_segment
+          | (None, Some _) ->
+              Error "The segment is a prefix to some other path in the tree."
+          | (Some (my_dir, remaining_segment),
+             Some (other_dir, remaining_extender)) ->
 
-            let my_node =
-              alteration None 
-              >>| NotHashed.extend remaining_segment
-            in
-            let other_node =
-              NotHashed.extend remaining_extender other_node
-            in
-            let internal = match (my_dir, other_dir) with
-              | (Left, Right) ->
-                  my_node >>| fun my_node -> NotHashed.internal my_node other_node Left_Not_Indexed
-              | (Right, Left) ->
-                  my_node >>| fun my_node -> NotHashed.internal other_node my_node Right_Not_Indexed
-              | _ -> assert false
-            in
-            internal >>| NotHashed.extend common_segment
+              let my_node =
+                alteration None 
+                >>| NotHashed.extend remaining_segment
+              in
+              let other_node =
+                NotHashed.extend remaining_extender other_node
+              in
+              let internal = match (my_dir, other_dir) with
+                | (Left, Right) ->
+                    my_node >>| fun my_node -> NotHashed.internal my_node other_node Left_Not_Indexed
+                | (Right, Left) ->
+                    my_node >>| fun my_node -> NotHashed.internal other_node my_node Right_Not_Indexed
+                | _ -> assert false
+              in
+              internal >>| NotHashed.extend common_segment
   in
 
   (* When we insert, we expect the cursor to be above a bud, but
@@ -1291,6 +1332,27 @@ let delete cur segment =
   | (Cursor (trail, _n, context), None) -> 
       remove_up trail context 
       >>= parent 
+
+let alter (Cursor (trail, n, context) as cur) segment alteration =
+  match view context n with
+  | Bud (None, _, _, _) -> 
+      alteration None >>= fun n' ->
+      let n' = NotHashed.extend segment n' in
+      let n' = NotHashed.bud (Some n') in
+      Ok (_Cursor (trail, n', context))
+
+  | _ -> 
+      go_below_bud cur >>= fun cur ->
+      access_gen cur segment >>= fun (c,segsopt) ->
+      begin match segsopt with
+        | None -> 
+            (* Should we view the node? *)
+            let Cursor (trail, n, context) = c in 
+            Ok (trail, Some (view context n))
+        | Some segs -> diverge c segs >>| fun trail -> (trail, None)
+      end >>= fun (trail, nopt) ->
+      alteration nopt >>= fun n -> 
+      parent @@ attach trail n context
 
 (* How to merge alter and delete *)
 type modifier = value option -> (value option, error) result
