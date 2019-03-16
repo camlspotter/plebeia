@@ -644,10 +644,13 @@ end = struct
     let hashed = function
       | Disk _ -> true
       | View (Bud (_, _, Hashed _, _)) -> true
+      | View (Bud (_, _, Not_Hashed, _)) -> false
       | View (Leaf (_, _, Hashed _, _)) -> true
+      | View (Leaf (_, _, Not_Hashed, _)) -> false
       | View (Internal (_, _, _, Hashed _, _)) -> true
+      | View (Internal (_, _, _, Not_Hashed, _)) -> false
       | View (Extender (_, _, _, Hashed _, _)) -> true
-      | _ -> false
+      | View (Extender (_, _, _, Not_Hashed, _)) -> false
 
     let view_hashed_is_transitive_invariant : view -> (unit, error) result = function
       | Leaf _ -> Ok ()
@@ -1020,16 +1023,15 @@ end = struct
     in
     aux c
 
-  let unify_extenders prev_trail node context =
-    match node with
+  let unify_extenders prev_trail node context = match node with
     | Disk (_, Is_Extender) -> Error "unify_exenders: Disk is not allowed"
     | View (Extender (seg, n, _, _, _)) ->
         begin match prev_trail with
           | Extended (prev_trail', seg', _mr, _iih) ->
-              Ok (_Cursor (prev_trail', NotHashed.extend (Path.(@) seg' seg) n, context))
-          | _ -> Ok (_Cursor (prev_trail, node, context))
+              Ok (attach prev_trail' (NotHashed.extend (Path.(@) seg' seg) n) context)
+          | _ -> Ok (attach prev_trail node context)
         end
-    | _ -> Ok (_Cursor (prev_trail, node, context))
+    | _ -> Ok (attach prev_trail node context)
 
   let rec remove_up trail context = match trail with
     | Top -> Error "cannot remove top"
@@ -1213,59 +1215,6 @@ end = struct
     alter cur segment (function
         | None -> Ok (NotHashed.bud None)
         | Some _ -> Error "a node already present for this path")
-
-  let hash (Cursor (_trail, node, context)) =
-    let rec hash_aux : node -> (node * hash) = function
-      | Disk (index, wit) -> 
-          let v, h = hash_aux' (load_node context index wit) in View v, h
-      | View vnode -> 
-          let v, h = hash_aux' vnode in View v, h
-
-    and hash_aux' : view -> (view * hash) = fun vnode -> 
-      match vnode with
-      (* easy case where it's already hashed *)
-      | Leaf (_, _, Hashed h, _) -> (vnode, h)
-      | Bud (_, _, Hashed h, _) -> (vnode, h)
-      | Internal (_, _, _, Hashed h, _)  -> (vnode, h)
-      | Extender (_, _, _, Hashed h, _) -> (vnode, h)
-
-      (* hashing is necessary below *)
-      | Leaf (value, Not_Indexed, _, _) ->
-          let h = Hash.of_leaf value in
-          (_Leaf (value, Not_Indexed, Hashed h, Not_Indexed_Any), h)
-
-      | Bud (Some underneath, Not_Indexed, _, _) ->
-          let (node, h) = hash_aux underneath in
-          (_Bud (Some node, Not_Indexed, Hashed h, Not_Indexed_Any), h)
-
-      | Bud (None, Not_Indexed, _, _) ->
-          (_Bud (None, Not_Indexed, Hashed Hash.of_empty_bud, Not_Indexed_Any), Hash.of_empty_bud)
-
-      | Internal (left, right, Left_Not_Indexed, _, _) -> (
-          let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
-          let h = Hash.of_internal_node hl hr in
-          (_Internal (left, right, Left_Not_Indexed, Hashed h, Not_Indexed_Any), h))
-
-      | Internal (left, right, Right_Not_Indexed, _, _) -> (
-          let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
-          let h = Hash.of_internal_node hl hr in
-          (_Internal (left, right, Right_Not_Indexed, Hashed h, Not_Indexed_Any), h))
-
-      | Extender (segment, underneath, Not_Indexed, _, _)  ->
-          let (underneath, h) = hash_aux underneath in
-          let h = Hash.of_extender segment h in
-          (_Extender (segment, underneath, Not_Indexed, Hashed h, Not_Indexed_Any), h)
-      | Leaf (_, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
-        Bud (None, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
-        Bud (Some _, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
-        Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed, _)|
-        Extender
-          (_, _, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _) -> assert false
-
-    in 
-    let (_node, h) =  hash_aux node in 
-    h
-  (* TODO: return a new cursor instead and offer a way to extract a hash from a cursor *)
 
   let hash (Cursor (trail, node, context)) =
     let rec hash_aux : node -> (node * hash) = function
