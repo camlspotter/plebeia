@@ -192,7 +192,9 @@ let random_insertions st sz =
   let Cursor (_, n, _), _ = 
     List.fold_left (fun (c, dumb) (seg, _) ->
         let Cursor (_, n, context) as c = match delete c seg with 
-          | Ok c -> c
+          | Ok c -> 
+              let c, _ = hash c in
+              c
           | Error e -> 
               to_file "deletion.dot" @@ Debug.dot_of_cursor c;
               failwith e
