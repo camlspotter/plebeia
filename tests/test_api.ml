@@ -19,7 +19,7 @@ let () =
   let c = ok_or_fail @@ upsert c (path_of_string "LR") (Value.of_string "fooLR") in
   save_to_dot "test_2.dot" c;
   let c = ok_or_fail @@ upsert c (path_of_string "LL") (Value.of_string "fooLL") in
-  let c = ok_or_fail @@ go_below_bud c in
+  let c = from_Some @@ ok_or_fail @@ go_below_bud c in
   let c = ok_or_fail @@ go_down_extender c in
   let c = ok_or_fail @@ go_side Path.Left c in
   let c = ok_or_fail @@ go_up c in
@@ -183,7 +183,10 @@ let random_insertions st sz =
       | `Value v -> assert (get c seg = Ok v)
       | `Subtree -> assert (match subtree c seg with Ok _ -> true | _ -> false)
     ) bindings;
-  
+
+  (* hash *)
+  let c, _ = hash c in
+
   (* deletion *)
   let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
   let Cursor (_, n, _), _ = 

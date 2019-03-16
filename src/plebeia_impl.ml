@@ -6,6 +6,8 @@
 
 open Error
 
+let failwithf fmt = Printf.ksprintf failwith fmt
+                  
 module Path : sig
   (** A module encapsulating the concept of a path through the Patricia tree.
       A path is a sequence of n full segments. The n-1 first segments end in
@@ -129,7 +131,8 @@ end = struct
   let of_string x = assert (String.length x = 56); x
 
   let set_last_bit0 s =
-    assert (String.length s = 28);
+    let len = String.length s in
+    if len <> 28 then failwithf "set_last_bit0: len=%d <> 28" len; 
     let bs = Bytes.of_string s in
     Bytes.unsafe_set bs 27 
     @@ Char.chr @@ Char.code (Bytes.unsafe_get bs 27) land 0xfe;
@@ -884,15 +887,13 @@ end = struct
     View (_Internal (n1, n2, i, Not_Hashed, Not_Indexed_Any))
 end
 
-
 let go_below_bud (Cursor (trail, n, context)) =
   (* This function expects a cursor positionned on a bud and moves it one step below. *)
   match view context n with
-  | Bud (None,  _, _, _) -> Error "Nothing beneath this bud"
+  | Bud (None,  _, _, _) -> Ok None
   | Bud (Some below, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
-      Ok (
-        _Cursor (
-          _Budded (trail, Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed), below,  context))
+      Ok (Some (_Cursor (
+          _Budded (trail, Unmodified (indexing_rule, hashed_is_transitive), indexed_implies_hashed), below,  context)))
   | _ -> Error "Attempted to navigate below a bud, but got a different kind of node."
 
 let go_side side (Cursor (trail, n, context)) =
@@ -1101,46 +1102,50 @@ let access_gen cur segment =
   aux cur segment
 
 let subtree cur segment =
-  go_below_bud cur >>= fun cur ->
-  access_gen cur segment >>= function 
-  | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
-  | (Cursor (trail, n, context), None) -> 
-      match view context n with
-      | Bud _ as v -> Ok (_Cursor (trail, View v, context))
-      | _ -> Error "Reached to a non Bud"
+  go_below_bud cur >>= function
+  | None -> Error "Nothing beneath this bud"
+  | Some cur ->
+      access_gen cur segment >>= function 
+      | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
+      | (Cursor (trail, n, context), None) -> 
+          match view context n with
+          | Bud _ as v -> Ok (_Cursor (trail, View v, context))
+          | _ -> Error "Reached to a non Bud"
 
 let get cur segment = 
-  go_below_bud cur >>= fun cur ->
-  access_gen cur segment >>= function 
-  | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
-  | (Cursor (_, n, context), None) -> 
-      match view context n with
-      | Leaf (v, _, _, _) -> Ok v
-      | _ -> Error "Reached to a non Leaf"
+  go_below_bud cur >>= function
+  | None -> Error "Nothing beneath this bud"
+  | Some cur ->
+      access_gen cur segment >>= function 
+      | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
+      | (Cursor (_, n, context), None) -> 
+          match view context n with
+          | Leaf (v, _, _, _) -> Ok v
+          | _ -> Error "Reached to a non Leaf"
   
 let empty context =
   (* A bud with nothing underneath, i.e. an empty tree or an empty sub-tree. *)
   _Cursor (_Top, NotHashed.bud None, context)
 
 let delete cur segment =
-  go_below_bud cur >>= fun cur ->
-  access_gen cur segment >>= function 
-  | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
-  | (Cursor (trail, _n, context), None) -> 
-      remove_up trail context 
-      >>= parent 
+  go_below_bud cur >>= function
+  | None -> Error "Nothing beneath this bud"
+  | Some cur ->
+      access_gen cur segment >>= function 
+      | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
+      | (Cursor (trail, _n, context), None) -> 
+          remove_up trail context 
+          >>= parent 
 
-let alter (Cursor (trail, n, context) as cur) segment alteration =
+let alter (Cursor (trail, _, context) as cur) segment alteration =
   (* XXX 2 cases. not cool *)
-  match view context n with
-  | Bud (None, _, _, _) -> 
+  go_below_bud cur >>= function
+  | None ->
       alteration None >>= fun n' ->
       let n' = NotHashed.extend segment n' in
       let n' = NotHashed.bud (Some n') in
       Ok (_Cursor (trail, n', context))
-
-  | _ -> 
-      go_below_bud cur >>= fun cur ->
+  | Some cur -> 
       access_gen cur segment >>= fun (c,segsopt) ->
       begin match segsopt with
         | None -> 
@@ -1151,9 +1156,6 @@ let alter (Cursor (trail, n, context) as cur) segment alteration =
       end >>= fun (trail, nopt) ->
       alteration nopt >>= fun n -> 
       parent @@ attach trail n context
-
-(* How to merge alter and delete *)
-type modifier = value option -> (value option, error) result
 
 let upsert cur segment value =
   alter cur segment (fun x ->
@@ -1226,6 +1228,57 @@ let hash (Cursor (_trail, node, context)) =
   h
 (* TODO: return a new cursor instead and offer a way to extract a hash from a cursor *)
 
+let hash (Cursor (trail, node, context)) =
+  let rec hash_aux : node -> (node * hash) = function
+    | Disk (index, wit) -> 
+        let v, h = hash_aux' (load_node context index wit) in View v, h
+    | View vnode -> 
+        let v, h = hash_aux' vnode in View v, h
+
+  and hash_aux' : view -> (view * hash) = fun vnode -> 
+    match vnode with
+    (* easy case where it's already hashed *)
+    | Leaf (_, _, Hashed h, _) -> (vnode, h)
+    | Bud (_, _, Hashed h, _) -> (vnode, h)
+    | Internal (_, _, _, Hashed h, _)  -> (vnode, h)
+    | Extender (_, _, _, Hashed h, _) -> (vnode, h)
+
+    (* hashing is necessary below *)
+    | Leaf (value, Not_Indexed, _, _) ->
+        let h = Hash.of_leaf value in
+        (_Leaf (value, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+
+    | Bud (Some underneath, Not_Indexed, _, _) ->
+        let (node, h) = hash_aux underneath in
+        (_Bud (Some node, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+
+    | Bud (None, Not_Indexed, _, _) ->
+        (_Bud (None, Not_Indexed, Hashed Hash.of_empty_bud, Not_Indexed_Any), Hash.of_empty_bud)
+
+    | Internal (left, right, Left_Not_Indexed, _, _) -> (
+        let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
+        let h = Hash.of_internal_node hl hr in
+        (_Internal (left, right, Left_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+
+    | Internal (left, right, Right_Not_Indexed, _, _) -> (
+        let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
+        let h = Hash.of_internal_node hl hr in
+        (_Internal (left, right, Right_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+
+    | Extender (segment, underneath, Not_Indexed, _, _)  ->
+        let (underneath, h) = hash_aux underneath in
+        let h = Hash.of_extender segment h in
+        (_Extender (segment, underneath, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+    | Leaf (_, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
+      Bud (None, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
+      Bud (Some _, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
+      Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed, _)|
+      Extender
+        (_, _, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _) -> assert false
+
+  in 
+  let (node, h) =  hash_aux node in
+  (_Cursor (trail, node, context), h)
 
 let commit _ = failwith "not implemented"
 let snapshot _ _ _ = failwith "not implemented"

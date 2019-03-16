@@ -71,7 +71,7 @@ val commit: cursor -> hash
 (** Commits the change made in a cursor to disk. Returns the new root
     hash. *)
 
-val hash: cursor -> hash
+val hash: cursor -> (cursor * hash)
 (** Computes the hash of the cursor without committing. *)
 
 end
