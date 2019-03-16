@@ -121,10 +121,34 @@ module Hash : sig
   val hash_of_segment : Path.segment -> string
   val segment_of_hash : string -> Path.segment
 end = struct
-  module BLAKE2B = Digestif.Make_BLAKE2B(struct let digest_size = 28 end)
+  let blake2b_28 s =
+    let open Blake2.Blake2b in
+    let b = init 28 in
+    update b (Bigstring.of_string s);
+    let Hash bs = final b in
+    Bigstring.to_string bs
 
-  let hash_list xs = BLAKE2B.(to_raw_string @@ digestv_string xs )
+  let to_hex s =
+    let buf = Buffer.create (String.length s * 2) in
+    String.iter (fun c ->
+        Buffer.add_string buf @@ Printf.sprintf "%02x" @@ Char.code c) s;
+    Buffer.contents buf
+
+  let _test =
+    assert (to_hex @@ blake2b_28 "Replacing SHA1 with the more secure function"
+            = "6bceca710717901183f66a78a7a9f59441c56defcff32f33f1e1b578")
+(* obtained by
+#!/usr/local/bin/python3
+
+from hashlib import blake2b
+
+h = blake2b(digest_size=28)
+h.update(b'Replacing SHA1 with the more secure function')
+print (h.hexdigest())
+*)
       
+  let hash_list xs = blake2b_28 (String.concat "" xs)
+    
   type t = string
 
   let to_string x = x
