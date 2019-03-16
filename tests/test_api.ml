@@ -13,12 +13,15 @@ let ok_or_fail = function
                  
 let save_to_dot name c = to_file name (Debug.dot_of_cursor c)
 
+let path = path_of_string
+let value = Value.of_string
+  
 let () = 
   test_with_context @@ fun c ->
   save_to_dot "test_1.dot" c;
-  let c = ok_or_fail @@ upsert c (path_of_string "LR") (Value.of_string "fooLR") in
+  let c = ok_or_fail @@ upsert c (path "LR") (value "fooLR") in
   save_to_dot "test_2.dot" c;
-  let c = ok_or_fail @@ upsert c (path_of_string "LL") (Value.of_string "fooLL") in
+  let c = ok_or_fail @@ upsert c (path "LL") (value "fooLL") in
   let c = from_Some @@ ok_or_fail @@ go_below_bud c in
   let c = ok_or_fail @@ go_down_extender c in
   let c = ok_or_fail @@ go_side Path.Left c in
@@ -30,30 +33,30 @@ let () =
   ignore c
 
 let () = test_with_context @@ fun c ->
-  let c = ok_or_fail @@ upsert c (path_of_string "LLL") (Value.of_string "LLL") in
-  let c = ok_or_fail @@ upsert c (path_of_string "RRR") (Value.of_string "RRR") in 
-  let c = ok_or_fail @@ upsert c (path_of_string "LLR") (Value.of_string "LLR") in 
-  let c = ok_or_fail @@ upsert c (path_of_string "RRL") (Value.of_string "RRL") in 
-  let c = ok_or_fail @@ upsert c (path_of_string "LRL") (Value.of_string "LRL") in 
-  let c = ok_or_fail @@ upsert c (path_of_string "RLR") (Value.of_string "RLR") in 
-  let c = ok_or_fail @@ upsert c (path_of_string "LRR") (Value.of_string "LRR") in
+  let c = ok_or_fail @@ upsert c (path "LLL") (value "LLL") in
+  let c = ok_or_fail @@ upsert c (path "RRR") (value "RRR") in 
+  let c = ok_or_fail @@ upsert c (path "LLR") (value "LLR") in 
+  let c = ok_or_fail @@ upsert c (path "RRL") (value "RRL") in 
+  let c = ok_or_fail @@ upsert c (path "LRL") (value "LRL") in 
+  let c = ok_or_fail @@ upsert c (path "RLR") (value "RLR") in 
+  let c = ok_or_fail @@ upsert c (path "LRR") (value "LRR") in
   ignore c
 
 let () = 
   test_with_context @@ fun c ->
-  let c = ok_or_fail @@ insert c (path_of_string "RRRL") (Value.of_string "RRRL") in
-  let c = ok_or_fail @@ insert c (path_of_string "RLLR") (Value.of_string "RLLR") in
-  let c = ok_or_fail @@ insert c (path_of_string "RRRR") (Value.of_string "RRRR") in
+  let c = ok_or_fail @@ insert c (path "RRRL") (value "RRRL") in
+  let c = ok_or_fail @@ insert c (path "RLLR") (value "RLLR") in
+  let c = ok_or_fail @@ insert c (path "RRRR") (value "RRRR") in
   save_to_dot "debug3.dot" c;
-  let v = ok_or_fail @@ get c (path_of_string "RRRR") in
-  assert (v = Value.of_string "RRRR")
+  let v = ok_or_fail @@ get c (path "RRRR") in
+  assert (v = value "RRRR")
 
 let () = 
   ignore @@ from_Ok @@ test_with_context @@ fun c ->
-  let c = from_Ok @@ insert c (path_of_string "RR") (Value.of_string "RR") in
+  let c = from_Ok @@ insert c (path "RR") (value "RR") in
   let _ = 
     (* It succeeded by putting a Leaf at "RR" instead at "RRRR"...  Now fixed. *)
-    from_Error @@ upsert c (path_of_string "RRRR") (Value.of_string "RRRR") 
+    from_Error @@ upsert c (path "RRRR") (value "RRRR") 
   in
   return ()
 
@@ -73,10 +76,10 @@ let random_insertions st sz =
       let seg = random_segment ~length st in
       let c, dumb = 
         let s = Path.to_string seg in
-        let v = Value.of_string (Path.to_string seg) in
+        let v = value (Path.to_string seg) in
 (*
         let print_command () =
-          Format.eprintf "insert c (path_of_string %S) (Value.of_string %S) >>= fun c ->@." s s
+          Format.eprintf "insert c (path %S) (value %S) >>= fun c ->@." s s
         in
 *)
         (* get *)
