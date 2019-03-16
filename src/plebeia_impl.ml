@@ -393,7 +393,7 @@ module Context = struct
       roots_table = Hashtbl.create 1 ;
       fd = fd ;
     }
-
+    
   let free { fd ; _ } = Unix.close fd
 end
 
@@ -452,6 +452,7 @@ module PrivateNode : sig
      element on the "stack" using a product type. *)
 
   val indexed : node -> bool
+  val index : node -> int64 option
   val hashed : node -> bool
 
   val _Internal : node * node
@@ -620,6 +621,14 @@ end = struct
     | View (Extender (_, _, Indexed _, _, _)) -> true
     | _ -> false
 
+  let index = function
+    | Disk (i,_) -> Some i
+    | View (Bud (_, Indexed i, _, _)) -> Some i
+    | View (Leaf (_, Indexed i, _, _)) -> Some i
+    | View (Internal (_, _, Indexed i, _, _)) -> Some i
+    | View (Extender (_, _, Indexed i, _, _)) -> Some i
+    | _ -> None
+
   let view_indexing_rule_invariant : view -> (unit, error) result = function
     | Bud (None, Indexed _, _, _) -> Ok ()
     | Bud (Some n, Indexed _, _, _) when indexed n -> Ok ()
@@ -628,7 +637,15 @@ end = struct
     | Leaf (_, Indexed _, _, _) -> Ok ()
     | Leaf (_, Not_Indexed, _, _) -> Ok ()
     | Leaf (_, (Left_Not_Indexed | Right_Not_Indexed), _, _) -> Error "Leaf: invalid indexing_rule"
-    | Internal (l, r, Indexed _, _, _) when indexed l && indexed r -> Ok ()
+    | Internal (l, r, Indexed i, _, _) ->
+        begin match index l, index r with
+          | None, _ -> Error "Internal: invalid Indexed"
+          | _, None -> Error "Internal: invalid Indeced"
+          | Some li, Some ri -> 
+              let open Int64 in
+              if (abs @@ sub li i = 1L) || (abs @@ sub ri i = 1L) then Ok ()
+              else Error "Internal: invalid indices"
+        end
     | Internal (l, _r, Left_Not_Indexed, _, _) when not @@ indexed l -> Ok ()
     | Internal (_l, r, Right_Not_Indexed, _, _) when not @@ indexed r -> Ok ()
     | Internal (_l, _r, Not_Indexed, _, _) -> Error "Internal: invalid indexing_rule"
@@ -636,7 +653,6 @@ end = struct
     | Extender (_, _, Not_Indexed, _, _) -> Ok ()
     | Extender (_, _, (Left_Not_Indexed | Right_Not_Indexed), _, _) -> Error "Bud: invalid indexing_rule"
     | Bud (_, Indexed _, _, _)  
-    | Internal (_, _, Indexed _, _, _)
     | Extender (_, _, Indexed _, _, _)  -> Error "Invalid Indexed"
     | Internal (_, _, Left_Not_Indexed, _, _) -> Error "Internal: invalid Left_Not_Indexed"
     | Internal (_, _, Right_Not_Indexed, _, _) -> Error "Internal: invalid Right_Not_Indexed"
@@ -1232,29 +1248,78 @@ let hash (Cursor (trail, node, context)) =
     | Extender (_, _, _, Hashed h, _) -> (vnode, h)
 
     (* hashing is necessary below *)
-    | Leaf (value, Not_Indexed, _, _) ->
+    | Leaf (value, _, Not_Hashed, _) ->
         let h = Hash.of_leaf value in
         (_Leaf (value, Not_Indexed, Hashed h, Not_Indexed_Any), h)
 
-    | Bud (Some underneath, Not_Indexed, _, _) ->
+    | Bud (Some underneath, _, Not_Hashed, _) ->
         let (node, h) = hash_aux underneath in
+        (_Bud (Some node, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+
+    | Bud (None, _, Not_Hashed, _) ->
+        (_Bud (None, Not_Indexed, Hashed Hash.of_empty_bud, Not_Indexed_Any), Hash.of_empty_bud)
+
+    | Internal (left, right, Left_Not_Indexed, Not_Hashed, _) -> (
+        let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
+        let h = Hash.of_internal_node hl hr in
+        (_Internal (left, right, Left_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+
+    | Internal (left, right, Right_Not_Indexed, Not_Hashed, _) -> (
+        let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
+        let h = Hash.of_internal_node hl hr in
+        (_Internal (left, right, Right_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+
+    | Extender (segment, underneath, _, Not_Hashed, _)  ->
+        let (underneath, h) = hash_aux underneath in
+        let h = Hash.of_extender segment h in
+        (_Extender (segment, underneath, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+    | Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed, _) -> assert false
+  in 
+  let (node, h) =  hash_aux node in
+  (_Cursor (trail, node, context), h)
+
+(*
+let commit (Cursor (trail, node, context)) =
+  let rec commit_aux : node -> (node * index) = function
+    | Disk (index, _) as n -> (n, index)
+    | View vnode -> 
+        let v, i = hash_aux' vnode in View v, i
+
+  and commit_aux' : view -> (view * index) = fun vnode -> 
+    match vnode with
+    (* easy case where it's already hashed *)
+    | Leaf (_, Indexed i, _, _) -> (vnode, i)
+    | Bud (_, Indexed i, _, _) -> (vnode, i)
+    | Internal (_, _, Indexed i, _, _)  -> (vnode, i)
+    | Extender (_, _, Indexed i, _, _) -> (vnode, i)
+
+    (* indexing is necessary below.  If required, the hash is also computed *)
+    | Leaf (value, Not_Indexed, h, _) ->
+        let h = match h with
+          | Not_Hashed -> Hash.of_leaf value 
+          | Hashed _ -> h
+        in
+        (_Leaf (value, Not_Indexed, h, Not_Indexed_Any), h)
+        
+    | Bud (Some underneath, Not_Indexed, _, _) ->
+        let (node, h) = commit_aux underneath in
         (_Bud (Some node, Not_Indexed, Hashed h, Not_Indexed_Any), h)
 
     | Bud (None, Not_Indexed, _, _) ->
         (_Bud (None, Not_Indexed, Hashed Hash.of_empty_bud, Not_Indexed_Any), Hash.of_empty_bud)
 
     | Internal (left, right, Left_Not_Indexed, _, _) -> (
-        let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
+        let (left, hl) = commit_aux left and (right, hr) = commit_aux right in
         let h = Hash.of_internal_node hl hr in
         (_Internal (left, right, Left_Not_Indexed, Hashed h, Not_Indexed_Any), h))
 
     | Internal (left, right, Right_Not_Indexed, _, _) -> (
-        let (left, hl) = hash_aux left and (right, hr) = hash_aux right in
+        let (left, hl) = commit_aux left and (right, hr) = commit_aux right in
         let h = Hash.of_internal_node hl hr in
         (_Internal (left, right, Right_Not_Indexed, Hashed h, Not_Indexed_Any), h))
 
     | Extender (segment, underneath, Not_Indexed, _, _)  ->
-        let (underneath, h) = hash_aux underneath in
+        let (underneath, h) = commit_aux underneath in
         let h = Hash.of_extender segment h in
         (_Extender (segment, underneath, Not_Indexed, Hashed h, Not_Indexed_Any), h)
     | Leaf (_, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
@@ -1265,8 +1330,9 @@ let hash (Cursor (trail, node, context)) =
         (_, _, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _) -> assert false
 
   in 
-  let (node, h) =  hash_aux node in
+  let (node, h) =  commit_aux node in
   (_Cursor (trail, node, context), h)
+*)
 
 let commit _ = failwith "not implemented"
 let snapshot _ _ _ = failwith "not implemented"
