@@ -163,118 +163,118 @@ end = struct
   print (h.hexdigest())
   *)
 
-    let hash_list xs = Blake2B_28.of_strings xs
+  let hash_list xs = Blake2B_28.of_strings xs
 
-    type t = string
+  type t = string
 
-    let to_string x = x
-    let of_string x = assert (String.length x = 56); x
+  let to_string x = x
+  let of_string x = assert (String.length x = 56); x
 
-    let set_last_bit0 s =
-      let len = String.length s in
-      if len <> 28 then failwithf "set_last_bit0: len=%d <> 28" len; 
-      let bs = Bytes.of_string s in
-      Bytes.unsafe_set bs 27 
-      @@ Char.chr @@ Char.code (Bytes.unsafe_get bs 27) land 0xfe;
-      Bytes.to_string bs
+  let set_last_bit0 s =
+    let len = String.length s in
+    if len <> 28 then failwithf "set_last_bit0: len=%d <> 28" len; 
+    let bs = Bytes.of_string s in
+    Bytes.unsafe_set bs 27 
+    @@ Char.chr @@ Char.code (Bytes.unsafe_get bs 27) land 0xfe;
+    Bytes.to_string bs
 
-    (* the hash of a leaf node with value v is taken as `H(0x00 || v)`, forcing the last
-      bit to 0, and followed by a 223 0's and a 1.
+  (* the hash of a leaf node with value v is taken as `H(0x00 || v)`, forcing the last
+    bit to 0, and followed by a 223 0's and a 1.
 
-       |<-      H(0x00 || v)        ->|
-       |                            |0|0...........................01|
+     |<-      H(0x00 || v)        ->|
+     |                            |0|0...........................01|
 
-    *)
-    let of_leaf v = 
-      of_string
-        (set_last_bit0 (hash_list [ "\000"; Value.to_string v])
-         ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
-
-    let of_value_from_leaf_hash h = String.sub h 0 28
-      
-    (* XXX correct? *)
-    let of_empty_bud = of_string (String.make 56 '\000')
-
-    (* the hash of a bud node is the hash of its child *)
-    let of_bud = function
-      | None -> of_empty_bud
-      | Some h -> h
-
-    (*
-       |<-     H(0x01 || l || h)    ->|
-       |                            |0|0...........................01|
-    *)
-
-    let of_internal_node l r =
-      of_string 
-      (set_last_bit0 (hash_list [ "\001"; l; r ])
+  *)
+  let of_leaf v = 
+    of_string
+      (set_last_bit0 (hash_list [ "\000"; Value.to_string v])
        ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
 
-    let segment_of_hash h =
-      let sides_of_char c = 
-        let c = Char.code c in
-        let f x = if c land x = 0 then Path.Left else Path.Right in
-        [f 128; f 64; f 32; f 16; f 8; f 4; f 2; f 1]
-      in
-      let rec f = function
-        | 28 -> []
-        | pos -> sides_of_char (String.unsafe_get h pos) @ f (pos+1)
-      in
-      let rec clean = function
-        | [] -> assert false
-        | Path.Right :: seg -> seg
-        | Path.Left :: seg -> clean seg
-      in
-      Path.of_side_list @@ clean @@ f 0
+  let of_value_from_leaf_hash h = String.sub h 0 28
 
-    let hash_of_segment seg =
-      let seg = (seg : Path.segment :> Path.side list) in
-      let len = List.length seg in
-      if len > 223 then failwith "segment is too long";
-      let head_zero_bits = 224 - len - 1 in
-      let head_zero_bytes = head_zero_bits / 8 in
-      let bytes = Bytes.make 28 '\000' in
-      let byte_pos = head_zero_bytes in
-      let bit_pos = head_zero_bits mod 8 in
-      let make_byte = function
-        | x1 :: x2 :: x3 :: x4 :: x5 :: x6 :: x7 :: x8 :: seg ->
-            let bit = function
-              | Path.Left -> 0
-              | Path.Right -> 1
-            in
-            let byte = 
-              (bit x1) lsl 7
-              + (bit x2) lsl 6
-              + (bit x3) lsl 5
-              + (bit x4) lsl 4
-              + (bit x5) lsl 3
-              + (bit x6) lsl 2
-              + (bit x7) lsl 1
-              + (bit x8) * 1
-            in
-            (Char.chr byte, seg)
-        | _ -> assert false
-      in
-      let rec fill_bytes byte_pos = function
-        | [] -> 
-            assert (byte_pos = 28);
-            Bytes.to_string bytes
-        | seg ->
-            let (c, seg) = make_byte seg in
-            Bytes.unsafe_set bytes byte_pos c;
-            let byte_pos' = byte_pos + 1 in
-            if byte_pos' > 28 then assert false; (* segment is too long *)
-            fill_bytes byte_pos' seg
-      in
-      fill_bytes byte_pos (List.init bit_pos (fun _ -> Path.Left) @ Path.Right :: seg)
+  (* XXX correct? *)
+  let of_empty_bud = of_string (String.make 56 '\000')
 
-    (*
-       |<-                       H_child                           ->|
-       |            224bits           |0........01|<- segment bits ->|
-    *)
-    let of_extender seg h =
-      of_string (String.sub h 0 28 ^ hash_of_segment seg)
-  end
+  (* the hash of a bud node is the hash of its child *)
+  let of_bud = function
+    | None -> of_empty_bud
+    | Some h -> h
+
+  (*
+     |<-     H(0x01 || l || h)    ->|
+     |                            |0|0...........................01|
+  *)
+
+  let of_internal_node l r =
+    of_string 
+    (set_last_bit0 (hash_list [ "\001"; l; r ])
+     ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
+
+  let segment_of_hash h =
+    let sides_of_char c = 
+      let c = Char.code c in
+      let f x = if c land x = 0 then Path.Left else Path.Right in
+      [f 128; f 64; f 32; f 16; f 8; f 4; f 2; f 1]
+    in
+    let rec f = function
+      | 28 -> []
+      | pos -> sides_of_char (String.unsafe_get h pos) @ f (pos+1)
+    in
+    let rec clean = function
+      | [] -> assert false
+      | Path.Right :: seg -> seg
+      | Path.Left :: seg -> clean seg
+    in
+    Path.of_side_list @@ clean @@ f 0
+
+  let hash_of_segment seg =
+    let seg = (seg : Path.segment :> Path.side list) in
+    let len = List.length seg in
+    if len > 223 then failwith "segment is too long";
+    let head_zero_bits = 224 - len - 1 in
+    let head_zero_bytes = head_zero_bits / 8 in
+    let bytes = Bytes.make 28 '\000' in
+    let byte_pos = head_zero_bytes in
+    let bit_pos = head_zero_bits mod 8 in
+    let make_byte = function
+      | x1 :: x2 :: x3 :: x4 :: x5 :: x6 :: x7 :: x8 :: seg ->
+          let bit = function
+            | Path.Left -> 0
+            | Path.Right -> 1
+          in
+          let byte = 
+            (bit x1) lsl 7
+            + (bit x2) lsl 6
+            + (bit x3) lsl 5
+            + (bit x4) lsl 4
+            + (bit x5) lsl 3
+            + (bit x6) lsl 2
+            + (bit x7) lsl 1
+            + (bit x8) * 1
+          in
+          (Char.chr byte, seg)
+      | _ -> assert false
+    in
+    let rec fill_bytes byte_pos = function
+      | [] -> 
+          assert (byte_pos = 28);
+          Bytes.to_string bytes
+      | seg ->
+          let (c, seg) = make_byte seg in
+          Bytes.unsafe_set bytes byte_pos c;
+          let byte_pos' = byte_pos + 1 in
+          if byte_pos' > 28 then assert false; (* segment is too long *)
+          fill_bytes byte_pos' seg
+    in
+    fill_bytes byte_pos (List.init bit_pos (fun _ -> Path.Left) @ Path.Right :: seg)
+
+  (*
+     |<-                       H_child                           ->|
+     |            224bits           |0........01|<- segment bits ->|
+  *)
+  let of_extender seg h =
+    of_string (String.sub h 0 28 ^ hash_of_segment seg)
+end
 
 module KeyValueStore : sig
   (** Key-value store for leaf data using reference counting
