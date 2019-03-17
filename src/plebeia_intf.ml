@@ -69,9 +69,9 @@ module type S = sig
   (** Snapshots a subtree at segment and place a soft link to it at
       another segment location. *)
   
-  val commit: cursor -> (cursor * index * hash)
-  (** Commits the change made in a cursor to disk. Returns the new root
-      hash. *)
+  val commit: cursor -> (cursor * hash)
+  (** Commits the change made in a cursor to disk. 
+      The cursor must point to a root. Returns the new root hash. *)
   
   val hash: cursor -> (cursor * hash)
   (** Computes the hash of the cursor without committing. *)

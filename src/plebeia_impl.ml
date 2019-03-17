@@ -114,6 +114,7 @@ module Hash : sig
   val of_string : string -> t
     
   val of_leaf : Value.t -> t
+
   val of_empty_bud : t
   val of_bud : t option -> t
   val of_internal_node : t -> t -> t
@@ -189,6 +190,8 @@ end = struct
         (set_last_bit0 (hash_list [ "\000"; Value.to_string v])
          ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
 
+    let of_value_from_leaf_hash h = String.sub h 0 28
+      
     (* XXX correct? *)
     let of_empty_bud = of_string (String.make 56 '\000')
 
@@ -285,7 +288,7 @@ module KeyValueStore : sig
 
   (** Inserts a key in the table, or update the reference
       count if the key is already present. *)
-  val insert   : t -> Value.t -> Hash.t
+  val insert   : t -> Hash.t -> Value.t -> unit
 
   (** Gets a value from the table, returns None if the key
       is not present. *)
@@ -296,26 +299,32 @@ module KeyValueStore : sig
   val decr     : t -> Hash.t -> unit
 
 end = struct
-  type t = (Hash.t, Value.t * int) Hashtbl.t
+  type t = (string, Value.t * int) Hashtbl.t
   let make () = Hashtbl.create 0
 
-  let hash_hash _ = assert false
+  (* Only the first 28 significant bytes are used *)
+  let value_hash h = String.sub (Hash.to_string h) 0 28
 
-  let insert table value =
-    let h = hash_hash @@ Value.to_string value in (* XXX correct? *)
+  let insert table h v =
+    let h = value_hash h in
     match Hashtbl.find_opt table h with
-    | None -> Hashtbl.add table h (value, 1) ; h
-    | Some (_, count) -> Hashtbl.replace table h (value, count+1) ; h
+    | None -> Hashtbl.add table h (v, 1)
+    | Some (v', _) when v <> v' -> assert false (* XXX unfortunate hash collision! *)
+    | Some (_, count) -> Hashtbl.replace table h (v, count+1)
+        
   let get_opt table h =
+    let h = value_hash h in
     match Hashtbl.find_opt table h with
     | None -> None
     | Some (v, _) -> Some v
+
   let decr table h =
+    let h = value_hash h in
     match Hashtbl.find_opt table h with
     | None -> Printf.printf "none\n" ; ()
     | Some (_, 1) -> Printf.printf "some 1\n" ; Hashtbl.remove table h
     | Some (v, count) -> Printf.printf "some %d\n" count ;
-      Hashtbl.replace table h (v, count-1)
+        Hashtbl.replace table h (v, count-1)
 end
 
 type error = string
@@ -1303,6 +1312,7 @@ let hash (Cursor (trail, node, context)) =
   let (node, h) =  hash_aux node in
   (_Cursor (trail, node, context), h)
 
+(* XXX Operations are NOT atomic at all *)
 let commit (Cursor (trail, node, context)) =
   let rec commit_aux : node -> (node * index * hash) = function
     | Disk (index, wit) ->
@@ -1327,6 +1337,8 @@ let commit (Cursor (trail, node, context)) =
           | Hashed h -> h
         in
         let i = Context.new_index context in
+        (* XXX KVS is updated only at commit for now.  Is it correct? *)
+        KeyValueStore.insert context.leaf_table h value;
         (_Leaf (value, Indexed i, Hashed h, Not_Indexed_Any), i, h)
         
     | Bud (Some underneath, Not_Indexed, h, _) ->
@@ -1391,9 +1403,14 @@ let commit (Cursor (trail, node, context)) =
        Extender (_, _, Indexed _, Not_Hashed, _)) -> assert false
 
   in 
-  let (node, i, h) =  commit_aux node in
-  (_Cursor (trail, node, context), i, h)
+  let (node, _, h) =  commit_aux node in
+  (_Cursor (trail, node, context), h)
 
+let commit (Cursor (trail, _, _) as c) =
+  match trail with
+  | Top -> commit c
+  | _ -> failwith "commit: cursor must point to a root"
+           
 let snapshot _ _ _ = failwith "not implemented"
 let update _ _ _ = failwith "not implemented"
 let gc ~src:_ _ ~dest:_ = failwith "not implemented"

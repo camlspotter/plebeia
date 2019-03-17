@@ -189,7 +189,7 @@ let random_insertions st sz =
 
   (* hash and commit *)
   let _c, _ = hash c in
-  let c, _, _ = commit c in
+  let c, _ = commit c in
 
   (* deletion *)
   let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
@@ -198,7 +198,7 @@ let random_insertions st sz =
         let Cursor (_, n, context) as c = match delete c seg with 
           | Ok c -> 
               let _c, _ = hash c in
-              let c, _, _ = commit c in
+              let c, _ = commit c in
               c
           | Error e -> 
               to_file "deletion.dot" @@ Debug.dot_of_cursor c;
