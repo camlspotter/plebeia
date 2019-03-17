@@ -322,6 +322,7 @@ type error = string
 type value = Value.t
 type segment = Path.segment
 type hash = Hash.t
+type index = int64
 
 type indexed_implies_hashed =
   | Indexed_and_Hashed
@@ -393,6 +394,11 @@ module Context = struct
       roots_table = Hashtbl.create 1 ;
       fd = fd ;
     }
+
+  let new_index c =
+    let i = Int64.add c.length 1L in
+    c.length <- i;
+    i
     
   let free { fd ; _ } = Unix.close fd
 end
@@ -679,10 +685,18 @@ end = struct
     | Extender (_, _, _, Not_Hashed, _) -> Ok ()
     | _ -> Error "Invalid Hashed"
 
+  let view_index_and_hash_invariant : view -> (unit, error) result = function
+    | Bud (_, Indexed _, Not_Hashed, _)
+    | Leaf (_, Indexed _, Not_Hashed, _)
+    | Internal (_, _, Indexed _, Not_Hashed, _)
+    | Extender (_, _, Indexed _, Not_Hashed, _) -> Error "View: Indexed with Not_Hashed"
+    | _ -> Ok ()
+
   let view_invariant : view -> (unit, error) result = fun v ->
     view_shape_invariant v >>= fun () ->
     view_indexing_rule_invariant v >>= fun () ->
-    view_hashed_is_transitive_invariant v
+    view_hashed_is_transitive_invariant v >>= fun () ->
+    view_index_and_hash_invariant v
 
   let check_view v = 
     match view_invariant v with
@@ -793,9 +807,18 @@ end = struct
     | Extended (_, _, Modified_Left, _) -> Ok () 
     | Extended (_, _, Modified_Right, _) -> Error "Budded: invalid Modified_Right"
 
+  let trail_index_and_hash_invariant = function
+    | Top -> Ok ()
+    | Left (_, _, Unmodified (Indexed _, Not_Hashed), _)
+    | Right (_, _, Unmodified (Indexed _, Not_Hashed) , _)
+    | Budded (_, Unmodified (Indexed _, Not_Hashed), _)
+    | Extended (_, _, Unmodified (Indexed _, Not_Hashed), _) -> Error "Trail: Indexed with Not_Hashed"
+    | _ -> Ok ()
+
   let trail_invariant t = 
     trail_shape_invariant t >>= fun () ->
-    trail_modified_rule_invariant t
+    trail_modified_rule_invariant t >>= fun () ->
+    trail_index_and_hash_invariant t
 
   let check_trail t = 
     match trail_invariant t with
@@ -1254,6 +1277,7 @@ let hash (Cursor (trail, node, context)) =
 
     | Bud (Some underneath, _, Not_Hashed, _) ->
         let (node, h) = hash_aux underneath in
+        let h = Hash.of_bud (Some h) in
         (_Bud (Some node, Not_Indexed, Hashed h, Not_Indexed_Any), h)
 
     | Bud (None, _, Not_Hashed, _) ->
@@ -1273,68 +1297,103 @@ let hash (Cursor (trail, node, context)) =
         let (underneath, h) = hash_aux underneath in
         let h = Hash.of_extender segment h in
         (_Extender (segment, underneath, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+ 
     | Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed, _) -> assert false
   in 
   let (node, h) =  hash_aux node in
   (_Cursor (trail, node, context), h)
 
-(*
 let commit (Cursor (trail, node, context)) =
-  let rec commit_aux : node -> (node * index) = function
-    | Disk (index, _) as n -> (n, index)
+  let rec commit_aux : node -> (node * index * hash) = function
+    | Disk (index, wit) ->
+        let v, i, h = commit_aux' (load_node context index wit) in
+        View v, i, h
     | View vnode -> 
-        let v, i = hash_aux' vnode in View v, i
+        let v, i, h = commit_aux' vnode in
+        View v, i, h
 
-  and commit_aux' : view -> (view * index) = fun vnode -> 
+  and commit_aux' : view -> (view * index * hash) = fun vnode -> 
     match vnode with
-    (* easy case where it's already hashed *)
-    | Leaf (_, Indexed i, _, _) -> (vnode, i)
-    | Bud (_, Indexed i, _, _) -> (vnode, i)
-    | Internal (_, _, Indexed i, _, _)  -> (vnode, i)
-    | Extender (_, _, Indexed i, _, _) -> (vnode, i)
+    (* easy case where it's already commited *)
+    | Leaf (_, Indexed i, Hashed h, _) -> (vnode, i, h)
+    | Bud (_, Indexed i, Hashed h, _) -> (vnode, i, h)
+    | Internal (_, _, Indexed i, Hashed h, _)  -> (vnode, i, h)
+    | Extender (_, _, Indexed i, Hashed h, _) -> (vnode, i, h)
 
     (* indexing is necessary below.  If required, the hash is also computed *)
     | Leaf (value, Not_Indexed, h, _) ->
         let h = match h with
           | Not_Hashed -> Hash.of_leaf value 
-          | Hashed _ -> h
+          | Hashed h -> h
         in
-        (_Leaf (value, Not_Indexed, h, Not_Indexed_Any), h)
+        let i = Context.new_index context in
+        (_Leaf (value, Indexed i, Hashed h, Not_Indexed_Any), i, h)
         
-    | Bud (Some underneath, Not_Indexed, _, _) ->
-        let (node, h) = commit_aux underneath in
-        (_Bud (Some node, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+    | Bud (Some underneath, Not_Indexed, h, _) ->
+        let (node, _, h') = commit_aux underneath in
+        let h = match h with
+          | Hashed h -> assert (h = h'); h
+          | _ -> Hash.of_bud (Some h')
+        in
+        let i = Context.new_index context in
+        (_Bud (Some node, Indexed i, Hashed h, Not_Indexed_Any), i, h)
 
-    | Bud (None, Not_Indexed, _, _) ->
-        (_Bud (None, Not_Indexed, Hashed Hash.of_empty_bud, Not_Indexed_Any), Hash.of_empty_bud)
+    | Bud (None, Not_Indexed, h, _) ->
+        begin match h with
+          | Hashed h -> assert (h = Hash.of_empty_bud)
+          | _ -> ()
+        end;
+        let i = Context.new_index context in
+        (_Bud (None, Indexed i, Hashed Hash.of_empty_bud, Not_Indexed_Any), i, Hash.of_empty_bud)
 
-    | Internal (left, right, Left_Not_Indexed, _, _) -> (
-        let (left, hl) = commit_aux left and (right, hr) = commit_aux right in
-        let h = Hash.of_internal_node hl hr in
-        (_Internal (left, right, Left_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+    | Internal (left, right, Left_Not_Indexed, h, _) ->
+        let (right, _ir, hr) = commit_aux right in
+        let (left, _il, hl) = commit_aux left in (* This one must be the latter *)
+        let h = match h with
+          | Not_Hashed -> Hash.of_internal_node hl hr
+          | Hashed h -> h
+        in
+        let i = Context.new_index context in
+        (_Internal (left, right, Indexed i, Hashed h, Not_Indexed_Any), i, h)
 
-    | Internal (left, right, Right_Not_Indexed, _, _) -> (
-        let (left, hl) = commit_aux left and (right, hr) = commit_aux right in
-        let h = Hash.of_internal_node hl hr in
-        (_Internal (left, right, Right_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+    | Internal (left, right, Right_Not_Indexed, h, _) ->
+        let (left, _il, hl) = commit_aux left in
+        let (right, _ir, hr) = commit_aux right in (* This one must be the latter *)
+        let h = match h with
+          | Not_Hashed -> Hash.of_internal_node hl hr
+          | Hashed h -> h
+        in
+        let i = Context.new_index context in
+        (_Internal (left, right, Indexed i, Hashed h, Not_Indexed_Any), i, h)
 
-    | Extender (segment, underneath, Not_Indexed, _, _)  ->
-        let (underneath, h) = commit_aux underneath in
-        let h = Hash.of_extender segment h in
-        (_Extender (segment, underneath, Not_Indexed, Hashed h, Not_Indexed_Any), h)
-    | Leaf (_, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
-      Bud (None, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
-      Bud (Some _, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _)|
-      Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed, _)|
-      Extender
-        (_, _, (Left_Not_Indexed|Right_Not_Indexed|Indexed _), Not_Hashed, _) -> assert false
+    | Extender (segment, underneath, Not_Indexed, h, _)  ->
+        let (underneath, _i, h') = commit_aux underneath in
+        let h = match h with
+          | Hashed h -> h
+          | Not_Hashed -> Hash.of_extender segment h'
+        in
+        let i = Context.new_index context in
+        (_Extender (segment, underneath, Indexed i, Hashed h, Not_Indexed_Any), i, h)
+        
+    | (Leaf (_, Left_Not_Indexed, _, _)|
+       Leaf (_, Right_Not_Indexed, _, _)|
+       Bud (Some _, Left_Not_Indexed, _, _)|
+       Bud (Some _, Right_Not_Indexed, _, _)|
+       Bud (None, Left_Not_Indexed, _, _)|
+       Bud (None, Right_Not_Indexed, _, _)|
+       Internal (_, _, Not_Indexed, _, _)|
+       Extender (_, _, Left_Not_Indexed, _, _)|
+       Extender (_, _, Right_Not_Indexed, _, _)) -> assert false
+
+    | (Leaf (_, Indexed _, Not_Hashed, _)|Bud (None, Indexed _, Not_Hashed, _)|
+       Bud (Some _, Indexed _, Not_Hashed, _)|
+       Internal (_, _, Indexed _, Not_Hashed, _)|
+       Extender (_, _, Indexed _, Not_Hashed, _)) -> assert false
 
   in 
-  let (node, h) =  commit_aux node in
-  (_Cursor (trail, node, context), h)
-*)
+  let (node, i, h) =  commit_aux node in
+  (_Cursor (trail, node, context), i, h)
 
-let commit _ = failwith "not implemented"
 let snapshot _ _ _ = failwith "not implemented"
 let update _ _ _ = failwith "not implemented"
 let gc ~src:_ _ ~dest:_ = failwith "not implemented"

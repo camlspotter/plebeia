@@ -187,8 +187,9 @@ let random_insertions st sz =
       | `Subtree -> assert (match subtree c seg with Ok _ -> true | _ -> false)
     ) bindings;
 
-  (* hash *)
-  let c, _ = hash c in
+  (* hash and commit *)
+  let _c, _ = hash c in
+  let c, _, _ = commit c in
 
   (* deletion *)
   let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
@@ -196,7 +197,8 @@ let random_insertions st sz =
     List.fold_left (fun (c, dumb) (seg, _) ->
         let Cursor (_, n, context) as c = match delete c seg with 
           | Ok c -> 
-              let c, _ = hash c in
+              let _c, _ = hash c in
+              let c, _, _ = commit c in
               c
           | Error e -> 
               to_file "deletion.dot" @@ Debug.dot_of_cursor c;
