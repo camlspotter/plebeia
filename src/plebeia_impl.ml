@@ -190,8 +190,6 @@ end = struct
       (set_last_bit0 (hash_list [ "\000"; Value.to_string v])
        ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
 
-  let of_value_from_leaf_hash h = String.sub h 0 28
-
   (* XXX correct? *)
   let of_empty_bud = of_string (String.make 56 '\000')
 
