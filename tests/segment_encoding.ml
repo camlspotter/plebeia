@@ -2,12 +2,12 @@ open Plebeia.Plebeia_impl
 open Plebeia.Plebeia_impl.Hash
 open Test_utils
 
-let bit_slow_hash_of_segment seg =
+let bit_slow_encode_segment seg =
   let open Path in
   let seg = (seg : segment :> side list) in
   let len = List.length seg in
-  if len > 223 then failwith "segment is too long";
-  let head_zero_bits = 224 - len - 1 in
+  if len > 222 then failwith "segment is too long";
+  let head_zero_bits = 224 - len - 2 in
   let head_zero_bytes = head_zero_bits / 8 in
   let bytes = Bytes.make 28 '\000' in
   let byte_pos = head_zero_bytes in
@@ -29,16 +29,16 @@ let bit_slow_hash_of_segment seg =
         if byte_pos' > 28 then assert false; (* segment is too long *)
         fill_bytes byte_pos' 0 seg
   in
-  fill_bytes byte_pos bit_pos (Right :: seg)
+  fill_bytes byte_pos bit_pos (Right :: seg @ [Right] : side list) (* XXX inefficient *)
 
-let slow_hash_of_segment (seg : Path.segment) =
+let slow_encode_segment (seg : Path.segment) =
   let open Path in
   let seg = (seg :> side list) in
   let len = List.length seg in
-  if len > 223 then failwith "segment is too long";
-  let head_zero_bits = 224 - len - 1 in
+  if len > 222 then failwith "segment is too long";
+  let head_zero_bits = 224 - len - 2 in
   let rec make = function
-    | 0 -> Right :: seg
+    | 0 -> Right :: seg @ [Right] (* XXX inefficient *)
     | n -> Left :: make (n-1)
   in
   let rec chars_of_seg = function
@@ -65,34 +65,33 @@ let slow_hash_of_segment (seg : Path.segment) =
   List.iter (Buffer.add_char b) @@ chars_of_seg @@ make head_zero_bits;
   Buffer.contents b
 
-let hash_test seg =
-  let h = hash_of_segment seg in
-  let h' = slow_hash_of_segment seg in
-  let h'' = bit_slow_hash_of_segment seg in
+let encoding_test seg =
+  let h = encode_segment seg in
+  let h' = slow_encode_segment seg in
+  let h'' = bit_slow_encode_segment seg in
   assert (h = h');
   assert (h = h'');
-  assert (segment_of_hash h = seg)
+  assert (decode_segment h = seg)
 
 let test_correctness st =
   for _ = 1 to 1000000 do
     let seg = random_segment st in
-    hash_test seg
+    encoding_test seg
   done
 
 let test_perf st =
   prerr_endline "Making 1000000 random segments...";
   let segs = List.init 1000000 (fun _ -> random_segment ~length:100 st) in
   prerr_endline "done.";
-  let (_, t1) = timed (fun () -> List.iter (fun s -> ignore @@ hash_of_segment s) segs) in
-  let (_, t2) = timed (fun () -> List.iter (fun s -> ignore @@ slow_hash_of_segment s) segs) in
-
-  let (_, t3) = timed (fun () -> List.iter (fun s -> ignore @@ bit_slow_hash_of_segment s) segs) in
-  Format.eprintf "hash_of_segment           of 1000000: %f secs@." t1;
-  Format.eprintf "slow_hash_of_segment      of 1000000: %f secs@." t2;
-  Format.eprintf "bit_slow_hash_of_segment  of 1000000: %f secs@." t3;
-  Format.eprintf "hash_of_segment           of 1000000: %f secs@." t1;
-  Format.eprintf "slow_hash_of_segment      of 1000000: %f secs@." t2;
-  Format.eprintf "bit_slow_hash_of_segment  of 1000000: %f secs@." t3
+  let (_, _t3) = timed (fun () -> List.iter (fun s -> ignore @@ bit_slow_encode_segment s) segs) in
+  let (_, _t1) = timed (fun () -> List.iter (fun s -> ignore @@ encode_segment s) segs) in
+  let (_, _t2) = timed (fun () -> List.iter (fun s -> ignore @@ slow_encode_segment s) segs) in
+  let (_, t3) = timed (fun () -> List.iter (fun s -> ignore @@ bit_slow_encode_segment s) segs) in
+  let (_, t1) = timed (fun () -> List.iter (fun s -> ignore @@ encode_segment s) segs) in
+  let (_, t2) = timed (fun () -> List.iter (fun s -> ignore @@ slow_encode_segment s) segs) in
+  Format.eprintf "encode_segment           of 1000000: %f secs@." t1;
+  Format.eprintf "slow_encode_segment      of 1000000: %f secs@." t2;
+  Format.eprintf "bit_slow_encode_segment  of 1000000: %f secs@." t3
 
 let test st =
   test_correctness st;

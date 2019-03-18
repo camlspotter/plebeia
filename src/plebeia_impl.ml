@@ -4,6 +4,35 @@
     to maximize correctness and cares second about efficiency. Extracting
     and efficient C program from F* should be explored. *)
 
+(* Hash
+
+     leaf      |<-      H(0x00 || v)        ->|
+               |                              |0...........................01|
+
+     bud       |<------------------ hash of its child ---------------------->|
+
+     empty bud |0000000000000000000000000000000000000000000000000000000000000|
+  
+     internal  |<-     H(0x01 || l || h)    ->|
+               |                            |0|0...........................01|
+  
+     extender  |<-                       H_child                           ->|
+               | The first 224bits of H_child |0*1|<- segment bits ------->|1|
+
+
+  Storage
+
+               |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+     ----------------------------------------------------------------------------------------
+     internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->|
+     extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>|
+     leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell)
+     bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 33 ------------------------->|
+     empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 33 ------------------------->|
+     
+     index of the child must be < 2^32 - 33
+*)
+     
 open Error
 
 let failwithf fmt = Printf.ksprintf failwith fmt
@@ -47,7 +76,7 @@ module Path : sig
   val of_string : string -> segment option
   (** Parse the string representation of a segment, e.g. "LLRLLRL" *)
 
-  val (@) : segment -> segment -> segment
+  val concat : segment -> segment -> segment
 
 end = struct
   type side = Left | Right
@@ -59,7 +88,7 @@ end = struct
     | h::t -> Some (h,t)
   let empty = []
 
-  let (@) = (@)
+  let concat = (@)
 
   let to_string s =
     String.concat "" (List.map (function Left -> "L" | Right -> "R") s)
@@ -113,15 +142,27 @@ module Hash : sig
 
   val of_string : string -> t
     
-  val of_leaf : Value.t -> t
+  type value_hash = private string
+  (** The first 224 bits of the leaf hash, used in KVS and storage *)
 
+  val string_of_value_hash : value_hash -> string
+  val value_hash_of_string : string -> value_hash
+
+  val of_leaf : Value.t -> t
+  val to_value_hash : t -> value_hash
+  (** Note: no check whether the hash is for the leaf *)
+    
+  val of_value_hash : value_hash -> t
+  (** Make a hash of leaf from its first 224bits recorded in the storage *)
+    
   val of_empty_bud : t
   val of_bud : t option -> t
   val of_internal_node : t -> t -> t
   val of_extender : Path.segment -> t -> t
+  val of_extender' : segment_code: string -> t -> t
     
-  val hash_of_segment : Path.segment -> string
-  val segment_of_hash : string -> Path.segment
+  val encode_segment : Path.segment -> string
+  val decode_segment : string -> Path.segment
 end = struct
 
   module Blake2B_28 = struct
@@ -170,25 +211,42 @@ end = struct
   let to_string x = x
   let of_string x = assert (String.length x = 56); x
 
-  let set_last_bit0 s =
+  let _reset_last_bit s =
     let len = String.length s in
-    if len <> 28 then failwithf "set_last_bit0: len=%d <> 28" len; 
+    if len <> 28 then failwithf "reset_last_bit: len=%d <> 28" len; 
     let bs = Bytes.of_string s in
     Bytes.unsafe_set bs 27 
     @@ Char.chr @@ Char.code (Bytes.unsafe_get bs 27) land 0xfe;
     Bytes.to_string bs
 
-  (* the hash of a leaf node with value v is taken as `H(0x00 || v)`, forcing the last
-    bit to 0, and followed by a 223 0's and a 1.
+  let reset_last_2bits s =
+    let len = String.length s in
+    if len <> 28 then failwithf "reset_last_2bits: len=%d <> 28" len; 
+    let bs = Bytes.of_string s in
+    Bytes.unsafe_set bs 27 
+    @@ Char.chr @@ Char.code (Bytes.unsafe_get bs 27) land 0xfc;
+    Bytes.to_string bs
+
+  (* the hash of a leaf node with value v is taken as `H(0x00 || v)`, followed by a 223 0's and a 1.
 
      |<-      H(0x00 || v)        ->|
-     |                            |0|0...........................01|
+     |                              |0...........................01|
 
   *)
-  let of_leaf v = 
+
+  type value_hash = string
+  let value_hash_of_string s = assert (String.length s = 28); s
+  let string_of_value_hash s = s
+      
+  let of_value_hash h =
     of_string
-      (set_last_bit0 (hash_list [ "\000"; Value.to_string v])
-       ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
+    (h ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
+
+  let to_value_hash h = String.sub h 0 28 
+
+  let of_leaf v =
+    of_value_hash @@ hash_list [ "\000"; Value.to_string v]
+      
 
   (* XXX correct? *)
   let of_empty_bud = of_string (String.make 56 '\000')
@@ -200,22 +258,26 @@ end = struct
 
   (*
      |<-     H(0x01 || l || h)    ->|
-     |                            |0|0...........................01|
+     |                           |00|0...........................01|
   *)
-
   let of_internal_node l r =
-    of_string 
-    (set_last_bit0 (hash_list [ "\001"; l; r ])
-     ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
+    of_value_hash @@ reset_last_2bits @@ hash_list [ "\001"; l; r ]
 
-  let segment_of_hash h =
+  let decode_segment h =
+    assert (String.length h = 28);
     let sides_of_char c = 
       let c = Char.code c in
       let f x = if c land x = 0 then Path.Left else Path.Right in
       [f 128; f 64; f 32; f 16; f 8; f 4; f 2; f 1]
     in
+    let sides_of_char_last c = 
+      let c = Char.code c in
+      let f x = if c land x = 0 then Path.Left else Path.Right in
+      [f 128; f 64; f 32; f 16; f 8; f 4; f 2]
+    in
     let rec f = function
       | 28 -> []
+      | 27 as pos -> sides_of_char_last (String.unsafe_get h pos) @ f (pos+1)
       | pos -> sides_of_char (String.unsafe_get h pos) @ f (pos+1)
     in
     let rec clean = function
@@ -225,11 +287,11 @@ end = struct
     in
     Path.of_side_list @@ clean @@ f 0
 
-  let hash_of_segment seg =
+  let encode_segment seg =
     let seg = (seg : Path.segment :> Path.side list) in
     let len = List.length seg in
-    if len > 223 then failwith "segment is too long";
-    let head_zero_bits = 224 - len - 1 in
+    if len > 222 then failwith "segment is too long";
+    let head_zero_bits = 224 - len - 2 in
     let head_zero_bytes = head_zero_bits / 8 in
     let bytes = Bytes.make 28 '\000' in
     let byte_pos = head_zero_bytes in
@@ -264,14 +326,17 @@ end = struct
           if byte_pos' > 28 then assert false; (* segment is too long *)
           fill_bytes byte_pos' seg
     in
-    fill_bytes byte_pos (List.init bit_pos (fun _ -> Path.Left) @ Path.Right :: seg)
+    fill_bytes byte_pos (List.init bit_pos (fun _ -> Path.Left) @ Path.Right :: seg @ [ Path.Right ]) (* XXX <= inefficient! *)
 
   (*
      |<-                       H_child                           ->|
-     |            224bits           |0........01|<- segment bits ->|
-  *)
+     | The first 224bits of H_child |0......01|<- segment bits ->|1|
+  *) 
   let of_extender seg h =
-    of_string (String.sub h 0 28 ^ hash_of_segment seg)
+    of_string (String.sub h 0 28 ^ encode_segment seg)
+
+  let of_extender' ~segment_code h =
+    of_string (String.sub h 0 28 ^ segment_code)
 end
 
 module KeyValueStore : sig
@@ -286,38 +351,32 @@ module KeyValueStore : sig
 
   (** Inserts a key in the table, or update the reference
       count if the key is already present. *)
-  val insert   : t -> Hash.t -> Value.t -> unit
+  val insert   : t -> Hash.value_hash -> Value.t -> unit
 
   (** Gets a value from the table, returns None if the key
       is not present. *)
-  val get_opt  : t -> Hash.t -> Value.t option
+  val get_opt  : t -> Hash.value_hash -> Value.t option
 
   (** Decrements the reference counter of a key in the table.
       Deletes the key if the counter falls to 0. *)
-  val decr     : t -> Hash.t -> unit
+  val decr     : t -> Hash.value_hash -> unit
 
 end = struct
-  type t = (string, Value.t * int) Hashtbl.t
+  type t = (Hash.value_hash, Value.t * int) Hashtbl.t
   let make () = Hashtbl.create 0
 
-  (* Only the first 28 significant bytes are used *)
-  let value_hash h = String.sub (Hash.to_string h) 0 28
-
   let insert table h v =
-    let h = value_hash h in
     match Hashtbl.find_opt table h with
     | None -> Hashtbl.add table h (v, 1)
     | Some (v', _) when v <> v' -> assert false (* XXX unfortunate hash collision! *)
     | Some (_, count) -> Hashtbl.replace table h (v, count+1)
         
   let get_opt table h =
-    let h = value_hash h in
     match Hashtbl.find_opt table h with
     | None -> None
     | Some (v, _) -> Some v
 
   let decr table h =
-    let h = value_hash h in
     match Hashtbl.find_opt table h with
     | None -> Printf.printf "none\n" ; ()
     | Some (_, 1) -> Printf.printf "some 1\n" ; Hashtbl.remove table h
@@ -329,7 +388,7 @@ type error = string
 type value = Value.t
 type segment = Path.segment
 type hash = Hash.t
-type index = int64
+type index = int64 (* XXX since the size of the index in the storage is 32bits, we should use uint32 *)
 
 type indexed_implies_hashed =
   | Indexed_and_Hashed
@@ -358,6 +417,7 @@ type indexing_rule =
      disk, at least one of the child can be written adjacent to its parent. *)
 
 type extender_witness =
+  | Maybe_Extender
   | Not_Extender  
   | Is_Extender   
 
@@ -467,6 +527,7 @@ module PrivateNode : sig
   val indexed : node -> bool
   val index : node -> int64 option
   val hashed : node -> bool
+  val hash_of_view : view -> Hash.t option
 
   val _Internal : node * node
                  * indexing_rule
@@ -620,7 +681,8 @@ end = struct
     | Bud (Some (View (Extender _)), _, _, _) -> Ok ()
     | Extender (seg, _, _, _, _) when Path.is_empty seg -> Error "Extender: cannot have empty segment"
     | Extender (_, Disk (_, Not_Extender), _, _, _) -> Ok ()
-    | Extender (_, Disk (_, Is_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
+    | Extender (_, Disk (_, Is_Extender), _, _, _) -> Error "Extender: cannot have Disk with Is_Extender"
+    | Extender (_, Disk (_, Maybe_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
     | Extender (_, View (Extender _), _, _, _) -> Error "Extender: cannot have Extender"
     | Extender (_, View _, _, _, _) -> Ok ()
     | Leaf _ -> Ok ()
@@ -656,7 +718,7 @@ end = struct
           | _, None -> Error "Internal: invalid Indeced"
           | Some li, Some ri -> 
               let open Int64 in
-              if (abs @@ sub li i = 1L) || (abs @@ sub ri i = 1L) then Ok ()
+              if (sub i li = 1L) || (sub i ri = 1L) then Ok ()
               else Error "Internal: invalid indices"
         end
     | Internal (l, _r, Left_Not_Indexed, _, _) when not @@ indexed l -> Ok ()
@@ -680,6 +742,16 @@ end = struct
     | View (Internal (_, _, _, Not_Hashed, _)) -> false
     | View (Extender (_, _, _, Hashed _, _)) -> true
     | View (Extender (_, _, _, Not_Hashed, _)) -> false
+
+  let hash_of_view = function
+    | (Bud (_, _, Hashed h, _)) -> Some h
+    | (Bud (_, _, Not_Hashed, _)) -> None
+    | (Leaf (_, _, Hashed h, _)) -> Some h
+    | (Leaf (_, _, Not_Hashed, _)) -> None
+    | (Internal (_, _, _, Hashed h, _)) -> Some h
+    | (Internal (_, _, _, Not_Hashed, _)) -> None
+    | (Extender (_, _, _, Hashed h, _)) -> Some h
+    | (Extender (_, _, _, Not_Hashed, _)) -> None
 
   let view_hashed_is_transitive_invariant : view -> (unit, error) result = function
     | Leaf _ -> Ok ()
@@ -935,6 +1007,177 @@ end
 
 include PrivateNode
 
+module Storage = struct
+  (** node storage *)
+
+  module C = Cstruct.LE (* XXX dunno which tezos uses... *)
+
+  (*           |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+     internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->|
+     extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>|
+     leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (use the previous cell)
+     leaf      |<- first 224 of hash ------------>| |<- 2^32 - 33 ------------------------->|  (use KVS)
+     bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 34 ------------------------->|
+     empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 34 ------------------------->|
+     
+     index of the child must be < 2^32 - 34   XXX no check is implemented yet
+  *)     
+
+  let make_buf context i =
+    let i = Int64.to_int i in (* XXX check overflow *)
+    Cstruct.of_bigarray ~off:(i*32) ~len:32 context.Context.array
+
+  let int64_of_uint32_encoded_in_int32 x =
+    if x >= 0l then Int64.of_int32 x
+    else Int64.(add (of_int32 x) 2147483647L (* Int32.max_int *)) (* XXX check! *)
+    
+  let rec parse_cell context i =
+    let buf = make_buf context i in
+    match C.get_uint32 buf 28 (* from 224th bit *) with
+    | -34l -> (* bud *)
+        begin match Cstruct.get_char buf 0 with
+          | '\255' -> _Bud (None, Indexed i, Hashed Hash.of_empty_bud, Indexed_and_Hashed)
+          | _ ->  
+              (* We must load the child for the hash *)
+              let i' = int64_of_uint32_encoded_in_int32 @@ C.get_uint32 buf 24 in
+              let v = parse_cell context i' in
+              begin match hash_of_view v with
+              | None -> assert false
+              | Some h -> _Bud (Some (View v), Indexed i, Hashed h, Indexed_and_Hashed)
+              end
+        end
+    | -33l -> (* leaf whose value is in the KVS *)
+        let h = Hash.value_hash_of_string @@ Cstruct.copy buf 0 28 in
+        begin match KeyValueStore.get_opt context.Context.leaf_table h with
+          | None -> assert false (* ERROR! *)
+          | Some v -> _Leaf (v, Indexed i, Hashed (Hash.of_value_hash h), Indexed_and_Hashed)
+        end
+    | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
+        let l = 33 + Int32.to_int x in (* 1 to 32 *)
+        let h = Hash.value_hash_of_string @@ Cstruct.copy buf 0 28 in
+        let buf = make_buf context (Int64.sub i 1L) in
+        let v = Value.of_string @@ Cstruct.copy buf 0 l in
+        _Leaf (v, Indexed i, Hashed (Hash.of_value_hash h), Indexed_and_Hashed)
+    | _ -> 
+        let s_224 = Cstruct.copy buf 0 28 in
+        let last_byte = Char.code @@ String.unsafe_get s_224 27 in
+        match last_byte land 0x01 with
+        | 1 -> (* extender *)
+            (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
+            let seg_code = s_224 in
+            let seg = Hash.decode_segment seg_code in
+            let i' = int64_of_uint32_encoded_in_int32 @@ C.get_uint32 buf 28 in
+            (* We must load the child for the hash *)
+            let v = parse_cell context i' in
+            let h = match hash_of_view v with
+              | None -> assert false
+              | Some h -> h
+            in
+            let h = Hash.of_extender' ~segment_code:seg_code h in
+            _Extender (seg, View v, Indexed i, Hashed h, Indexed_and_Hashed)
+        | 0 -> (* internal *)
+            let s_0_215 = Cstruct.copy buf 0 27 (* 216bits *) in
+            let c_216_223, refer_to_right = 
+              let c = Char.code @@ Cstruct.get_char buf 27 in
+              (Char.chr (c land 0xfc), (c land 2) = 2)
+            in
+            let h = Hash.of_value_hash (Hash.value_hash_of_string (s_0_215 ^ String.make 1 c_216_223)) in
+            let i' = int64_of_uint32_encoded_in_int32 @@ C.get_uint32 buf 28 in
+            if refer_to_right then
+              _Internal (Disk (Int64.sub i 1L, Maybe_Extender), Disk (i', Maybe_Extender), Indexed i, Hashed h, Indexed_and_Hashed)
+            else
+              _Internal (Disk (i', Maybe_Extender), Disk(Int64.sub i 1L, Maybe_Extender), Indexed i, Hashed h, Indexed_and_Hashed)
+        | _ -> assert false
+    
+  (* index 32 bits (4294967296)
+     block 32 bytes 
+     max size of the storage 137_438_953_472 =~ 130Gb
+     
+     internal node and bud are not distinguishable!!
+  *)
+  let index n = match index n with
+    | Some i -> i
+    | None -> assert false
+
+  let bud_first_28 = String.make 28 '\255'
+  let zero_24 = String.make 24 '\000'
+    
+  let write context = function
+    | Internal (nl, nr, Indexed i, Hashed h, _) ->
+        (* internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| *)
+        let buf = make_buf context i in
+
+        let h = Hash.to_string h in
+        let il = index nl in
+        let ir = index nr in
+        let refer_to_left =
+          if i = Int64.(add il 1L) then
+            (* the following refers to the right *)
+            false
+          else if i = Int64.(add ir 1L) then true
+          else assert false
+        in
+
+        (* 0 to 215 bits *)
+        Cstruct.blit_from_string h 0 buf 0 27;
+
+        (* fix for the 223rd and 224th bits (pos 222, 223) *)
+        Cstruct.set_char buf 27
+          (let c = Char.code @@ String.unsafe_get h 27 in
+           let c = c land 0xfc in
+           Char.chr (if refer_to_left then c else c lor 2));
+
+        (* next 32bits *)
+        Cstruct.LE.set_uint32 buf 28 (Int64.to_int32 @@ if refer_to_left then il else ir) (* XXX Check overflow *)
+    
+    | Bud (None, Indexed i, Hashed _, _) ->
+        (* XXX No point to store the empty bud... *)
+        (* empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 33 ------------------------->| *)
+        let buf = make_buf context i in
+        Cstruct.blit_from_string bud_first_28 0 buf 0 28;
+        C.set_uint32 buf 28 (-33l)
+        
+    | Bud (Some _, Indexed i, Hashed _, _) ->
+        (* bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 33 ------------------------->| *)
+        let buf = make_buf context i in
+        Cstruct.blit_from_string zero_24 0 buf 0 24;
+        C.set_uint32 buf 24 (Int64.to_int32 i);
+        C.set_uint32 buf 28 (-33l)
+
+    | Leaf (v, Indexed i, Hashed h, _) ->
+        (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
+        let len = String.length (Value.to_string v) in
+        if 1 <= len && len <= 32 then begin
+          begin
+            (* leaf whose value is in the previous cell *)
+            (* assuming i-1 is reserved for the value *)
+            let buf' = make_buf context (Int64.sub i 1L) in
+            Cstruct.blit_from_string (Value.to_string v) 0 buf' 0 len;
+          end;
+          let buf = make_buf context i in
+          Cstruct.blit_from_string (Hash.to_string h) 0 buf 0 28;
+          C.set_uint32 buf 28 (Int32.of_int (len - 33)) (* 1 => -32  32 -> -1 *)
+        end else begin
+          KeyValueStore.insert context.leaf_table (Hash.to_value_hash h) v;
+          let buf = make_buf context i in
+          Cstruct.blit_from_string (Hash.to_string h) 0 buf 0 28;
+          C.set_uint32 buf 28 (-33l);
+        end
+
+    | Extender (seg, _, Indexed i, Hashed _, _) ->
+        (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
+        let buf = make_buf context i in
+        Cstruct.blit_from_string (Hash.encode_segment seg) 0 buf 0 28;
+        C.set_uint32 buf 28 (Int64.to_int32 i)
+
+    | (Internal (_, _, Indexed _, Not_Hashed, _)|
+       Internal (_, _, (Left_Not_Indexed|Right_Not_Indexed|Not_Indexed), _, _)|
+       Bud (None, Indexed _, Not_Hashed, _)|
+       Bud (None, (Left_Not_Indexed|Right_Not_Indexed|Not_Indexed), _, _)|
+       Bud (Some _, _, _, _)|Leaf (_, _, _, _)|Extender (_, _, _, _, _)) -> assert false
+
+end
+  
 let view context node = match node with
   | Disk (i, wit) -> load_node context i wit
   | View v -> v
@@ -966,7 +1209,7 @@ end = struct
     else 
       match node with
       | View (Extender (seg, n, _, _, _)) ->
-          View (_Extender (Path.(@) segment seg, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+          View (_Extender (Path.concat segment seg, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))
       | _ ->
           View (_Extender (segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
   let bud no = View (_Bud (no, Not_Indexed, Not_Hashed, Not_Indexed_Any))
@@ -1074,7 +1317,7 @@ let unify_extenders prev_trail node context = match node with
   | View (Extender (seg, n, _, _, _)) ->
       begin match prev_trail with
         | Extended (prev_trail', seg', _mr, _iih) ->
-            Ok (attach prev_trail' (NotHashed.extend (Path.(@) seg' seg) n) context)
+            Ok (attach prev_trail' (NotHashed.extend (Path.concat seg' seg) n) context)
         | _ -> Ok (attach prev_trail node context)
       end
   | _ -> Ok (attach prev_trail node context)
@@ -1334,10 +1577,15 @@ let commit (Cursor (trail, node, context)) =
           | Not_Hashed -> Hash.of_leaf value 
           | Hashed h -> h
         in
+        (* if the size of the value is 1 <= size <= 32, the contents are written
+           to the previous index of the leaf *)
+        let len = String.length (Value.to_string value) in
+        if 1 <= len && len <= 32 then ignore (Context.new_index context);
+
         let i = Context.new_index context in
-        (* XXX KVS is updated only at commit for now.  Is it correct? *)
-        KeyValueStore.insert context.leaf_table h value;
-        (_Leaf (value, Indexed i, Hashed h, Not_Indexed_Any), i, h)
+        let v = _Leaf (value, Indexed i, Hashed h, Not_Indexed_Any) in
+        Storage.write context v;
+        (v, i, h)
         
     | Bud (Some underneath, Not_Indexed, h, _) ->
         let (node, _, h') = commit_aux underneath in
@@ -1346,7 +1594,9 @@ let commit (Cursor (trail, node, context)) =
           | _ -> Hash.of_bud (Some h')
         in
         let i = Context.new_index context in
-        (_Bud (Some node, Indexed i, Hashed h, Not_Indexed_Any), i, h)
+        let v = _Bud (Some node, Indexed i, Hashed h, Not_Indexed_Any) in
+        Storage.write context v;
+        (v, i, h)
 
     | Bud (None, Not_Indexed, h, _) ->
         begin match h with
@@ -1354,7 +1604,9 @@ let commit (Cursor (trail, node, context)) =
           | _ -> ()
         end;
         let i = Context.new_index context in
-        (_Bud (None, Indexed i, Hashed Hash.of_empty_bud, Not_Indexed_Any), i, Hash.of_empty_bud)
+        let v = _Bud (None, Indexed i, Hashed Hash.of_empty_bud, Not_Indexed_Any) in
+        Storage.write context v;
+        (v, i, Hash.of_empty_bud)
 
     | Internal (left, right, Left_Not_Indexed, h, _) ->
         let (right, _ir, hr) = commit_aux right in
@@ -1364,7 +1616,9 @@ let commit (Cursor (trail, node, context)) =
           | Hashed h -> h
         in
         let i = Context.new_index context in
-        (_Internal (left, right, Indexed i, Hashed h, Not_Indexed_Any), i, h)
+        let v = _Internal (left, right, Indexed i, Hashed h, Not_Indexed_Any) in
+        Storage.write context v;
+        (v, i, h)
 
     | Internal (left, right, Right_Not_Indexed, h, _) ->
         let (left, _il, hl) = commit_aux left in
@@ -1374,7 +1628,9 @@ let commit (Cursor (trail, node, context)) =
           | Hashed h -> h
         in
         let i = Context.new_index context in
-        (_Internal (left, right, Indexed i, Hashed h, Not_Indexed_Any), i, h)
+        let v = _Internal (left, right, Indexed i, Hashed h, Not_Indexed_Any) in
+        Storage.write context v;
+        (v, i, h)
 
     | Extender (segment, underneath, Not_Indexed, h, _)  ->
         let (underneath, _i, h') = commit_aux underneath in
@@ -1383,7 +1639,9 @@ let commit (Cursor (trail, node, context)) =
           | Not_Hashed -> Hash.of_extender segment h'
         in
         let i = Context.new_index context in
-        (_Extender (segment, underneath, Indexed i, Hashed h, Not_Indexed_Any), i, h)
+        let v = _Extender (segment, underneath, Indexed i, Hashed h, Not_Indexed_Any) in
+        Storage.write context v;
+        (v, i, h)
         
     | (Leaf (_, Left_Not_Indexed, _, _)|
        Leaf (_, Right_Not_Indexed, _, _)|

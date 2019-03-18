@@ -70,8 +70,9 @@ awkwardness.
 
 - Extender node:
 
- - First 223 bits: segment
- - 224th bit: 0
+ - First 224 bits: Let `b0,...,b_(n-1)` represent the path taken by the extender with 0 
+   for left and 1 for right. Prepend 1 in front of the path, and prepend as many 0s as needed 
+   in front of the 1 to make 224 bits. 
  - Last 32 bits: 2^32 - 33.
 
 - Leaf node:
@@ -86,8 +87,8 @@ awkwardness.
 
 - Bud node:
 
- - First 224 bits: 1's
- - Last 32 bits: index of the child node.
+ - First 224 bits: the index of the child
+ - Last 32 bits: 2^32 - 34
 
   It could seem at first that we might not need to store bud nodes at all, but they are
  helpful when creating snapshots, to preserve the property that a non-indexed
