@@ -1,4 +1,4 @@
-open Plebeia.Plebeia_impl
+open Plebeia
 module P = Plebeia.Plebeia_impl
 open Plebeia.Error
   
@@ -11,7 +11,7 @@ type t =
     
 type trail = Root | Treed of trail | Left of t * trail | Right of t * trail
 
-type segment = Plebeia.Plebeia_impl.Path.segment
+type segment = Path.segment
 type error = string
 type value = Plebeia.Plebeia_impl.value
 type context = unit
@@ -21,7 +21,7 @@ type cursor = t * trail
 let get_root_node (t, _) = t
   
 let rec of_plebeia_node : P.Context.t -> P.PrivateNode.node -> t = fun context -> function
-  | Disk (i, wit) -> of_plebeia_node context (View (load_node context i wit))
+  | Disk (i, wit) -> of_plebeia_node context (View (P.load_node context i wit))
   | View n  -> 
       match n with
       | Bud (None, _, _, _) -> Tree Null
@@ -46,7 +46,7 @@ let check_node (n, trail) =
   | _ -> Error "Start node is not Tree"
 
 let subtree ntrail seg =
-  let seg = (seg : P.Path.segment :> P.Path.side list) in
+  let seg = (seg : Path.segment :> Path.side list) in
   let rec aux ((n, trail) as cur) = function
     | [] -> 
         begin match n with
@@ -88,7 +88,7 @@ let parent ((n, _) as ntrail) =
   | _ -> Error "not Tree"
   
 let get_node ntrail seg =
-  let seg = (seg : P.Path.segment :> P.Path.side list) in
+  let seg = (seg : Path.segment :> Path.side list) in
   let rec aux ((n, trail) as ntrail) = function
     | [] -> Ok ntrail
     | Path.Left :: seg' ->
@@ -115,7 +115,7 @@ let get ntrail seg =
   | _ -> Error "Not Leaf"
 
 let alter ntrail seg f =
-  let seg = (seg : P.Path.segment :> P.Path.side list) in
+  let seg = (seg : Path.segment :> Path.side list) in
   let rec aux (n, trail) = function
     | [] -> f n >>= fun v -> Ok (v, trail)
     | Path.Left :: seg' ->

@@ -35,355 +35,6 @@
      
 open Error
 
-let failwithf fmt = Printf.ksprintf failwith fmt
-                  
-module Path : sig
-  (** A module encapsulating the concept of a path through the Patricia tree.
-      A path is a sequence of n full segments. The n-1 first segments end in
-      a bud and the nth ends in a leaf. Internal segments are bit of paths
-      encoded in the internal nodes of the Patricia tree while tip segments
-      represent the bits of path encoded close to the leaf. *)
-
-  type side = Left | Right
-  (** Binary tree, by convention when a bool or a bit is used, 0 = false = Left
-      and 1 = true = Right *)
-
-  val dummy_side : side
-  (** Whenever we need to consistently pick side that doesn't really correspond
-    to a real side. By convention, it is Left. *)
-
-  type segment = private side list
-  (** A segment is always just a list of sides. TODO: use bit arithmetic for
-      speed and memory footprint.*)
-
-  val empty : segment
-  (** The empty segment. *)
-
-  val is_empty : segment -> bool
-
-  val cut : segment -> (side * segment) option
-  (** Cuts a path into a head and tail if not empty. *)
-
-  val common_prefix : segment -> segment -> segment * segment * segment
-  (** Factors a common prefix between two segments. *)
-
-  val of_side_list : side list -> segment
-  (** Converts a list of side to a segment. *)
-
-  val to_string : segment -> string
-  (** String representation of a segment, e.g. "LLLRLLRL" *)
-
-  val of_string : string -> segment option
-  (** Parse the string representation of a segment, e.g. "LLRLLRL" *)
-
-  val concat : segment -> segment -> segment
-
-end = struct
-  type side = Left | Right
-  let dummy_side = Left
-  type segment = side list (* FIXME: use bit arithmetic *)
-  let is_empty x = x = []
-  let cut = function
-    | [] -> None
-    | h::t -> Some (h,t)
-  let empty = []
-
-  let concat = (@)
-
-  let to_string s =
-    String.concat "" (List.map (function Left -> "L" | Right -> "R") s)
-
-  let of_string s =
-    let rec aux st = function
-      | -1 -> Some st
-      | n -> 
-          match String.unsafe_get s n with
-          | 'L' -> aux (Left :: st) (n-1)
-          | 'R' -> aux (Right :: st) (n-1)
-          | _ -> None
-    in
-    aux [] @@ String.length s - 1
-
-  let rec common_prefix seg1 seg2 = match (seg1, seg2) with
-    | (h1 :: t1, h2 :: t2) ->
-      if h1 = h2 then
-        let (prefix, r1, r2) = common_prefix t1 t2 in
-        (h1 :: prefix, r1, r2)
-      else
-        ([], seg1, seg2)
-    | ([], _) -> ([], [], seg2)
-    | (_, []) -> ([], seg1, [])
-
-  let of_side_list l = l
-end
-
-module Value : sig
-  (** Module encapsulating the values inserted in the Patricia tree. *)
-
-  type t = private string
-  (** Type of a value. *)
-
-  val of_string : string -> t
-
-  val to_string : t -> string
-
-end = struct
-  type t = string
-  let of_string s = s
-  let to_string s = s
-end
-
-module Hash : sig
-  type t = private string
-  (** Type for the hash.  448 bits *)
-
-  val to_string : t -> string
-  val to_hex : t -> string
-
-  val of_string : string -> t
-    
-  type value_hash = private string
-  (** The first 224 bits of the leaf hash, used in KVS and storage *)
-
-  val string_of_value_hash : value_hash -> string
-  val value_hash_of_string : string -> value_hash
-
-  val of_leaf : Value.t -> t
-  val to_value_hash : t -> value_hash
-  (** Note: no check whether the hash is for the leaf *)
-    
-  val of_value_hash : value_hash -> t
-  (** Make a hash of leaf from its first 224bits recorded in the storage *)
-    
-  val of_empty_bud : t
-  val of_bud : t option -> t
-  val of_internal_node : t -> t -> t
-  val of_extender : Path.segment -> t -> t
-  val of_extender' : segment_code: string -> t -> t
-    
-  val encode_segment : Path.segment -> string
-  val decode_segment : string -> Path.segment
-end = struct
-
-  module Blake2B_28 = struct
-    let of_string s =
-      let open Blake2.Blake2b in
-      let b = init 28 in
-      update b (Bigstring.of_string s);
-      let Hash bs = final b in
-      Bigstring.to_string bs
-        
-    let of_strings ss =
-      let open Blake2.Blake2b in
-      let b = init 28 in
-      List.iter (fun s -> 
-          update b (Bigstring.of_string s)) ss;
-      let Hash bs = final b in
-      Bigstring.to_string bs
-  end
-
-  let to_hex s =
-    (* XXX not really fast I am afraid *)
-    let buf = Buffer.create (String.length s * 2) in
-    String.iter (fun c ->
-        Buffer.add_string buf @@ Printf.sprintf "%02x" @@ Char.code c) s;
-    Buffer.contents buf
-
-  let _test =
-    assert (to_hex @@ Blake2B_28.of_string "Replacing SHA1 with the more secure function"
-            = "6bceca710717901183f66a78a7a9f59441c56defcff32f33f1e1b578");
-    assert (to_hex @@ Blake2B_28.of_strings ["Replacing SHA1 with the "; "more secure function" ]
-            = "6bceca710717901183f66a78a7a9f59441c56defcff32f33f1e1b578")
-  (* obtained by
-  #!/usr/local/bin/python3
-
-  from hashlib import blake2b
-
-  h = blake2b(digest_size=28)
-  h.update(b'Replacing SHA1 with the more secure function')
-  print (h.hexdigest())
-  *)
-
-  let hash_list xs = Blake2B_28.of_strings xs
-
-  type t = string
-
-  let to_string x = x
-  let of_string x = assert (String.length x = 56); x
-
-  let _reset_last_bit s =
-    let len = String.length s in
-    if len <> 28 then failwithf "reset_last_bit: len=%d <> 28" len; 
-    let bs = Bytes.of_string s in
-    Bytes.unsafe_set bs 27 
-    @@ Char.chr @@ Char.code (Bytes.unsafe_get bs 27) land 0xfe;
-    Bytes.to_string bs
-
-  let reset_last_2bits s =
-    let len = String.length s in
-    if len <> 28 then failwithf "reset_last_2bits: len=%d <> 28" len; 
-    let bs = Bytes.of_string s in
-    Bytes.unsafe_set bs 27 
-    @@ Char.chr @@ Char.code (Bytes.unsafe_get bs 27) land 0xfc;
-    Bytes.to_string bs
-
-  (* the hash of a leaf node with value v is taken as `H(0x00 || v)`, followed by a 223 0's and a 1.
-
-     |<-      H(0x00 || v)        ->|
-     |                              |0...........................01|
-
-  *)
-
-  type value_hash = string
-  let value_hash_of_string s = assert (String.length s = 28); s
-  let string_of_value_hash s = s
-      
-  let of_value_hash h =
-    of_string
-    (h ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
-
-  let to_value_hash h = String.sub h 0 28 
-
-  let of_leaf v =
-    of_value_hash @@ hash_list [ "\000"; Value.to_string v]
-      
-
-  (* XXX correct? *)
-  let of_empty_bud = of_string (String.make 56 '\000')
-
-  (* the hash of a bud node is the hash of its child *)
-  let of_bud = function
-    | None -> of_empty_bud
-    | Some h -> h
-
-  (*
-     |<-     H(0x01 || l || h)    ->|
-     |                           |00|0...........................01|
-  *)
-  let of_internal_node l r =
-    of_value_hash @@ reset_last_2bits @@ hash_list [ "\001"; l; r ]
-
-  let decode_segment h =
-    assert (String.length h = 28);
-    let sides_of_char c = 
-      let c = Char.code c in
-      let f x = if c land x = 0 then Path.Left else Path.Right in
-      [f 128; f 64; f 32; f 16; f 8; f 4; f 2; f 1]
-    in
-    let sides_of_char_last c = 
-      let c = Char.code c in
-      let f x = if c land x = 0 then Path.Left else Path.Right in
-      [f 128; f 64; f 32; f 16; f 8; f 4; f 2]
-    in
-    let rec f = function
-      | 28 -> []
-      | 27 as pos -> sides_of_char_last (String.unsafe_get h pos) @ f (pos+1)
-      | pos -> sides_of_char (String.unsafe_get h pos) @ f (pos+1)
-    in
-    let rec clean = function
-      | [] -> assert false
-      | Path.Right :: seg -> seg
-      | Path.Left :: seg -> clean seg
-    in
-    Path.of_side_list @@ clean @@ f 0
-
-  let encode_segment seg =
-    let seg = (seg : Path.segment :> Path.side list) in
-    let len = List.length seg in
-    if len > 222 then failwith "segment is too long";
-    let head_zero_bits = 224 - len - 2 in
-    let head_zero_bytes = head_zero_bits / 8 in
-    let bytes = Bytes.make 28 '\000' in
-    let byte_pos = head_zero_bytes in
-    let bit_pos = head_zero_bits mod 8 in
-    let make_byte = function
-      | x1 :: x2 :: x3 :: x4 :: x5 :: x6 :: x7 :: x8 :: seg ->
-          let bit = function
-            | Path.Left -> 0
-            | Path.Right -> 1
-          in
-          let byte = 
-            (bit x1) lsl 7
-            + (bit x2) lsl 6
-            + (bit x3) lsl 5
-            + (bit x4) lsl 4
-            + (bit x5) lsl 3
-            + (bit x6) lsl 2
-            + (bit x7) lsl 1
-            + (bit x8) * 1
-          in
-          (Char.chr byte, seg)
-      | _ -> assert false
-    in
-    let rec fill_bytes byte_pos = function
-      | [] -> 
-          assert (byte_pos = 28);
-          Bytes.to_string bytes
-      | seg ->
-          let (c, seg) = make_byte seg in
-          Bytes.unsafe_set bytes byte_pos c;
-          let byte_pos' = byte_pos + 1 in
-          if byte_pos' > 28 then assert false; (* segment is too long *)
-          fill_bytes byte_pos' seg
-    in
-    fill_bytes byte_pos (List.init bit_pos (fun _ -> Path.Left) @ Path.Right :: seg @ [ Path.Right ]) (* XXX <= inefficient! *)
-
-  (*
-     |<-                       H_child                           ->|
-     | The first 224bits of H_child |0......01|<- segment bits ->|1|
-  *) 
-  let of_extender seg h =
-    of_string (String.sub h 0 28 ^ encode_segment seg)
-
-  let of_extender' ~segment_code h =
-    of_string (String.sub h 0 28 ^ segment_code)
-end
-
-module KeyValueStore : sig
-  (** Key-value store for leaf data using reference counting
-      for deletion. TODO provide persistence to disk. *)
-
-  (** Type of a key-value store. *)
-  type t
-
-  (** New, empty table *)
-  val make : unit -> t
-
-  (** Inserts a key in the table, or update the reference
-      count if the key is already present. *)
-  val insert   : t -> Hash.value_hash -> Value.t -> unit
-
-  (** Gets a value from the table, returns None if the key
-      is not present. *)
-  val get_opt  : t -> Hash.value_hash -> Value.t option
-
-  (** Decrements the reference counter of a key in the table.
-      Deletes the key if the counter falls to 0. *)
-  val decr     : t -> Hash.value_hash -> unit
-
-end = struct
-  type t = (Hash.value_hash, Value.t * int) Hashtbl.t
-  let make () = Hashtbl.create 0
-
-  let insert table h v =
-    match Hashtbl.find_opt table h with
-    | None -> Hashtbl.add table h (v, 1)
-    | Some (v', _) when v <> v' -> assert false (* XXX unfortunate hash collision! *)
-    | Some (_, count) -> Hashtbl.replace table h (v, count+1)
-        
-  let get_opt table h =
-    match Hashtbl.find_opt table h with
-    | None -> None
-    | Some (v, _) -> Some v
-
-  let decr table h =
-    match Hashtbl.find_opt table h with
-    | None -> Printf.printf "none\n" ; ()
-    | Some (_, 1) -> Printf.printf "some 1\n" ; Hashtbl.remove table h
-    | Some (v, count) -> Printf.printf "some %d\n" count ;
-        Hashtbl.replace table h (v, count-1)
-end
-
 type error = string
 type value = Value.t
 type segment = Path.segment
@@ -435,7 +86,7 @@ module Context = struct
     (* mmaped array where the nodes are written and indexed. *)
     mutable length : int64 ;
     (* Current length of the node table. *)
-    leaf_table  : KeyValueStore.t ;
+    leaf_table  : KVS.t ;
     (* Hash table  mapping leaf hashes to their values. *)
     roots_table : (Hash.t, int64) Hashtbl.t ;
     (* Hash table mapping root hashes to indices in the array. *)
@@ -457,7 +108,7 @@ module Context = struct
         char c_layout shared [| length |] in
     { array ;
       length = 0L ;
-      leaf_table = KeyValueStore.make () ;
+      leaf_table = KVS.make () ;
       roots_table = Hashtbl.create 1 ;
       fd = fd ;
     }
@@ -1048,7 +699,7 @@ module Storage = struct
         end
     | -33l -> (* leaf whose value is in the KVS *)
         let h = Hash.value_hash_of_string @@ Cstruct.copy buf 0 28 in
-        begin match KeyValueStore.get_opt context.Context.leaf_table h with
+        begin match KVS.get_opt context.Context.leaf_table h with
           | None -> assert false (* ERROR! *)
           | Some v -> _Leaf (v, Indexed i, Hashed (Hash.of_value_hash h), Indexed_and_Hashed)
         end
@@ -1146,7 +797,7 @@ module Storage = struct
 
     | Leaf (v, Indexed i, Hashed h, _) ->
         (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
-        let len = String.length (Value.to_string v) in
+        let len = Value.length v in
         if 1 <= len && len <= 32 then begin
           begin
             (* leaf whose value is in the previous cell *)
@@ -1158,7 +809,7 @@ module Storage = struct
           Cstruct.blit_from_string (Hash.to_string h) 0 buf 0 28;
           C.set_uint32 buf 28 (Int32.of_int (len - 33)) (* 1 => -32  32 -> -1 *)
         end else begin
-          KeyValueStore.insert context.leaf_table (Hash.to_value_hash h) v;
+          KVS.insert context.leaf_table (Hash.to_value_hash h) v;
           let buf = make_buf context i in
           Cstruct.blit_from_string (Hash.to_string h) 0 buf 0 28;
           C.set_uint32 buf 28 (-33l);
@@ -1579,7 +1230,7 @@ let commit (Cursor (trail, node, context)) =
         in
         (* if the size of the value is 1 <= size <= 32, the contents are written
            to the previous index of the leaf *)
-        let len = String.length (Value.to_string value) in
+        let len = Value.length value in
         if 1 <= len && len <= 32 then ignore (Context.new_index context);
 
         let i = Context.new_index context in

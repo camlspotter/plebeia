@@ -1,5 +1,5 @@
-open Plebeia.Plebeia_impl
-open Plebeia.Plebeia_impl.Hash
+open Plebeia
+open Hash
 open Test_utils
 
 let bit_slow_encode_segment seg =

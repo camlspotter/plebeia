@@ -1,5 +1,5 @@
+open Plebeia
 open Plebeia.Plebeia_impl
-module Error = Plebeia.Error
 
 let timed f = 
   let t1 = Unix.gettimeofday () in
