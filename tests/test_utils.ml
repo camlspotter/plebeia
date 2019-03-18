@@ -44,7 +44,7 @@ let shuffle st xs =
 let test_with_context f =
   let context =
     let fn = Filename.temp_file "plebeia" "test" in
-    Context.make ~shared:true ~length:1024 fn
+    Context.make ~shared:true ~length:1000000 fn
   in
   let cursor = empty context in
   let res = f cursor in
