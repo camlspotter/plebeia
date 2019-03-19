@@ -1,6 +1,7 @@
 open Plebeia_impl
 open Plebeia_impl.PrivateNode
-
+open Utils
+    
 (* What follows is just for debugging purposes, to be removed. *)
 
 open Error
@@ -10,8 +11,11 @@ let rec string_of_node : node -> int -> string = fun node indent ->
   let indent_string = String.concat "" (List.init indent (fun _ -> " . ")) in
   match node with
     | (Disk (index, _)) -> Printf.sprintf "%sDisk %Ld" indent_string index
+    | View (Leaf (value, Indexed i, Hashed h, _x)) ->
+        Printf.sprintf "%sLeaf %S (%Ld, %s)\n" indent_string (Value.to_string value)
+          i (to_hex @@ Hash.to_string h)
     | View (Leaf (value, _, _, _)) ->
-      Printf.sprintf "%sLeaf %s\n" indent_string (Value.to_string value)
+        Printf.sprintf "%sLeaf %s\n" indent_string (Value.to_string value)
     | View (Bud  (node , _, _, _)) ->
       let recursive =
         match node with

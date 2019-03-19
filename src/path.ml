@@ -34,4 +34,3 @@ let rec common_prefix seg1 seg2 = match (seg1, seg2) with
   | (_, []) -> ([], seg1, [])
 
 let of_side_list l = l
-

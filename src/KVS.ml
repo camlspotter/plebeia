@@ -1,4 +1,5 @@
-type t = (Hash.value_hash, Value.t * int) Hashtbl.t
+type t = (Hash.hash28, Value.t * int) Hashtbl.t
+
 let make () = Hashtbl.create 0
 
 let insert table h v =

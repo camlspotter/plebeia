@@ -1,29 +1,21 @@
-type t = private string
-(** Type for the hash.  448 bits *)
+type h28 (* Hash of 28 byte length *)
+type h56 (* Hash of nodes, 56 byte length *)
 
-val to_string : t -> string
-val to_hex : t -> string
+type 'h t = private string
+(** Type for the hash.  The size is given by the type parameter *)
 
-val of_string : string -> t
+type hash28 = h28 t
+type hash56 = h56 t
 
-type value_hash = private string
-(** The first 224 bits of the leaf hash, used in KVS and storage *)
+val to_string : 'h t -> string
 
-val string_of_value_hash : value_hash -> string
-val value_hash_of_string : string -> value_hash
+val hash28_of_string : string -> hash28
+val hash56_of_string : string -> hash56
 
-val of_leaf : Value.t -> t
-val to_value_hash : t -> value_hash
-(** Note: no check whether the hash is for the leaf *)
+val hash : string -> hash28
+val hash_list : string list -> hash28
 
-val of_value_hash : value_hash -> t
-(** Make a hash of leaf from its first 224bits recorded in the storage *)
+val extend_to_hash56 : hash28 -> hash56
+val shorten_to_hash28 : hash56 -> hash28
 
-val of_empty_bud : t
-val of_bud : t option -> t
-val of_internal_node : t -> t -> t
-val of_extender : Path.segment -> t -> t
-val of_extender' : segment_code: string -> t -> t
-
-val encode_segment : Path.segment -> string
-val decode_segment : string -> Path.segment
+val reset_last_2bits : hash28 -> hash28

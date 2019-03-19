@@ -7,15 +7,6 @@ module Debug = Plebeia.Debug
 
 module Dumb = Dumb
 
-let ok_or_fail = function
-  | Ok x -> x
-  | Error s -> failwith s
-                 
-let save_to_dot name c = to_file name (Debug.dot_of_cursor c)
-
-let path = path_of_string
-let value = Value.of_string
-  
 let () = 
   test_with_context @@ fun c ->
   save_to_dot "test_1.dot" c;
