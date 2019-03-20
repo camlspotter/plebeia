@@ -18,3 +18,5 @@ val from_Error : (_, 'e) result -> 'e
 val default : (unit, 'e) result -> ('e -> unit) -> unit
   
 val protect : (unit -> 'a) -> ('a, exn) result
+
+val errorf : ('a, unit, string, ('b, string) result) format4 -> 'a

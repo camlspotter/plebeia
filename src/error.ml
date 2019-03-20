@@ -28,3 +28,5 @@ let protect f = match f () with
 let default r f = match r with
   | Ok x -> x
   | Error e -> f e
+
+let errorf fmt = Printf.ksprintf (fun s -> Error s) fmt

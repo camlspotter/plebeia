@@ -10,26 +10,26 @@ let rec string_of_node : node -> int -> string = fun node indent ->
   (* pretty prints a tree to a string *)
   let indent_string = String.concat "" (List.init indent (fun _ -> " . ")) in
   match node with
-    | (Disk (index, _)) -> Printf.sprintf "%sDisk %Ld" indent_string index
-    | View (Leaf (value, Indexed i, Hashed h, _x)) ->
-        Printf.sprintf "%sLeaf %S (%Ld, %s)\n" indent_string (Value.to_string value)
-          i (to_hex @@ Hash.to_string h)
-    | View (Leaf (value, _, _, _)) ->
-        Printf.sprintf "%sLeaf %s\n" indent_string (Value.to_string value)
-    | View (Bud  (node , _, _, _)) ->
-      let recursive =
-        match node with
-        | Some node -> string_of_node node (indent + 1)
-        | None     ->  "Empty"
-      in
-      Printf.sprintf "%sBud:\n%s" indent_string recursive
-    | View (Internal (left, right, _, _, _)) ->
-      Printf.sprintf "%sInternal:\n%s%s" indent_string
-        (string_of_node left (indent + 1))
-        (string_of_node right (indent + 1))
-    | View (Extender (segment, node, _, _, _)) ->
-      Printf.sprintf "%s[%s]- %s" indent_string (Path.to_string segment)
-        (string_of_node node (indent + 1))
+  | (Disk (index, _)) -> Printf.sprintf "%sDisk %d" indent_string index
+  | View (Leaf (value, Indexed i, Hashed h, _x)) ->
+      Printf.sprintf "%sLeaf %S (%d, %s)\n" indent_string (Value.to_string value)
+        i (to_hex @@ Hash.to_string h)
+  | View (Leaf (value, _, _, _)) ->
+      Printf.sprintf "%sLeaf %s\n" indent_string (Value.to_string value)
+  | View (Bud  (node , _, _, _)) ->
+    let recursive =
+      match node with
+      | Some node -> string_of_node node (indent + 1)
+      | None     ->  "Empty"
+    in
+    Printf.sprintf "%sBud:\n%s" indent_string recursive
+  | View (Internal (left, right, _, _, _)) ->
+    Printf.sprintf "%sInternal:\n%s%s" indent_string
+      (string_of_node left (indent + 1))
+      (string_of_node right (indent + 1))
+  | View (Extender (segment, node, _, _, _)) ->
+    Printf.sprintf "%s[%s]- %s" indent_string (Path.to_string segment)
+      (string_of_node node (indent + 1))
 
 module Dot = struct
   (* Graphviz's dot file format *)
@@ -48,7 +48,7 @@ module Dot = struct
   let of_node_aux cntr root =
     let rec aux : int -> node -> (string * string list * int) = fun cntr -> function
       | Disk (index, _) -> 
-          let n = Printf.sprintf "Disk%Ld" index in
+          let n = Printf.sprintf "Disk%d" index in
           (n, [disk n], cntr)
       | View (Leaf (value, _, _, _)) ->
           let n = Printf.sprintf "Leaf%d\n" cntr in
