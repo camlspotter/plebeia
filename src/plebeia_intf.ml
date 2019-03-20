@@ -65,14 +65,20 @@ module type S = sig
   val delete: cursor -> segment -> (cursor, error) result
   (** Delete a leaf or subtree. *)
   
-  
   val snapshot: cursor -> segment -> segment -> (cursor, error) result
   (** Snapshots a subtree at segment and place a soft link to it at
       another segment location. *)
   
-  val commit: cursor -> (cursor * hash)
+  val commit: cursor -> (cursor * hash, cursor * index * hash * index) result
   (** Commits the change made in a cursor to disk. 
-      The cursor must point to a root. Returns the new root hash. *)
+      The cursor must point to a root. 
+      Returns the updated cursor and its new root hash. 
+
+      If the same root hash [h] is already bound to an index [i'] 
+      in the roots table, the function returns an [Error (c, i, h, i')],
+      WITHOUT adding the index [i] new change to the roots table.
+      Even in this case, the changes are stored in the node storage.
+  *)
   
   val hash: cursor -> (cursor * hash)
   (** Computes the hash of the cursor without committing. *)

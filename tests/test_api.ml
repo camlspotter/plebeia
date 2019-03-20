@@ -58,6 +58,12 @@ let random_insertions st sz =
         prerr_endline "Saved the current node to invalid.dot";
         failwith e);
   in
+  let test_path_of_trail c seg =
+    match access_gen c seg with
+    | Ok (Cursor (trail, _, _), None) ->
+        assert (path_of_trail trail = [(seg :> Path.side list)])
+    | _ -> ()
+  in
   test_with_context @@ fun c ->
   let bindings = Hashtbl.create 101 in
   let rec f c dumb i =
@@ -105,6 +111,7 @@ let random_insertions st sz =
                 end;
                 validate context n;
                 Hashtbl.replace bindings seg (`Value v);
+                test_path_of_trail c seg;
                 (c, dumb)
             | Error _, Error _ -> (c, dumb)
             | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
@@ -130,6 +137,7 @@ let random_insertions st sz =
                 end;
                 validate context n;
                 Hashtbl.replace bindings seg (`Value v);
+                test_path_of_trail c seg;
                 (c, dumb)
             | Error _, Error _ -> (c, dumb)
             | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
@@ -180,7 +188,7 @@ let random_insertions st sz =
 
   (* hash and commit *)
   let _c, _ = hash c in
-  let c, _ = commit c in
+  let c, _ = from_Ok @@ commit c in
 
   (* deletion *)
   let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
@@ -189,7 +197,7 @@ let random_insertions st sz =
         let Cursor (_, n, context) as c = match delete c seg with 
           | Ok c -> 
               let _c, _ = hash c in
-              let c, _ = commit c in
+              let c, _ = from_Ok @@ commit c in
               c
           | Error e -> 
               to_file "deletion.dot" @@ Debug.dot_of_cursor c;

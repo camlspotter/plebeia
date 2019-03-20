@@ -675,6 +675,16 @@ end
 
 include PrivateNode
 
+let path_of_trail trail =
+  let rec aux (xs, xss) = function
+    | Top -> xs :: xss
+    | Budded (tr, _, _) -> aux ([], xs::xss) tr
+    | Left (tr, _, _, _) -> aux (Path.Left :: xs, xss) tr
+    | Right (_, tr, _, _) -> aux (Path.Right :: xs, xss) tr
+    | Extended (tr, seg, _, _) -> aux ((seg :> Path.side list) @ xs, xss) tr
+  in
+  aux ([], []) trail
+
 module NodeHash : sig
   open Hash 
   val of_empty_bud : hash56
@@ -1458,17 +1468,87 @@ let to_disk context n =
   | View _ -> Disk (i, Not_Extender), h
   
 let commit (Cursor (trail, node, context)) =
-  let (node, _, h) =  commit_node context node in
-  (_Cursor (trail, node, context), h)
+  let (node, i, h) =  commit_node context node in
+  (_Cursor (trail, node, context), i, h)
 
 let commit (Cursor (trail, _, _) as c) =
   match trail with
-  | Top -> commit c
+  | Top -> 
+      let (Cursor (_ , _, context) as c), i, h = commit c in
+      begin match Hashtbl.find_opt context.Context.roots_table h with
+        | Some i' -> Error (c, i, h, i') (* Hash collision *)
+        | None -> Hashtbl.add context.Context.roots_table h i; Ok (c, h)
+      end
+        
   | _ -> failwith "commit: cursor must point to a root"
 
 let snapshot _ _ _ = failwith "not implemented"
-let update _ _ _ = failwith "not implemented"
 let gc ~src:_ _ ~dest:_ = failwith "not implemented"
 
 let open_context ~filename:_ = failwith "not implemented"
-let root _ _ = failwith "not implemented"
+let root context h = 
+  match Hashtbl.find_opt context.Context.roots_table h with
+  | None -> Error "The root is not found in the roots_table"
+  | Some i -> Ok (_Cursor( _Top, Disk(i, Not_Extender), context))
+
+type where_from =
+  | Down_to of dir
+  | Up_from of dir
+
+and dir =
+  | Left
+  | Right
+  | Center
+
+let from_Some = function
+  | Some x -> x
+  | None -> assert false
+
+let rec traverse log rev_path (Cursor (trail, n, context)) = 
+  let v = match n with
+    | Disk (i, ewit) -> load_node context i ewit
+    | View v -> v
+  in
+  let c = _Cursor (trail, View v, context) in
+  match v, log, rev_path with
+  | Leaf _, [], _ -> c
+  | Leaf _, Down_to d :: log', _ :: rev_path -> 
+      let c = from_Ok @@ go_up c in
+      traverse (Up_from d :: log') rev_path c
+  | Bud (None, _, _, _), [], _ -> c
+  | Bud (None, _, _, _), Down_to d :: log', rev_path -> 
+      let c = from_Ok @@ go_up c in
+      traverse (Up_from d :: log') rev_path c
+  | Bud (Some _, _, _, _), Up_from _ :: [], _ -> c
+  | Bud (Some _, _, _, _), Up_from _ :: Down_to d :: log', _ :: rev_path ->
+      let c = from_Ok @@ go_up c in
+      traverse (Up_from d :: log') rev_path c
+  | Bud (Some _, _, _, _), (Down_to _ :: _ | []), rev_path ->
+      let c = from_Some @@ from_Ok @@ go_below_bud c in
+      traverse (Down_to Center :: log) rev_path c
+  | Internal _, (Down_to _ :: _ | []), rev_path ->
+      let c = from_Ok @@ go_side Path.Left c in
+      traverse (Down_to Left :: log) (Path.Left :: rev_path) c
+  | Internal _, Up_from Left :: log', rev_path ->
+      let c = from_Ok @@ go_side Path.Right c in
+      traverse (Down_to Right :: log') (Path.Right :: rev_path) c
+  | Internal _, Up_from Right :: [], _ -> c
+  | Internal _, Up_from Right :: Down_to d :: log', _ :: rev_path ->
+      let c = from_Ok @@ go_up c in
+      traverse (Up_from d :: log') rev_path c
+  | Extender (seg, _, _, _, _), (Down_to _ :: _ | []), rev_path ->
+      let c = from_Ok @@ go_down_extender c in
+      traverse (Down_to Center :: log) (List.rev_append (seg :> Path.side list) rev_path) c
+  | Extender (_, _, _, _, _), Up_from _ :: [], _ -> c
+  | Extender (seg, _, _, _, _), Up_from _ :: Down_to d :: log', rev_path ->
+      let rev_path =
+        let rec f seg rev_path = match seg, rev_path with
+          | s::seg, s'::rev_path -> assert (s = s');  f seg rev_path
+          | [], _ -> rev_path
+          | _, [] -> assert false
+        in
+        f (seg :> Path.side list) rev_path
+      in
+      let c = from_Ok @@ go_up c in
+      traverse (Up_from d :: log') rev_path c
+  | _ -> assert false
