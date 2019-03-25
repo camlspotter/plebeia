@@ -4,41 +4,6 @@
     to maximize correctness and cares second about efficiency. Extracting
     and efficient C program from F* should be explored. *)
 
-(*
-   
-## Hash format
-
-H(x) = Blake2B(28, x)
-   
-```
-leaf      |<-      H(0x00 || v)        ->|
-          |                              |0...........................01|
-
-bud       |<------------------ hash of its child ---------------------->|
-
-empty bud |0000000000000000000000000000000000000000000000000000000000000|
-  
-internal  |<-     H(0x01 || l || h)    ->|
-          |                            |0|0...........................01|
-  
-extender  |<-                       H_child                           ->|
-          | The first 224bits of H_child |0*1|<- segment bits ------->|1|
-```
-
-## Storage
-
-          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
-----------------------------------------------------------------------------------------
-internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->|
-extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>|
-leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell)
-bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 33 ------------------------->|
-empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 33 ------------------------->|
-
-index of the child must be < 2^32 - 33
-
-*)
-
 open Utils
 open Error
 
@@ -710,7 +675,7 @@ end = struct
 
   (*
      |<-     H(0x01 || l || h)    ->|
-     |                           |00|0...........................01|
+     |                          |0|0|0...........................01|
   *)
   let of_internal l r =
     extend_to_hash56 
@@ -860,7 +825,7 @@ end = struct
         let ir = index nr in
         let refer_to_left =
           if i = il + 1 then
-            (* the following refers to the right *)
+            (* the following index refers to the right *)
             false
           else if i = ir + 1 then true
           else assert false
