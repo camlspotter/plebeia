@@ -10,10 +10,10 @@ let rec string_of_node : node -> int -> string = fun node indent ->
   (* pretty prints a tree to a string *)
   let indent_string = String.concat "" (List.init indent (fun _ -> " . ")) in
   match node with
-  | (Disk (index, _)) -> Printf.sprintf "%sDisk %d" indent_string index
+  | (Disk (index, _)) -> Printf.sprintf "%sDisk %Ld" indent_string (Index.to_int64 index)
   | View (Leaf (value, Indexed i, Hashed h, _x)) ->
-      Printf.sprintf "%sLeaf %S (%d, %s)\n" indent_string (Value.to_string value)
-        i (to_hex @@ Hash.to_string h)
+      Printf.sprintf "%sLeaf %S (%Ld, %s)\n" indent_string (Value.to_string value)
+        (Index.to_int64 i) (to_hex @@ Hash.to_string h)
   | View (Leaf (value, _, _, _)) ->
       Printf.sprintf "%sLeaf %s\n" indent_string (Value.to_string value)
   | View (Bud  (node , _, _, _)) ->
@@ -48,7 +48,7 @@ module Dot = struct
   let of_node_aux cntr root =
     let rec aux : int -> node -> (string * string list * int) = fun cntr -> function
       | Disk (index, _) -> 
-          let n = Printf.sprintf "Disk%d" index in
+          let n = Printf.sprintf "Disk%Ld" (Index.to_int64 index) in
           (n, [disk n], cntr)
       | View (Leaf (value, _, _, _)) ->
           let n = Printf.sprintf "Leaf%d\n" cntr in

@@ -6,18 +6,17 @@
 
 open Utils
 open Error
+open Stdint
 
 type error = string
 type value = Value.t
 type segment = Path.segment
 type hash = Hash.hash56
 
-let () = if Sys.word_size < 64 then assert false (* we need 64bit arch *)
-  (* XXX  In 32 arch, since Cstruct is only accessible via int,
-     the size of the memmap is limited to Int31.max_int, which is just around 1G.
-  *)
-    
-type index = int
+module Index = Uint32
+(* XXX Optimization for 64bit arch is possible *)
+
+type index = Index.t
 
 type indexed_implies_hashed =
   | Indexed_and_Hashed
@@ -34,7 +33,7 @@ type internal
 type not_internal
 
 type indexing_rule =
-  | Indexed of index
+  | Indexed of Index.t
   | Left_Not_Indexed (* Right may not be indexed either *)
   | Right_Not_Indexed (* Left may not be indexed either *)
   | Not_Indexed
@@ -55,18 +54,18 @@ type hashed_witness =
   | Not_Hashed
 
 type indexed_witness =
-  | Indexed of index
+  | Indexed of Index.t
   | Not_Indexed
 
 module Context = struct
   type t = {
     array : Bigstring.t ;
     (* mmaped array where the nodes are written and indexed. *)
-    mutable length : int ;
+    mutable length : Index.t ;
     (* Current length of the node table. *)
     leaf_table  : KVS.t ;
     (* Hash table  mapping leaf hashes to their values. *)
-    roots_table : (Hash.hash56, index) Hashtbl.t ;
+    roots_table : (Hash.hash56, Index.t) Hashtbl.t ;
     (* Hash table mapping root hashes to indices in the array. *)
     fd : Unix.file_descr ; 
     (* File descriptor to the mapped file *)
@@ -85,14 +84,14 @@ module Context = struct
       array1_of_genarray @@ Unix.map_file fd ?pos
         char c_layout shared [| length |] in
     { array ;
-      length = 0 ;
+      length = Uint32.zero ;
       leaf_table = KVS.make () ;
       roots_table = Hashtbl.create 1 ;
       fd = fd ;
     }
 
   let new_index c =
-    let i = c.length + 1 in
+    let i = Uint32.succ c.length in
     c.length <- i;
     i
     
@@ -106,7 +105,7 @@ module PrivateNode : sig
   *)
      
   type node =
-    | Disk of index * extender_witness
+    | Disk of Index.t * extender_witness
     (* Represents a node stored on the disk at a given index, the node hasn't
        been loaded yet. Although it's considered hash for simplicity's sake,
        reading the hash requires a disk access and is expensive. *)
@@ -158,7 +157,7 @@ module PrivateNode : sig
      element on the "stack" using a product type. *)
 
   val indexed : node -> bool
-  val index : node -> index option
+  val index : node -> Index.t option
   val hashed : node -> bool
   val hash_of_view : view -> Hash.hash56 option
 
@@ -234,8 +233,8 @@ module PrivateNode : sig
       * modified_rule
       * indexed_implies_hashed -> trail
 
-  val load_node_ref : (Context.t -> index -> extender_witness -> view) ref
-  val load_node : Context.t -> index -> extender_witness -> view
+  val load_node_ref : (Context.t -> Index.t -> extender_witness -> view) ref
+  val load_node : Context.t -> Index.t -> extender_witness -> view
 
   val view : Context.t -> node -> view
 
@@ -255,7 +254,7 @@ module PrivateNode : sig
 end = struct
 
   type node =
-    | Disk of index * extender_witness
+    | Disk of Index.t * extender_witness
     (* Represents a node stored on the disk at a given index, the node hasn't
        been loaded yet. Although it's considered hash for simplicity's sake,
        reading the hash requires a disk access and is expensive. *)
@@ -351,7 +350,7 @@ end = struct
           | None, _ -> Error "Internal: invalid Indexed"
           | _, None -> Error "Internal: invalid Indeced"
           | Some li, Some ri -> 
-              if i - li = 1 || i - ri = 1 then Ok ()
+              if Index.(i - li = one || i - ri = one) then Ok ()
               else Error "Internal: invalid indices"
         end
     | Internal (l, _r, Left_Not_Indexed, _, _) when not @@ indexed l -> Ok ()
@@ -695,32 +694,19 @@ end
 
 module Storage : sig
   exception LoadFailure of error
-  val parse_cell : Context.t -> index -> view
+  val parse_cell : Context.t -> Index.t -> view
   val write : Context.t -> view -> unit
 end = struct
   (** node storage *)
 
   exception LoadFailure of error
 
-  module C = Cstruct.LE (* XXX dunno which tezos uses... *)
-
-  module StorageIndex : sig 
-    type t
-    val to_index : t -> index
-    val of_index : index -> t
-    val get : Cstruct.t -> int -> t
-    val set : Cstruct.t -> int -> t -> unit
-  end = struct
-    type t = int32 (* uint32 encoded in int32 *)
-    let to_index x = 
-      if x >= 0l then Int32.to_int x
-      else Int32.to_int x + 2147483647 (* XXX check! *)
-    let of_index x = Int32.of_int x
-    let get buf at = C.get_uint32 buf at
-    let set buf at x = C.set_uint32 buf at x
+  module C = struct
+    (* Cstruct uses *int32* for uint32. *)
+    include Cstruct.LE (* Intel friendly *)
+    let get_uint32 buf x = Uint32.of_int32 @@ get_uint32 buf x
+    let set_uint32 buf x v = set_uint32 buf x @@ Uint32.to_int32 v
   end
-  
-  module SI = StorageIndex
 
   (* Cstruct.blit_from_string, but make sure all the string contents are written *)
   let write_string s buf off len =
@@ -728,30 +714,64 @@ end = struct
     if slen <> len then begin Format.eprintf "write_string: %d <> %d@." slen len; assert false end;
     Cstruct.blit_from_string s 0 buf off len
 
-  (*           |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
-     internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->|
-     extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>|
-     leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (use the previous cell)
-     leaf      |<- first 224 of hash ------------>| |<- 2^32 - 33 ------------------------->|  (use KVS)
-     bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 34 ------------------------->|
-     empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 34 ------------------------->|
-     
-     index of the child must be < 2^32 - 34   XXX no check is implemented yet
-  *)     
+  (* See Layout.md for the format *)
 
   let make_buf context i =
+    let i = Index.to_int i in (* XXX May overflow in 32bits arch! *)
     Cstruct.of_bigarray ~off:(i*32) ~len:32 context.Context.array
+
+  (* get the last 32 bits *)
+  let get_index buf : Index.t = Index.of_uint32 @@ C.get_uint32 buf 28
+
+  let set_index buf i = C.set_uint32 buf 28 @@ Index.to_uint32 i
+
+  (* get the first 224 bits *)
+  let get_hash buf = Hash.hash28_of_string @@ Cstruct.copy buf 0 28
+
+  (* cell chunks *)
+  let get_last_chunk_info context last_index =
+    let buf = make_buf context last_index in
+    let cdr = C.get_uint32 buf 28 in
+    let ncells = C.get_uint16 buf 26 in
+    let size = C.get_uint32 buf 22 in
+    (* size is meaningful only for the first cell chunk *)
+    (cdr, ncells, size)
+
+  let chunk_contents context index nbytes =
+    (* XXX May overflow in 32bits arch *)
+    Cstruct.of_bigarray ~off:(Uint32.to_int index*32) ~len:nbytes context.Context.array
+
+  let get_chunk context ~first last_index size =
+    let cdr, ncells, _size_if_first = get_last_chunk_info context last_index in
+    let max_nbytes = ncells * 32 - if first then 10 else 6 in
+    let actual_nbytes = if size < Uint32.of_int max_nbytes then Uint32.to_int size else max_nbytes in
+    let size' = Uint32.(size - of_int actual_nbytes) in
+    assert (if size' = Uint32.zero then cdr = Uint32.zero else true);
+    let index = Uint32.(last_index - of_int ncells + one) in
+    (chunk_contents context index actual_nbytes, 
+     if size' = Uint32.zero then None else Some (cdr, size'))
+
+  let get_chunks context last_index =
+    let _, _, size = get_last_chunk_info context last_index in
+    let rec aux acc ~first last_index size =
+      match get_chunk context ~first last_index size with
+      | buf, None -> (size, List.rev (buf :: acc))
+      | buf, Some (cdr, size') -> aux (buf :: acc) ~first:false cdr size'
+    in
+    aux [] ~first:true last_index size
 
   let rec parse_cell context i =
     let buf = make_buf context i in
-    match C.get_uint32 buf 28 (* from 224th bit *) with
+    let tag = get_index buf in
+    let tag_int32 = Uint32.to_int32 tag in (* easier to match *)
+    match tag_int32 with
     | -34l -> (* bud *)
         begin match Cstruct.get_char buf 0 with
           | '\255' -> 
               _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud, Indexed_and_Hashed)
           | _ ->  
               (* We must load the child for the hash *)
-              let i' = SI.to_index @@ SI.get buf 24 in
+              let i' = C.get_uint32 buf 24 in
               let v = parse_cell context i' in
               begin match hash_of_view v with
               | None -> assert false
@@ -759,17 +779,20 @@ end = struct
               end
         end
     | -33l -> (* leaf whose value is in the KVS *)
-        let h = Hash.hash28_of_string @@ Cstruct.copy buf 0 28 in
+        let h = get_hash buf in
         begin match KVS.get_opt context.Context.leaf_table h with
           | None -> raise (LoadFailure (Printf.sprintf "Hash %s is not found in KVS" @@ to_hex @@ Hash.to_string h))
           | Some v -> _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
         end
     | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
         let l = 33 + Int32.to_int x in (* 1 to 32 *)
-        let h = Hash.hash28_of_string @@ Cstruct.copy buf 0 28 in
-        let buf = make_buf context (i - 1) in
+        let h = get_hash buf in
+        let buf = make_buf context (Index.pred i) in
         let v = Value.of_string @@ Cstruct.copy buf 0 l in
         _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
+    | -35l -> (* leaf whose value is in Plebeia *)
+        let _h = get_hash buf in
+        assert false
     | _ -> 
         let s_224 = Cstruct.copy buf 0 28 in
         let last_byte = Char.code @@ String.unsafe_get s_224 27 in
@@ -778,7 +801,7 @@ end = struct
             (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
             let seg_code = s_224 in
             let seg = Segment_encoding.decode seg_code in
-            let i' = SI.to_index @@ SI.get buf 28 in
+            let i' = get_index buf in
             (* We must load the child for the hash *)
             let v = parse_cell context i' in
             let h = match hash_of_view v with
@@ -794,18 +817,16 @@ end = struct
               (Char.chr (c land 0xfc), (c land 2) = 2)
             in
             let h = Hash.extend_to_hash56 @@ Hash.hash28_of_string (s_0_215 ^ String.make 1 c_216_223) in
-            let i' = SI.to_index @@ SI.get buf 28 in
+            let i' = get_index buf in
             if refer_to_right then
-              _Internal (Disk (i - 1, Maybe_Extender), Disk (i', Maybe_Extender), Indexed i, Hashed h, Indexed_and_Hashed)
+              _Internal (Disk (Index.pred i, Maybe_Extender), Disk (i', Maybe_Extender), Indexed i, Hashed h, Indexed_and_Hashed)
             else
-              _Internal (Disk (i', Maybe_Extender), Disk(i - 1, Maybe_Extender), Indexed i, Hashed h, Indexed_and_Hashed)
+              _Internal (Disk (i', Maybe_Extender), Disk(Index.pred i, Maybe_Extender), Indexed i, Hashed h, Indexed_and_Hashed)
         | _ -> assert false
 
   (* index 32 bits (4294967296)
      block 32 bytes 
      max size of the storage 137_438_953_472 =~ 130Gb
-     
-     internal node and bud are not distinguishable!!
   *)
   let index n = match index n with
     | Some i -> i
@@ -824,10 +845,10 @@ end = struct
         let il = index nl in
         let ir = index nr in
         let refer_to_left =
-          if i = il + 1 then
+          if i = Index.succ il then
             (* the following index refers to the right *)
             false
-          else if i = ir + 1 then true
+          else if i = Index.succ ir then true
           else assert false
         in
 
@@ -841,21 +862,21 @@ end = struct
            Char.chr (if refer_to_left then c else c lor 2));
 
         (* next 32bits *)
-        SI.set buf 28 (SI.of_index @@ if refer_to_left then il else ir)
+        C.set_uint32 buf 28 (if refer_to_left then il else ir)
     
     | Bud (None, Indexed i, Hashed _, _) ->
         (* XXX No point to store the empty bud... *)
         (* empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 34 ------------------------->| *)
         let buf = make_buf context i in
         write_string bud_first_28 buf 0 28;
-        C.set_uint32 buf 28 (-34l)
+        set_index buf (Uint32.of_int32 (-34l))
         
     | Bud (Some n, Indexed i, Hashed _, _) ->
         (* bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 34 ------------------------->| *)
         let buf = make_buf context i in
         write_string zero_24 buf 0 24;
-        SI.set buf 24 @@ SI.of_index @@ index n;
-        C.set_uint32 buf 28 (-34l)
+        C.set_uint32 buf 24 @@ index n;
+        set_index buf (Uint32.of_int32 (-34l))
 
     | Leaf (v, Indexed i, Hashed h, _) ->
         (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
@@ -864,27 +885,27 @@ end = struct
           begin
             (* leaf whose value is in the previous cell *)
             (* assuming i-1 is reserved for the value *)
-            let buf' = make_buf context (i - 1) in
+            let buf' = make_buf context (Index.pred i) in
             write_string (Value.to_string v) buf' 0 len;
           end;
           let buf = make_buf context i in
           let h = Hash.shorten_to_hash28 h in
           write_string (Hash.to_string h) buf 0 28;
-          C.set_uint32 buf 28 (Int32.of_int (len - 33)) (* 1 => -32  32 -> -1 *)
+          set_index buf (Uint32.of_int (len - 33)) (* 1 => -32  32 -> -1 *)
         end else begin
           let h = Hash.shorten_to_hash28 h in
           KVS.insert context.leaf_table h v;
           let buf = make_buf context i in
           let h = Hash.to_string h in
           write_string h buf 0 28;
-          C.set_uint32 buf 28 (-33l);
+          set_index buf (Uint32.of_int32 (-33l));
         end
 
     | Extender (seg, n, Indexed i, Hashed _, _) ->
         (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
         let buf = make_buf context i in
         write_string (Segment_encoding.encode seg) buf 0 28;
-        SI.set buf 28 @@ SI.of_index @@ index n
+        set_index buf @@ index n
 
     | (Internal (_, _, Indexed _, Not_Hashed, _)|
        Internal (_, _, (Left_Not_Indexed|Right_Not_Indexed|Not_Indexed), _, _)|
@@ -895,7 +916,7 @@ end = struct
 end
   
 (* Read the node from context.array, parse it and create a view node with it. *)
-let load_node (context : Context.t) (index : index) (ewit:extender_witness) : view = 
+let load_node (context : Context.t) (index : Index.t) (ewit:extender_witness) : view = 
   let v = Storage.parse_cell context index in
   match ewit, v with
   | Is_Extender, Extender _ -> v
@@ -1318,7 +1339,7 @@ let hash (Cursor (trail, node, context)) =
 
 (* XXX Operations are NOT atomic at all *)
 let commit_node context node =
-  let rec commit_aux : node -> (node * index * hash) = function
+  let rec commit_aux : node -> (node * Index.t * hash) = function
     | Disk (index, wit) ->
         let v, i, h = commit_aux' (load_node context index wit) in
         View v, i, h
@@ -1326,7 +1347,7 @@ let commit_node context node =
         let v, i, h = commit_aux' v in
         View v, i, h
 
-  and commit_aux' : view -> (view * index * hash) = fun v -> 
+  and commit_aux' : view -> (view * Index.t * hash) = fun v -> 
     match v with
     (* easy case where it's already commited *)
     | Leaf (_, Indexed i, Hashed h, _) -> (v, i, h)

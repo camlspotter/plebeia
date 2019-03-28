@@ -1,5 +1,5 @@
 (library
   (name plebeia)
   (public_name plebeia)
-  (libraries bigstring res blake2 cstruct)
+  (libraries bigstring res blake2 cstruct stdint)
   (flags :standard -warn-error -32-34-37))

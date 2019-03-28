@@ -12,8 +12,8 @@ module type S = sig
   type hash
   (** Root hash of a tree. *)
   
-  type index = int
-  (** Index in the storage.  Assuming 64bits arch *)
+  type index
+  (** Index in the storage.  *)
     
   type cursor
   (** Cursor in a tree to efficiently search and edit sub-trees. *)
