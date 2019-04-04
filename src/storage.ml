@@ -210,86 +210,86 @@ let write_large_leaf_to_kvs context h v =
 let write_large_leaf_to_plebeia context v =
   ignore @@ Chunk.write_to_chunks context 1000 (Value.to_string v)
 
-let write context n (* XXX view *) = 
-  match n with
-  | Internal (nl, nr, Indexed i, Hashed h, _) ->
-      (* internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| *)
-      let buf = make_buf context i in
+let write_internal context nl nr h =
+  (* internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| *)
+  let i = Context.new_index context in
+  let buf = make_buf context i in
 
+  let h = Hash.to_string h in
+  let il = index nl in
+  let ir = index nr in
+  let refer_to_left =
+    if i = Index.succ il then
+      (* the following index refers to the right *)
+      false
+    else if i = Index.succ ir then true
+    else assert false
+  in
+
+  (* 0 to 215 bits *)
+  Cstruct.blit_from_string h 0 buf 0 27;
+
+  (* fix for the 223rd and 224th bits (pos 222, 223) *)
+  Cstruct.set_char buf 27
+    (let c = Char.code @@ String.unsafe_get h 27 in
+     let c = c land 0xfc in
+     Char.chr (if refer_to_left then c else c lor 2));
+
+  (* next 32bits *)
+  C.set_uint32 buf 28 (if refer_to_left then il else ir);
+  i
+
+let write_empty_bud context =
+  (* XXX No point to store the empty bud... *)
+  (* empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 34 ------------------------->| *)
+  let i = Context.new_index context in
+  let buf = make_buf context i in
+  write_string bud_first_28 buf 0 28;
+  set_index buf (Uint32.of_int32 (-34l));
+  i
+
+let write_bud context n = 
+  (* bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 34 ------------------------->| *)
+  let i = Context.new_index context in
+  let buf = make_buf context i in
+  write_string zero_24 buf 0 24;
+  C.set_uint32 buf 24 @@ index n;
+  set_index buf (Uint32.of_int32 (-34l));
+  i
+
+let write_leaf context v h =
+  (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
+  (* contents are already written *)
+  let i = Context.new_index context in
+  let len = Value.length v in
+  if 1 <= len && len <= 32 then begin
+    let buf = make_buf context i in
+    let h = Hash.shorten_to_hash28 h in
+    write_string (Hash.to_string h) buf 0 28;
+    set_index buf (Uint32.of_int (len - 33)) (* 1 => -32  32 -> -1 *)
+  end else begin
+    let h = Hash.shorten_to_hash28 h in
+    if context.store_in_leaf_table then begin
+      let buf = make_buf context i in
       let h = Hash.to_string h in
-      let il = index nl in
-      let ir = index nr in
-      let refer_to_left =
-        if i = Index.succ il then
-          (* the following index refers to the right *)
-          false
-        else if i = Index.succ ir then true
-        else assert false
-      in
-
-      (* 0 to 215 bits *)
-      Cstruct.blit_from_string h 0 buf 0 27;
-
-      (* fix for the 223rd and 224th bits (pos 222, 223) *)
-      Cstruct.set_char buf 27
-        (let c = Char.code @@ String.unsafe_get h 27 in
-         let c = c land 0xfc in
-         Char.chr (if refer_to_left then c else c lor 2));
-
-      (* next 32bits *)
-      C.set_uint32 buf 28 (if refer_to_left then il else ir)
-
-  | Bud (None, Indexed i, Hashed _, _) ->
-      (* XXX No point to store the empty bud... *)
-      (* empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 34 ------------------------->| *)
+      write_string h buf 0 28;
+      set_index buf (Uint32.of_int32 (-33l));
+    end else begin
       let buf = make_buf context i in
-      write_string bud_first_28 buf 0 28;
-      set_index buf (Uint32.of_int32 (-34l))
+      let h = Hash.to_string h in
+      write_string h buf 0 28;
+      set_index buf (Uint32.of_int32 (-35l));
+    end
+  end;
+  i
 
-  | Bud (Some n, Indexed i, Hashed _, _) ->
-      (* bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 34 ------------------------->| *)
-      let buf = make_buf context i in
-      write_string zero_24 buf 0 24;
-      C.set_uint32 buf 24 @@ index n;
-      set_index buf (Uint32.of_int32 (-34l))
-
-  | Leaf (v, Indexed i, Hashed h, _) ->
-      (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
-      (* contents are already written *)
-      let len = Value.length v in
-      if 1 <= len && len <= 32 then begin
-        let buf = make_buf context i in
-        let h = Hash.shorten_to_hash28 h in
-        write_string (Hash.to_string h) buf 0 28;
-        set_index buf (Uint32.of_int (len - 33)) (* 1 => -32  32 -> -1 *)
-      end else begin
-        let h = Hash.shorten_to_hash28 h in
-        if context.store_in_leaf_table then begin
-          let buf = make_buf context i in
-          let h = Hash.to_string h in
-          write_string h buf 0 28;
-          set_index buf (Uint32.of_int32 (-33l));
-        end else begin
-          let buf = make_buf context i in
-          let h = Hash.to_string h in
-          write_string h buf 0 28;
-          set_index buf (Uint32.of_int32 (-35l));
-        end
-      end
-
-  | Extender (seg, n, Indexed i, Hashed _, _) ->
-      (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
-      let buf = make_buf context i in
-      write_string (Segment_encoding.encode seg) buf 0 28;
-      set_index buf @@ index n
-
-  | (Internal (_, _, Indexed _, Not_Hashed, _)|
-     Internal (_, _, (Left_Not_Indexed|Right_Not_Indexed|Not_Indexed), _, _)|
-     Bud (None, Indexed _, Not_Hashed, _)|
-     Bud (None, (Left_Not_Indexed|Right_Not_Indexed|Not_Indexed), _, _)|
-     Bud (Some _, _, _, _)|Leaf (_, _, _, _)|Extender (_, _, _, _, _)) -> assert false
-
-
+let write_extender context seg n =
+  (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
+  let i = Context.new_index context in
+  let buf = make_buf context i in
+  write_string (Segment_encoding.encode seg) buf 0 28;
+  set_index buf @@ index n;
+  i
 
 (* XXX Operations are NOT atomic at all *)
 let commit_node context node =
@@ -320,23 +320,20 @@ let commit_node context node =
         let len = Value.length value in
         if 1 <= len && len <= 32 then begin
           write_small_leaf context value;
-          let i = Context.new_index context in
+          let i = write_leaf context value h in
           let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
-          write context v;
           (v, i, h)
         end else 
           if context.Context.store_in_leaf_table then begin
             let h28 = Hash.shorten_to_hash28 h in
             write_large_leaf_to_kvs context h28 value;
-            let i = Context.new_index context in
+            let i = write_leaf context value h in
             let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
-            write context v;
             (v, i, h)
           end else begin
             write_large_leaf_to_plebeia context value;
-            let i = Context.new_index context in
+            let i = write_leaf context value h in
             let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
-            write context v;
             (v, i, h)
           end
         
@@ -346,9 +343,8 @@ let commit_node context node =
           | Hashed h -> assert (h = h'); h
           | _ -> NodeHash.of_bud (Some h')
         in
-        let i = Context.new_index context in
+        let i = write_bud context node in
         let v = _Bud (Some node, Indexed i, Hashed h, Indexed_and_Hashed) in
-        write context v;
         (v, i, h)
 
     | Bud (None, Not_Indexed, h, _) ->
@@ -356,9 +352,8 @@ let commit_node context node =
           | Hashed h -> assert (h = NodeHash.of_empty_bud)
           | _ -> ()
         end;
-        let i = Context.new_index context in
+        let i = write_empty_bud context in
         let v = _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud, Indexed_and_Hashed) in
-        write context v;
         (v, i, NodeHash.of_empty_bud)
 
     | Internal (left, right, Left_Not_Indexed, h, _) ->
@@ -368,9 +363,8 @@ let commit_node context node =
           | Not_Hashed -> NodeHash.of_internal hl hr
           | Hashed h -> h
         in
-        let i = Context.new_index context in
+        let i = write_internal context left right h in
         let v = _Internal (left, right, Indexed i, Hashed h, Indexed_and_Hashed) in
-        write context v;
         (v, i, h)
 
     | Internal (left, right, Right_Not_Indexed, h, _) ->
@@ -380,9 +374,8 @@ let commit_node context node =
           | Not_Hashed -> NodeHash.of_internal hl hr
           | Hashed h -> h
         in
-        let i = Context.new_index context in
+        let i = write_internal context left right h in
         let v = _Internal (left, right, Indexed i, Hashed h, Indexed_and_Hashed) in
-        write context v;
         (v, i, h)
 
     | Extender (segment, underneath, Not_Indexed, h, _)  ->
@@ -391,9 +384,8 @@ let commit_node context node =
           | Hashed h -> h
           | Not_Hashed -> NodeHash.of_extender segment h'
         in
-        let i = Context.new_index context in
+        let i = write_extender context segment underneath in
         let v = _Extender (segment, underneath, Indexed i, Hashed h, Indexed_and_Hashed) in
-        write context v;
         (v, i, h)
         
     | (Leaf (_, Left_Not_Indexed, _, _)|
