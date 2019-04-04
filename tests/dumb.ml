@@ -20,7 +20,7 @@ type cursor = t * trail
 
 let get_root_node (t, _) = t
   
-let rec of_plebeia_node : P.Context.t -> P.PrivateNode.node -> t = fun context -> function
+let rec of_plebeia_node : P.Context.t -> P.node -> t = fun context -> function
   | Disk (i, wit) -> of_plebeia_node context (View (P.load_node context i wit))
   | View n  -> 
       match n with

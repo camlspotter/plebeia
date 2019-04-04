@@ -31,25 +31,25 @@ let random_write_parse st =
       let size = RS.int st 64 in
       let v = Value.of_string @@ random_string st size in
       let n = NotHashed.leaf v in
-      let n, _i, _h = commit_node context n in
+      let n, _i, _h = Storage.commit_node context n in
       parse_test context n
 
   | 1 (* bud *) ->
       if RS.bool st then
         let n = NotHashed.(bud None) in
-        let n, _, _ = commit_node context n in
+        let n, _, _ = Storage.commit_node context n in
         parse_test context n
       else
         let size = RS.int st 64 in
         let v = Value.of_string @@ random_string st size in
         let n = NotHashed.(bud (Some (extend (path "L") (leaf v)))) in
-        let n, _, _ = commit_node context n in
+        let n, _, _ = Storage.commit_node context n in
         parse_test context n
 
   | 2 (* internal *) ->
       let right_referred = RS.bool st in
       let n1, _, _ = 
-        commit_node context @@
+        Storage.commit_node context @@
         let size = RS.int st 16 in
         NotHashed.leaf @@ Value.of_string @@ random_string st size
       in
@@ -63,7 +63,7 @@ let random_write_parse st =
         else
           NotHashed.(internal n1 n2 Right_Not_Indexed)
       in
-      let n, _, _ = commit_node context n in
+      let n, _, _ = Storage.commit_node context n in
       parse_test context n
 
   | 3 (* extender *) ->
@@ -73,7 +73,7 @@ let random_write_parse st =
         NotHashed.leaf @@ Value.of_string @@ random_string st size
       in
       let n = NotHashed.(extend seg n') in
-      let n, _, _ = commit_node context n in
+      let n, _, _ = Storage.commit_node context n in
       parse_test context n
 
   | _ -> assert false
