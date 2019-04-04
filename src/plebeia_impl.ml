@@ -65,13 +65,15 @@ module Context = struct
     (* Current length of the node table. *)
     leaf_table  : KVS.t ;
     (* Hash table  mapping leaf hashes to their values. *)
+    store_in_leaf_table : bool ;
+    (* If [false], all the values are stored in the tree *)
     roots_table : (Hash.hash56, Index.t) Hashtbl.t ;
     (* Hash table mapping root hashes to indices in the array. *)
     fd : Unix.file_descr ; 
     (* File descriptor to the mapped file *)
   }
 
-  let make ?pos ?(shared=false) ?(length=(-1)) fn =
+  let make ?pos ?(shared=false) ?(length=(-1)) ?(use_kvs=false) fn =
     let fd = Unix.openfile fn [O_RDWR] 0o644 in
     let array =
       (* length = -1 means that the size of [fn] determines the size of
@@ -86,13 +88,22 @@ module Context = struct
     { array ;
       length = Uint32.zero ;
       leaf_table = KVS.make () ;
+      store_in_leaf_table = use_kvs;
       roots_table = Hashtbl.create 1 ;
       fd = fd ;
     }
 
   let new_index c =
+    (* XXX check of size *)
     let i = Uint32.succ c.length in
     c.length <- i;
+    i
+    
+  let new_indices c n =
+    (* XXX check of size *)
+    assert (n > 0);
+    let i = Uint32.succ c.length in
+    c.length <- Index.(c.length + of_int n);
     i
     
   let free { fd ; _ } = Unix.close fd
@@ -696,6 +707,15 @@ module Storage : sig
   exception LoadFailure of error
   val parse_cell : Context.t -> Index.t -> view
   val write : Context.t -> view -> unit
+
+  val write_small_leaf : Context.t -> Value.t -> unit
+  val write_large_leaf_to_kvs : Context.t -> Hash.hash28 -> Value.t -> unit
+  val write_large_leaf_to_plebeia : Context.t -> Value.t -> unit
+
+  module Chunk : sig
+    (* XXX move to tests *)
+    val test_write_read : Random.State.t -> Context.t -> unit
+  end
 end = struct
   (** node storage *)
 
@@ -728,37 +748,82 @@ end = struct
   (* get the first 224 bits *)
   let get_hash buf = Hash.hash28_of_string @@ Cstruct.copy buf 0 28
 
-  (* cell chunks *)
-  let get_last_chunk_info context last_index =
-    let buf = make_buf context last_index in
-    let cdr = C.get_uint32 buf 28 in
-    let ncells = C.get_uint16 buf 26 in
-    let size = C.get_uint32 buf 22 in
-    (* size is meaningful only for the first cell chunk *)
-    (cdr, ncells, size)
+  module Chunk = struct
 
-  let chunk_contents context index nbytes =
-    (* XXX May overflow in 32bits arch *)
-    Cstruct.of_bigarray ~off:(Uint32.to_int index*32) ~len:nbytes context.Context.array
+    let ncells size = (size + 8 + 31) / 32
+      
+    let get_footer_fields context last_index =
+      let buf = make_buf context last_index in
+      let cdr = C.get_uint32 buf 28 in
+      let size = C.get_uint16 buf 26 in
+      (cdr, size)
+  
+    let chunk_contents context ~first_index nbytes =
+      Cstruct.of_bigarray ~off:(Uint32.to_int first_index * 32) ~len:nbytes context.Context.array
+  
+    let get_chunk context last_index =
+      let cdr, size = get_footer_fields context last_index in
+      (* Format.eprintf "Loading from %d size=%d@." (Index.to_int last_index) size; *)
+      let ncells = ncells size in
+      let first_index = Uint32.(last_index - of_int ncells + one) in
+      (chunk_contents context ~first_index size, size, cdr)
+  
+    let get_chunks context last_index =
+      let rec aux (bufs, size) last_index =
+        let buf, bytes, cdr = get_chunk context last_index in
+        let bufs = buf :: bufs in
+        let size = size + bytes in (* overflow in 32bit? *)
+        if cdr = Index.zero then (bufs, size)
+        else aux (bufs, size) cdr
+      in
+      aux ([], 0) last_index
+        
+    let write_to_chunk context cdr s off len =
+      assert (String.length s >= off + len);
+      let ncells = ncells len in
+      let cdr_pos = ncells * 32 - 4 in
+      let size_pos = cdr_pos - 2 in
 
-  let get_chunk context ~first last_index size =
-    let cdr, ncells, _size_if_first = get_last_chunk_info context last_index in
-    let max_nbytes = ncells * 32 - if first then 10 else 6 in
-    let actual_nbytes = if size < Uint32.of_int max_nbytes then Uint32.to_int size else max_nbytes in
-    let size' = Uint32.(size - of_int actual_nbytes) in
-    assert (if size' = Uint32.zero then cdr = Uint32.zero else true);
-    let index = Uint32.(last_index - of_int ncells + one) in
-    (chunk_contents context index actual_nbytes, 
-     if size' = Uint32.zero then None else Some (cdr, size'))
+      let i = Context.new_indices context ncells in
+      let last_index = Index.(i + of_int ncells - one) in
+      let chunk = chunk_contents context ~first_index:i (32 * ncells) in
+      
+      Cstruct.blit_from_string s off chunk 0 len;
+      (* Format.eprintf "Blit to %d %S@." (Index.to_int last_index) (String.sub s off len); *)
+      C.set_uint16 chunk size_pos len;
+      C.set_uint32 chunk cdr_pos cdr;
+      last_index
+        
+    let write_to_chunks context max_cells_per_chunk s =
+      let max_bytes_per_chunk = 32 * max_cells_per_chunk - 6 in
+      let rec f off remain cdr  =
+        let len = if remain > max_bytes_per_chunk then max_bytes_per_chunk else remain in
+        let cdr' = write_to_chunk context cdr s off len in
+        let off' = off + len in
+        let remain' = remain - len in
+        if remain' > 0 then f off' remain' cdr'
+        else cdr'
+      in
+      f 0 (String.length s) Index.zero
+        
+    let string_of_cstructs bufs = 
+      String.concat "" @@ List.map Cstruct.to_string bufs
 
-  let get_chunks context last_index =
-    let _, _, size = get_last_chunk_info context last_index in
-    let rec aux acc ~first last_index size =
-      match get_chunk context ~first last_index size with
-      | buf, None -> (size, List.rev (buf :: acc))
-      | buf, Some (cdr, size') -> aux (buf :: acc) ~first:false cdr size'
-    in
-    aux [] ~first:true last_index size
+    let test_write_read st context =
+      let max_cells_per_chunk = Random.State.int st 246 + 10 in
+      let size = Random.State.int st (max_cells_per_chunk * 32) + 32 in
+      let s = String.init size @@ fun i -> Char.chr (Char.code 'A' + i mod 20) in
+      let i = write_to_chunks context max_cells_per_chunk s in
+      let s' = string_of_cstructs @@ fst @@ get_chunks context i in
+(*
+      if s <> s' then begin
+        Format.eprintf "%S %S@." s s';
+        assert (s = s')
+      end;
+      prerr_endline "done"
+*)
+      assert (s = s')
+  end
 
   let rec parse_cell context i =
     let buf = make_buf context i in
@@ -778,21 +843,27 @@ end = struct
               | Some h -> _Bud (Some (View v), Indexed i, Hashed h, Indexed_and_Hashed)
               end
         end
+
     | -33l -> (* leaf whose value is in the KVS *)
         let h = get_hash buf in
         begin match KVS.get_opt context.Context.leaf_table h with
           | None -> raise (LoadFailure (Printf.sprintf "Hash %s is not found in KVS" @@ to_hex @@ Hash.to_string h))
           | Some v -> _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
         end
+
     | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
         let l = 33 + Int32.to_int x in (* 1 to 32 *)
         let h = get_hash buf in
         let buf = make_buf context (Index.pred i) in
         let v = Value.of_string @@ Cstruct.copy buf 0 l in
         _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
+
     | -35l -> (* leaf whose value is in Plebeia *)
-        let _h = get_hash buf in
-        assert false
+        let h = get_hash buf in
+        let (bufs, _size) = Chunk.get_chunks context @@ Index.pred i in
+        let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
+        _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
+
     | _ -> 
         let s_224 = Cstruct.copy buf 0 28 in
         let last_byte = Char.code @@ String.unsafe_get s_224 27 in
@@ -834,6 +905,21 @@ end = struct
 
   let bud_first_28 = String.make 28 '\255'
   let zero_24 = String.make 24 '\000'
+
+  let write_small_leaf context v =
+    let len = Value.length v in
+    assert (1 <= len && len <= 32);
+    let i = Context.new_index context in
+    let buf = make_buf context i in
+    write_string (Value.to_string v) buf 0 len
+
+  let write_large_leaf_to_kvs context h v =
+    let len = Value.length v in
+    assert (len > 32);
+    KVS.insert context.Context.leaf_table h v
+      
+  let write_large_leaf_to_plebeia context v =
+    ignore @@ Chunk.write_to_chunks context 1000 (Value.to_string v)
     
   let write context n (* XXX view *) = 
     match n with
@@ -880,25 +966,26 @@ end = struct
 
     | Leaf (v, Indexed i, Hashed h, _) ->
         (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
+        (* contents are already written *)
         let len = Value.length v in
         if 1 <= len && len <= 32 then begin
-          begin
-            (* leaf whose value is in the previous cell *)
-            (* assuming i-1 is reserved for the value *)
-            let buf' = make_buf context (Index.pred i) in
-            write_string (Value.to_string v) buf' 0 len;
-          end;
           let buf = make_buf context i in
           let h = Hash.shorten_to_hash28 h in
           write_string (Hash.to_string h) buf 0 28;
           set_index buf (Uint32.of_int (len - 33)) (* 1 => -32  32 -> -1 *)
         end else begin
           let h = Hash.shorten_to_hash28 h in
-          KVS.insert context.leaf_table h v;
-          let buf = make_buf context i in
-          let h = Hash.to_string h in
-          write_string h buf 0 28;
-          set_index buf (Uint32.of_int32 (-33l));
+          if context.store_in_leaf_table then begin
+            let buf = make_buf context i in
+            let h = Hash.to_string h in
+            write_string h buf 0 28;
+            set_index buf (Uint32.of_int32 (-33l));
+          end else begin
+            let buf = make_buf context i in
+            let h = Hash.to_string h in
+            write_string h buf 0 28;
+            set_index buf (Uint32.of_int32 (-35l));
+          end
         end
 
     | Extender (seg, n, Indexed i, Hashed _, _) ->
@@ -1364,12 +1451,27 @@ let commit_node context node =
         (* if the size of the value is 1 <= size <= 32, the contents are written
            to the previous index of the leaf *)
         let len = Value.length value in
-        if 1 <= len && len <= 32 then ignore (Context.new_index context);
-
-        let i = Context.new_index context in
-        let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
-        Storage.write context v;
-        (v, i, h)
+        if 1 <= len && len <= 32 then begin
+          Storage.write_small_leaf context value;
+          let i = Context.new_index context in
+          let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
+          Storage.write context v;
+          (v, i, h)
+        end else 
+          if context.Context.store_in_leaf_table then begin
+            let h28 = Hash.shorten_to_hash28 h in
+            Storage.write_large_leaf_to_kvs context h28 value;
+            let i = Context.new_index context in
+            let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
+            Storage.write context v;
+            (v, i, h)
+          end else begin
+            Storage.write_large_leaf_to_plebeia context value;
+            let i = Context.new_index context in
+            let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
+            Storage.write context v;
+            (v, i, h)
+          end
         
     | Bud (Some underneath, Not_Indexed, h, _) ->
         let (node, _, h') = commit_aux underneath in

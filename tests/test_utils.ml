@@ -5,7 +5,7 @@ include Utils
     
 let timed f = 
   let t1 = Unix.gettimeofday () in
-  let res = Error.protect f in
+  let res = Exn.catch f () in
   let t2 = Unix.gettimeofday () in
   (res, t2 -. t1)
 
@@ -48,15 +48,20 @@ let shuffle st xs =
   done;
   Array.to_list a
 
-let test_with_context f =
+let test_with_context length f =
+  let context =
+    let fn = Filename.temp_file "plebeia" "test" in
+    Context.make ~shared:true ~length fn
+  in
+  Exn.protect (fun () -> f context) (fun () -> Context.free context)
+  
+let test_with_cursor f =
   let context =
     let fn = Filename.temp_file "plebeia" "test" in
     Context.make ~shared:true ~length:1000000 fn
   in
   let cursor = empty context in
-  let res = f cursor in
-  Context.free context;
-  res
+  Exn.protect (fun () -> f cursor) (fun () -> Context.free context)
     
 let path_of_string s = from_Some @@ Path.of_string s
 

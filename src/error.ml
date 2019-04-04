@@ -21,10 +21,6 @@ let from_Error = function
   | Ok _ -> failwith "Expected an Error"
   | Error e -> e
     
-let protect f = match f () with
-  | exception e -> Error e
-  | x -> Ok x
-           
 let default r f = match r with
   | Ok x -> x
   | Error e -> f e

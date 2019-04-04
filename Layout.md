@@ -191,36 +191,31 @@ format:
 
 ##### Cell chunk
 
-The first cell chunk ends at the previous cell of the value node.
-The last 32bits of the chunk is the *cdr index*, the index of the last cell of the next chunk.
-If there is none following, it is 0.
+(I just use the word 'chunk' since 'block' means different thing in the blockchain technology.)
 
-The 16bits before the cdr index is the number of the cells in this chunk;
-The maximum size of a chunk is about 65KB.
+A cell chunk is a contiguous cells.  There is a *footer fields* in the last bytes of
+each cell chunk:
 
-The 32bits before the 16bits of the number of the cells is the total number of the bytes
-of the value.  Theoretically, the maximum value size storable by this format is about 4.2GB.
-(This is unnecessarily big, but only 65KB is stored with 16bits size information.)
+* The last 4 bytes is the *cdr index* which points to the last cell of the next cell chunk
+  in the chunk list.
+  If the cdr index is 0, the cell chunk is the last chunk in the list.
+* The 2 bytes prior to the cdr index is the *content length* in uint16.  It is the number of bytes the cell
+  chunk carries for the value contents.
+* The data for the value in a cell chunk is stored from the head of the first cell of the cell chunk.
+  Number of the cells in the cell chunk is computable from the expression `(content_length + 8 + 31) / 32`. 
 
-```
-         | cell #1 | cell #2 | .. | the last cell in the chunk (#n)                  | 
-         |         |         |    |                 |<-32bits->|<-16bits->|<-32bits->|
----------------------------------------------------------------------------------------
-1st chunk|<- contents ----------------------------->|size      | n cells  |cdr index |
-```
-
-The following cell chunks have almost the same format as the first, but the area of
-the number of the total bits is used to store the contents:
+Cell chunk layout:
 
 ```
-         | cell #1 | cell #2 | .. | the last cell in the chunk (#n)                  | 
-         |         |         |    |                            |<-16bits->|<-32bits->|
----------------------------------------------------------------------------------------
-1st chunk|<- contents ---------------------------------------->| n cells  |cdr index |
+| cell #1 | cell #2 | .. | the last cell in the chunk (#n)                  | 
+|         |         | .. |                            | footer fields       |
+|         |         |    |                            |<-16bits->|<-32bits->|
+------------------------------------------------------------------------------
+|<- contents (size bytes) ------------------->|       |size      |cdr index |
 ```
 
-The content bits are stored from the head of the first cell of the first cell chunk,
-then following to the first cell of the next chunk, and so on.
+The contents of a value are stored from the last cell chunk in the list whose cdr index is 0.
+The head of cell chunk list carries the last part of the contents.
 
 ### Bud
 

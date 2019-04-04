@@ -8,7 +8,7 @@ module Debug = Plebeia.Debug
 module Dumb = Dumb
 
 let () = 
-  test_with_context @@ fun c ->
+  test_with_cursor @@ fun c ->
   save_to_dot "test_1.dot" c;
   let c = ok_or_fail @@ upsert c (path "LR") (value "fooLR") in
   save_to_dot "test_2.dot" c;
@@ -23,7 +23,7 @@ let () =
   let c = ok_or_fail @@ go_up c in
   ignore c
 
-let () = test_with_context @@ fun c ->
+let () = test_with_cursor @@ fun c ->
   let c = ok_or_fail @@ upsert c (path "LLL") (value "LLL") in
   let c = ok_or_fail @@ upsert c (path "RRR") (value "RRR") in 
   let c = ok_or_fail @@ upsert c (path "LLR") (value "LLR") in 
@@ -34,7 +34,7 @@ let () = test_with_context @@ fun c ->
   ignore c
 
 let () = 
-  test_with_context @@ fun c ->
+  test_with_cursor @@ fun c ->
   let c = ok_or_fail @@ insert c (path "RRRL") (value "RRRL") in
   let c = ok_or_fail @@ insert c (path "RLLR") (value "RLLR") in
   let c = ok_or_fail @@ insert c (path "RRRR") (value "RRRR") in
@@ -43,7 +43,7 @@ let () =
   assert (v = value "RRRR")
 
 let () = 
-  ignore @@ from_Ok @@ test_with_context @@ fun c ->
+  ignore @@ from_Ok @@ test_with_cursor @@ fun c ->
   let c = from_Ok @@ insert c (path "RR") (value "RR") in
   let _ = 
     (* It succeeded by putting a Leaf at "RR" instead at "RRRR"...  Now fixed. *)
@@ -64,7 +64,7 @@ let random_insertions st sz =
         assert (path_of_trail trail = [(seg :> Path.side list)])
     | _ -> ()
   in
-  test_with_context @@ fun c ->
+  test_with_cursor @@ fun c ->
   let bindings = Hashtbl.create 101 in
   let rec f c dumb i =
     if i = sz then (c, dumb)
