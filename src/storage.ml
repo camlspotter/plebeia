@@ -216,7 +216,7 @@ let write_internal context nl nr h =
   let i = Context.new_index context in
   let buf = make_buf context i in
 
-  let h = Hash.to_string h in
+  let hstr = Hash.to_string h in
   let il = index nl in
   let ir = index nr in
   let refer_to_left =
@@ -228,17 +228,18 @@ let write_internal context nl nr h =
   in
 
   (* 0 to 215 bits *)
-  C.blit_from_string h 0 buf 0 27;
+  C.blit_from_string hstr 0 buf 0 27;
 
   (* fix for the 223rd and 224th bits (pos 222, 223) *)
   C.set_char buf 27
-    (let c = Char.code @@ String.unsafe_get h 27 in
+    (let c = Char.code @@ String.unsafe_get hstr 27 in
      let c = c land 0xfc in
      Char.chr (if refer_to_left then c else c lor 2));
 
   (* next 32bits *)
   C.set_uint32 buf 28 (if refer_to_left then il else ir);
-  i
+
+  _Internal (nl, nr, Indexed i, Hashed h, Indexed_and_Hashed), i, h
 
 let write_empty_bud context =
   (* XXX No point to store the empty bud... *)
@@ -247,16 +248,17 @@ let write_empty_bud context =
   let buf = make_buf context i in
   write_string bud_first_28 buf 0 28;
   set_index buf (Uint32.of_int32 (-34l));
-  i
+  _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud, Indexed_and_Hashed), i, NodeHash.of_empty_bud
 
-let write_bud context n = 
+
+let write_bud context n h = 
   (* bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 34 ------------------------->| *)
   let i = Context.new_index context in
   let buf = make_buf context i in
   write_string zero_24 buf 0 24;
   C.set_uint32 buf 24 @@ index n;
   set_index buf (Uint32.of_int32 (-34l));
-  i
+  _Bud (Some n, Indexed i, Hashed h, Indexed_and_Hashed), i, h
 
 let write_leaf context v h =
   (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
@@ -282,15 +284,15 @@ let write_leaf context v h =
       set_index buf (Uint32.of_int32 (-35l));
     end
   end;
-  i
+  _Leaf (v, Indexed i, Hashed h, Indexed_and_Hashed), i, h
 
-let write_extender context seg n =
+let write_extender context seg n h =
   (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
   let i = Context.new_index context in
   let buf = make_buf context i in
   write_string (Segment_encoding.encode seg) buf 0 28;
   set_index buf @@ index n;
-  i
+  _Extender (seg, n, Indexed i, Hashed h, Indexed_and_Hashed), i, h
 
 (* XXX Operations are NOT atomic at all *)
 let commit_node context node =
@@ -321,21 +323,15 @@ let commit_node context node =
         let len = Value.length value in
         if 1 <= len && len <= 32 then begin
           write_small_leaf context value;
-          let i = write_leaf context value h in
-          let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
-          (v, i, h)
+          write_leaf context value h
         end else 
           if context.Context.store_in_leaf_table then begin
             let h28 = Hash.shorten_to_hash28 h in
             write_large_leaf_to_kvs context h28 value;
-            let i = write_leaf context value h in
-            let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
-            (v, i, h)
+            write_leaf context value h
           end else begin
             write_large_leaf_to_plebeia context value;
-            let i = write_leaf context value h in
-            let v = _Leaf (value, Indexed i, Hashed h, Indexed_and_Hashed) in
-            (v, i, h)
+            write_leaf context value h
           end
         
     | Bud (Some underneath, Not_Indexed, h, _) ->
@@ -344,18 +340,14 @@ let commit_node context node =
           | Hashed h -> assert (h = h'); h
           | _ -> NodeHash.of_bud (Some h')
         in
-        let i = write_bud context node in
-        let v = _Bud (Some node, Indexed i, Hashed h, Indexed_and_Hashed) in
-        (v, i, h)
+        write_bud context node h
 
     | Bud (None, Not_Indexed, h, _) ->
         begin match h with
           | Hashed h -> assert (h = NodeHash.of_empty_bud)
           | _ -> ()
         end;
-        let i = write_empty_bud context in
-        let v = _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud, Indexed_and_Hashed) in
-        (v, i, NodeHash.of_empty_bud)
+        write_empty_bud context
 
     | Internal (left, right, Left_Not_Indexed, h, _) ->
         let (right, _ir, hr) = commit_aux right in
@@ -364,9 +356,7 @@ let commit_node context node =
           | Not_Hashed -> NodeHash.of_internal hl hr
           | Hashed h -> h
         in
-        let i = write_internal context left right h in
-        let v = _Internal (left, right, Indexed i, Hashed h, Indexed_and_Hashed) in
-        (v, i, h)
+        write_internal context left right h
 
     | Internal (left, right, Right_Not_Indexed, h, _) ->
         let (left, _il, hl) = commit_aux left in
@@ -375,9 +365,7 @@ let commit_node context node =
           | Not_Hashed -> NodeHash.of_internal hl hr
           | Hashed h -> h
         in
-        let i = write_internal context left right h in
-        let v = _Internal (left, right, Indexed i, Hashed h, Indexed_and_Hashed) in
-        (v, i, h)
+        write_internal context left right h
 
     | Extender (segment, underneath, Not_Indexed, h, _)  ->
         let (underneath, _i, h') = commit_aux underneath in
@@ -385,9 +373,7 @@ let commit_node context node =
           | Hashed h -> h
           | Not_Hashed -> NodeHash.of_extender segment h'
         in
-        let i = write_extender context segment underneath in
-        let v = _Extender (segment, underneath, Indexed i, Hashed h, Indexed_and_Hashed) in
-        (v, i, h)
+        write_extender context segment underneath h
         
     | (Leaf (_, Left_Not_Indexed, _, _)|
        Leaf (_, Right_Not_Indexed, _, _)|
