@@ -1,6 +1,5 @@
-open Plebeia_impl
-open Plebeia_impl.PrivateNode
 open Utils
+open Plebeia_impl
     
 (* What follows is just for debugging purposes, to be removed. *)
 

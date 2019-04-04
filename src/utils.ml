@@ -6,3 +6,7 @@ let to_hex s =
   String.iter (fun c ->
       Buffer.add_string buf @@ Printf.sprintf "%02x" @@ Char.code c) s;
   Buffer.contents buf
+
+let from_Some = function
+  | Some x -> x
+  | None -> assert false

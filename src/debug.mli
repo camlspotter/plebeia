@@ -1,5 +1,4 @@
-open Plebeia_impl
-open Plebeia_impl.PrivateNode
+open Node
 
 val string_of_node : node -> int (* indent *) -> string
 
