@@ -11,6 +11,7 @@ exception LoadFailure of error
 module C = struct
   (* Fix of Cstruct, which uses [int32] for [uint32]. *)
      
+  include Cstruct
   include Cstruct.LE (* Intel friendly *)
 
   let get_uint32 buf x = Uint32.of_int32 @@ get_uint32 buf x
@@ -21,12 +22,12 @@ end
 let write_string s buf off len =
   let slen = String.length s in
   if slen <> len then begin Format.eprintf "write_string: %d <> %d@." slen len; assert false end;
-  Cstruct.blit_from_string s 0 buf off len
+  C.blit_from_string s 0 buf off len
 
 let make_buf context i =
   (* XXX May overflow in 32bits arch! *)
   let i = Index.to_int i in 
-  Cstruct.of_bigarray ~off:(i*32) ~len:32 context.Context.array
+  C.of_bigarray ~off:(i*32) ~len:32 context.Context.array
 
 (* get the last 32 bits *)
 let get_index buf : Index.t = Index.of_uint32 @@ C.get_uint32 buf 28
@@ -34,7 +35,7 @@ let get_index buf : Index.t = Index.of_uint32 @@ C.get_uint32 buf 28
 let set_index buf i = C.set_uint32 buf 28 @@ Index.to_uint32 i
 
 (* get the first 224 bits *)
-let get_hash buf = Hash.hash28_of_string @@ Cstruct.copy buf 0 28
+let get_hash buf = Hash.hash28_of_string @@ C.copy buf 0 28
 
 
 module Chunk = struct
@@ -48,7 +49,7 @@ module Chunk = struct
     (cdr, size)
 
   let chunk_contents context ~first_index nbytes =
-    Cstruct.of_bigarray ~off:(Uint32.to_int first_index * 32) ~len:nbytes context.Context.array
+    C.of_bigarray ~off:(Uint32.to_int first_index * 32) ~len:nbytes context.Context.array
 
   let get_chunk context last_index =
     let cdr, size = get_footer_fields context last_index in
@@ -77,7 +78,7 @@ module Chunk = struct
     let last_index = Index.(i + of_int ncells - one) in
     let chunk = chunk_contents context ~first_index:i (32 * ncells) in
 
-    Cstruct.blit_from_string s off chunk 0 len;
+    C.blit_from_string s off chunk 0 len;
     (* Format.eprintf "Blit to %d %S@." (Index.to_int last_index) (String.sub s off len); *)
     C.set_uint16 chunk size_pos len;
     C.set_uint32 chunk cdr_pos cdr;
@@ -96,7 +97,7 @@ module Chunk = struct
     f 0 (String.length s) Index.zero
 
   let string_of_cstructs bufs = 
-    String.concat "" @@ List.map Cstruct.to_string bufs
+    String.concat "" @@ List.map C.to_string bufs
 
   let test_write_read st context =
     let max_cells_per_chunk = Random.State.int st 246 + 10 in
@@ -120,7 +121,7 @@ let rec parse_cell context i =
   let tag_int32 = Uint32.to_int32 tag in (* easier to match *)
   match tag_int32 with
   | -34l -> (* bud *)
-      begin match Cstruct.get_char buf 0 with
+      begin match C.get_char buf 0 with
         | '\255' -> 
             _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud, Indexed_and_Hashed)
         | _ ->  
@@ -144,7 +145,7 @@ let rec parse_cell context i =
       let l = 33 + Int32.to_int x in (* 1 to 32 *)
       let h = get_hash buf in
       let buf = make_buf context (Index.pred i) in
-      let v = Value.of_string @@ Cstruct.copy buf 0 l in
+      let v = Value.of_string @@ C.copy buf 0 l in
       _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
 
   | -35l -> (* leaf whose value is in Plebeia *)
@@ -154,7 +155,7 @@ let rec parse_cell context i =
       _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
 
   | _ -> 
-      let s_224 = Cstruct.copy buf 0 28 in
+      let s_224 = C.copy buf 0 28 in
       let last_byte = Char.code @@ String.unsafe_get s_224 27 in
       match last_byte land 0x01 with
       | 1 -> (* extender *)
@@ -171,9 +172,9 @@ let rec parse_cell context i =
           let h = NodeHash.of_extender' ~segment_code:seg_code h in
           _Extender (seg, View v, Indexed i, Hashed h, Indexed_and_Hashed)
       | 0 -> (* internal *)
-          let s_0_215 = Cstruct.copy buf 0 27 (* 216bits *) in
+          let s_0_215 = C.copy buf 0 27 (* 216bits *) in
           let c_216_223, refer_to_right = 
-            let c = Char.code @@ Cstruct.get_char buf 27 in
+            let c = Char.code @@ C.get_char buf 27 in
             (Char.chr (c land 0xfc), (c land 2) = 2)
           in
           let h = Hash.extend_to_hash56 @@ Hash.hash28_of_string (s_0_215 ^ String.make 1 c_216_223) in
@@ -227,10 +228,10 @@ let write_internal context nl nr h =
   in
 
   (* 0 to 215 bits *)
-  Cstruct.blit_from_string h 0 buf 0 27;
+  C.blit_from_string h 0 buf 0 27;
 
   (* fix for the 223rd and 224th bits (pos 222, 223) *)
-  Cstruct.set_char buf 27
+  C.set_char buf 27
     (let c = Char.code @@ String.unsafe_get h 27 in
      let c = c land 0xfc in
      Char.chr (if refer_to_left then c else c lor 2));
