@@ -12,7 +12,7 @@ let parse_test context n =
   (* reload the node and compare *)
   try
     let n' = View (Storage.parse_cell context @@ from_Some @@ index n) in
-    let n' = load_node_fully context n' in
+    let n' = Storage.load_node_fully context n' in
     if n <> n' then begin
       prerr_endline @@ string_of_node n 2;
       prerr_endline @@ string_of_node n' 2;

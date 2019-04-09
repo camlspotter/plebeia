@@ -17,11 +17,12 @@ a zipper.
 The trie is persisted to a file on disk by appending nodes. All nodes take up excatly 256 bit of disk
 space making it easy to index them. Hashes are 448 bit long offering about 111.5 bits of security.
 
-Leaf data is persisted in an external key-value store with reference counting. Garbage collection of
-the trie is implemented with a stop and copy approach.
+Leaf data is persisted either in an external key-value store with reference counting or in the same 
+data file as the tree.  Garbage collection of the trie is implemented with a stop and copy approach.
 
 #### Hash format
 
+Note: This is obsolete.  Check Layout.md for the latest version used in the implementation.
 
 Let `H(x)== BLAKE2B(x,28)` be a hash function with a 224 bit digest.
 
@@ -44,6 +45,8 @@ The goal is to make the root hash independent of the Patricia implementation. Th
 is inspired from the one described by Vitalik Buterin [here](https://ethresear.ch/t/optimizing-sparse-merkle-trees/3751/14).
 
 #### Node storage format
+
+Note: This is obsolete.  Check Layout.md for the latest version used in the implementation.
 
 All nodes are stored in an array with 256 bit cells. The constant size makes it easy for nodes
 to refer to each other using an index in the array.

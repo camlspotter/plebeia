@@ -393,3 +393,34 @@ let commit_node context node =
   in 
   let (node, i, h) =  commit_aux node in
   node, i, h
+
+let load_node (context : Context.t) (index : Index.t) (ewit:extender_witness) : view = 
+  let v = parse_cell context index in
+  match ewit, v with
+  | Is_Extender, Extender _ -> v
+  | Is_Extender, _ -> assert false (* better report *)
+  | Maybe_Extender, Extender _ -> v
+  | Not_Extender, Extender _ -> assert false (* better report *)
+  | Not_Extender, _ -> v
+  | Maybe_Extender, _ -> v
+
+let () = load_node_ref := load_node
+
+let rec load_node_fully context n =
+  let v = match n with
+    | Disk (i, ewit) -> load_node context i ewit
+    | View v -> v
+  in
+  match v with
+  | Leaf _ -> View v
+  | Bud (None, _, _, _) -> View v
+  | Bud (Some n, i, h, x) ->
+      let n = load_node_fully context n in
+      View (_Bud (Some n, i, h, x))
+  | Internal (n1, n2, i, h, x) ->
+      let n1 = load_node_fully context n1 in
+      let n2 = load_node_fully context n2 in
+      View (_Internal (n1, n2, i, h, x))
+  | Extender (seg, n, i, h, x) ->
+      let n = load_node_fully context n in
+      View (_Extender (seg, n, i, h, x))
