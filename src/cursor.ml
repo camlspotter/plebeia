@@ -19,6 +19,7 @@ let attach trail node context =
   | Extended (prev_trail, segment, _, indexed_implies_hashed) ->
       _Cursor (_Extended (prev_trail, segment, Modified_Left, indexed_implies_hashed), node, context)
 
+(* Tools to create Not_Indexed and Not_Hashed nodes *)
 module NotHashed : sig
   val leaf : Value.t -> node
   val extend : Path.segment -> node -> node
@@ -121,10 +122,12 @@ let go_up (Cursor (trail, node, context))  = match trail with
   | Left (_, _, Modified_Right, _)|Right (_, _, Modified_Left, _)|
     Budded (_, Modified_Right, _)|Extended (_, _, Modified_Right, _) -> assert false
 
+(* not used
 let rec go_top (Cursor (trail, _, _) as c) =
   match trail with
   | Top -> Ok c
   | _ -> go_up c >>= go_top
+*)
 
 let parent c =
   let rec aux c =

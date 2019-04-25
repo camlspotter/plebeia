@@ -7,7 +7,7 @@ type error = string
 type t
 type cursor
 
-val get_root_node : cursor -> t
+val get_node : cursor -> t
 
 val empty : context -> cursor
 (** Creates a cursor to a new, empty tree. *)

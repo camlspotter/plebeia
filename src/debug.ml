@@ -36,7 +36,7 @@ module Dot = struct
   let link ?label n1 n2 =
     match label with
     | None -> Printf.sprintf "%s -> %s;" n1 n2
-    | Some l -> Printf.sprintf "%s -> %s [label=\"%s\";" n1 n2 l
+    | Some l -> Printf.sprintf "%s -> %s [label=\"%s\"];" n1 n2 l
 
   let disk n = Printf.sprintf "%s [shape=box];" n
   let leaf n value = Printf.sprintf "%s [label=%S];" n (Value.to_string value)

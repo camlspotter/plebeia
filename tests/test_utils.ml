@@ -60,7 +60,7 @@ let test_with_cursor f =
     let fn = Filename.temp_file "plebeia" "test" in
     Context.make ~shared:true ~length:1000000 fn
   in
-  let cursor = empty context in
+  let cursor = Cursor.empty context in
   Exn.protect (fun () -> f cursor) (fun () -> Context.free context)
     
 let path_of_string s = from_Some @@ Path.of_string s

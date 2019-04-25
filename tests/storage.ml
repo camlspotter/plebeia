@@ -30,19 +30,19 @@ let random_write_parse st =
   | 0 (* leaf *) ->
       let size = RS.int st 64 in
       let v = Value.of_string @@ random_string st size in
-      let n = NotHashed.leaf v in
+      let n = Cursor.NotHashed.leaf v in
       let n, _i, _h = Storage.commit_node context n in
       parse_test context n
 
   | 1 (* bud *) ->
       if RS.bool st then
-        let n = NotHashed.(bud None) in
+        let n = Cursor.NotHashed.(bud None) in
         let n, _, _ = Storage.commit_node context n in
         parse_test context n
       else
         let size = RS.int st 64 in
         let v = Value.of_string @@ random_string st size in
-        let n = NotHashed.(bud (Some (extend (path "L") (leaf v)))) in
+        let n = Cursor.NotHashed.(bud (Some (extend (path "L") (leaf v)))) in
         let n, _, _ = Storage.commit_node context n in
         parse_test context n
 
@@ -51,17 +51,17 @@ let random_write_parse st =
       let n1, _, _ = 
         Storage.commit_node context @@
         let size = RS.int st 16 in
-        NotHashed.leaf @@ Value.of_string @@ random_string st size
+        Cursor.NotHashed.leaf @@ Value.of_string @@ random_string st size
       in
       let n2 = 
         let size = RS.int st 16 in
-        NotHashed.leaf @@ Value.of_string @@ random_string st size
+        Cursor.NotHashed.leaf @@ Value.of_string @@ random_string st size
       in
       let n = 
         if right_referred then 
-          NotHashed.(internal n2 n1 Left_Not_Indexed)
+          Cursor.NotHashed.(internal n2 n1 Left_Not_Indexed)
         else
-          NotHashed.(internal n1 n2 Right_Not_Indexed)
+          Cursor.NotHashed.(internal n1 n2 Right_Not_Indexed)
       in
       let n, _, _ = Storage.commit_node context n in
       parse_test context n
@@ -70,9 +70,9 @@ let random_write_parse st =
       let seg = random_segment st in
       let n' = 
         let size = RS.int st 16 in
-        NotHashed.leaf @@ Value.of_string @@ random_string st size
+        Cursor.NotHashed.leaf @@ Value.of_string @@ random_string st size
       in
-      let n = NotHashed.(extend seg n') in
+      let n = Cursor.NotHashed.(extend seg n') in
       let n, _, _ = Storage.commit_node context n in
       parse_test context n
 

@@ -18,7 +18,7 @@ type context = unit
 
 type cursor = t * trail
 
-let get_root_node (t, _) = t
+let get_node (t, _) = t
   
 let rec of_plebeia_node : P.Context.t -> P.node -> t = fun context -> function
   | Disk (i, wit) -> of_plebeia_node context (View (P.load_node context i wit))
@@ -87,7 +87,7 @@ let parent ((n, _) as ntrail) =
   | Tree _ -> go_up_tree ntrail
   | _ -> Error "not Tree"
   
-let get_node ntrail seg =
+let get_node_seg ntrail seg =
   let seg = (seg : Path.segment :> Path.side list) in
   let rec aux ((n, trail) as ntrail) = function
     | [] -> Ok ntrail
@@ -110,7 +110,7 @@ let get_node ntrail seg =
   aux ntrail seg
 
 let get ntrail seg =
-  get_node ntrail seg >>= function
+  get_node_seg ntrail seg >>= function
   | (Leaf v, _) -> Ok v
   | _ -> Error "Not Leaf"
 
@@ -158,49 +158,90 @@ let create_subtree ntrail seg =
   alter ntrail seg f 
 
 let delete ntrail seg = 
-  get_node ntrail seg >>= function
+  get_node_seg ntrail seg >>= function
   | ((Leaf _ | Tree _), trail) -> go_up_tree (Null, trail)
   | _ -> Error "Not Leaf nor Tree"
 
 (* Graphviz's dot file format *)
-let dot_of_node root =
-  let rec aux cntr = function
+
+let link ?label n1 n2 =
+  match label with
+  | None -> Printf.sprintf "%s -> %s;" n1 n2
+  | Some l -> Printf.sprintf "%s -> %s [label=\"%s\"];" n1 n2 l
+
+let null n = Printf.sprintf "%s [shape=point];" n
+let leaf n value = Printf.sprintf "%s [label=%S];" n (Value.to_string value)
+let tree n = Printf.sprintf "%s [shape=diamond, label=\"\"];" n
+let node n = Printf.sprintf "%s [shape=circle, label=\"\"];" n
+    
+let of_node_aux cntr root =
+  let rec aux : int -> t -> (string * string list * int) = fun cntr -> function
     | Null ->
         let n = Printf.sprintf "Null%d\n" cntr in
-        (n, [Printf.sprintf "%s [shape=point];" n],
-         cntr + 1)
-
+        (n, [null n], cntr+1)
     | Leaf value ->
         let n = Printf.sprintf "Leaf%d\n" cntr in
-        (n, [Printf.sprintf "%s [label=%S];" n (Value.to_string value)], cntr+1)
-        
-    | Tree Null ->
-        let n = Printf.sprintf "Bud%d" cntr in
+        (n, [leaf n value], cntr+1)
+    | Tree node ->
+        let n', s, cntr = aux cntr node in
+        let n = Printf.sprintf "Tree%d" cntr in
         (n, 
-         [Printf.sprintf "%s [shape=diamond, label=\"\"];" n], 
-         cntr + 1)
-
-    | Tree t ->
-        let n', s, cntr = aux cntr t in
-        let n = Printf.sprintf "Bud%d" cntr in
-        (n, 
-         [Printf.sprintf "%s [shape=diamond, label=\"\"];" n;
-          Printf.sprintf "%s -> %s;" n n'
+         [tree n;
+          link n n'
          ] @ s,
          cntr + 1)
-    | Node (left, right) -> 
+    | Node (left, right) ->
         let ln, ls, cntr = aux cntr left in 
         let rn, rs, cntr = aux cntr right in 
-        let n = Printf.sprintf "Internal%d" cntr in
+        let n = Printf.sprintf "Node%d" cntr in
         (n,
-         [ Printf.sprintf "%s [shape=circle, label=\"\"];" n;
-           Printf.sprintf "%s -> %s [label=\"L\"];" n ln;
-           Printf.sprintf "%s -> %s [label=\"R\"];" n rn ]
+         [ node n;
+           link n ln ~label:"L";
+           link n rn ~label:"R" ]
          @ ls @ rs,
          cntr + 1)
   in
-  let (_, s, _) = aux 0 root in
-  "digraph G {\n" ^ String.concat "\n" s ^ "\n}\n"
+  aux cntr root
 
-let dot_of_cursor (t, _) = dot_of_node t
+let rec of_trail dst cntr = function
+  | Root -> ([], cntr)
+  | Left (r, trail) ->
+      let n = Printf.sprintf "Node%d" cntr in
+      let cntr = cntr + 1 in
+      let r, ss, cntr = of_node_aux cntr r in
+      let (ss', cntr) = of_trail n cntr trail in
+      ([ node n;
+         link n dst ~label:"L";
+         link n r ~label:"R" ]
+       @ ss @ ss',
+       cntr)
+  | Right (l, trail) ->
+      let n = Printf.sprintf "Node%d" cntr in
+      let cntr = cntr + 1 in
+      let l, ss, cntr = of_node_aux cntr l in
+      let (ss', cntr) = of_trail n cntr trail in
+      ([ node n;
+         link n l ~label:"L";
+         link n dst ~label:"R" ]
+       @ ss @ ss',
+       cntr)
+  | Treed trail ->
+      let n = Printf.sprintf "Tree%d" cntr in
+      let cntr = cntr + 1 in
+      let (ss, cntr) = of_trail n cntr trail in
+      ([ tree n;
+         link n dst ]
+       @ ss,
+       cntr)
 
+let make_digraph ss = "digraph G {\n" ^ String.concat "\n" ss ^ "\n}\n"
+
+let dot_of_node root =
+  let (_name, ss, _cntr) = of_node_aux 0 root in
+  make_digraph ss
+
+let dot_of_cursor (node, trail) =
+  let (n, ss, cntr) = of_node_aux 0 node in
+  let ss', _ = of_trail n cntr trail in
+  let s = Printf.sprintf "cursor [shape=point, label=\"\"]; cursor -> %s [style=bold];" n in
+  make_digraph (s :: ss @ ss')

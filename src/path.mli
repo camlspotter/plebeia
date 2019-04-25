@@ -37,3 +37,9 @@ val of_string : string -> segment option
 (** Parse the string representation of a segment, e.g. "LLRLLRL" *)
 
 val concat : segment -> segment -> segment
+
+val to_key : segment -> string option
+(** Human readable path and segment conversion *)
+    
+val of_key : string -> segment
+(** Human readable path and segment conversion *)
