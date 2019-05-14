@@ -75,23 +75,25 @@ let test_path_of_trail c seg =
       dump_cursor c;
       failwith e
 
+let validate context n =
+  default (Debug.validate_node context n) (fun e -> 
+      to_file "invalid.dot" @@ Debug.dot_of_node n;
+      prerr_endline "Saved the current node to invalid.dot";
+      failwith e)
+
 let random_insertions st sz =
-  let validate context n =
-    default (Debug.validate_node context n) (fun e -> 
-        to_file "invalid.dot" @@ Debug.dot_of_node n;
-        prerr_endline "Saved the current node to invalid.dot";
-        failwith e);
-  in
   test_with_cursor @@ fun c ->
   let bindings = Hashtbl.create 101 in
+
+  let random_segment st =
+    let length = Random.State.int st 10 + 3 in
+    random_segment ~length st 
+  in
+
   let rec f c dumb i =
     if i = sz then (c, dumb)
     else 
-(*
-      let length = Random.State.int st 10 + 3 in
-*)
-      let length = Random.State.int st 5 + 2 in
-      let seg = random_segment ~length st in
+      let seg = random_segment st in
       let c, dumb = 
         let s = Path.to_string seg in
         let v = value (Path.to_string seg) in
@@ -110,6 +112,21 @@ let random_insertions st sz =
           | _ -> assert false
         end;
 
+        (* removal (we do not accumulate) *)
+        begin match 
+            delete c seg,
+            Dumb.delete dumb seg
+          with
+          | Ok _, Ok _ -> ()
+          | Error _, Error _ -> ()
+          | Ok _, Error e -> 
+              Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
+          | Error e, Ok _ -> 
+              Format.eprintf "impl: %s (seg=%s)@." e s; 
+              Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
+              assert false
+        end;
+
         let compare_trees dumb (Cursor (_, n, context) as c) =
           (* compare the entire tree *)
           if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
@@ -125,7 +142,7 @@ let random_insertions st sz =
           end
         in
 
-        match if true then 2 else Random.State.int st 5 with
+        match Random.State.int st 3 with
         | 0 -> begin
             (* insert *)
             match 
@@ -170,7 +187,7 @@ let random_insertions st sz =
                 Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
-        | _ -> begin
+        | 2 -> begin
             (* create_subtree *)
             match 
               create_subtree c seg,
@@ -190,9 +207,7 @@ let random_insertions st sz =
                 Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
-(*
         | _ -> assert false
-*)
       in
       f c dumb (i+1)
   in
@@ -209,7 +224,7 @@ let random_insertions st sz =
   let _c, _ = hash c in
   let c, _ = from_Ok @@ commit c in
 
-  (* deletion *)
+  (* deletions to the empty *)
   let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
   let Cursor (_, n, _), _ = 
     List.fold_left (fun (c, dumb) (seg, _) ->
