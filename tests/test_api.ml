@@ -61,7 +61,7 @@ let test_path_of_trail c seg =
   let c' = from_Some @@ from_Ok @@ go_below_bud c in
   match access_gen c' seg with
   | Ok (Cursor (trail, _, _), None) ->
-      if List.flatten @@ path_of_trail trail <> (seg :> Path.side list) then begin
+      if List.flatten @@ path_of_trail trail <> seg then begin
         failwith
           (String.concat "/" (List.map (fun x -> Path.of_side_list x |> Path.to_string) (path_of_trail trail))
         ^ "  /= " ^ Path.to_string seg)

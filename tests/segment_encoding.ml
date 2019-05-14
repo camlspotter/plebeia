@@ -3,7 +3,6 @@ open Test_utils
 
 let bit_slow_encode_segment seg =
   let open Path in
-  let seg = (seg : segment :> side list) in
   let len = List.length seg in
   if len > 222 then failwith "segment is too long";
   let head_zero_bits = 224 - len - 2 in
@@ -30,9 +29,8 @@ let bit_slow_encode_segment seg =
   in
   fill_bytes byte_pos bit_pos (Right :: seg @ [Right] : side list) (* XXX inefficient *)
 
-let slow_encode_segment (seg : Path.segment) =
+let slow_encode_segment seg =
   let open Path in
-  let seg = (seg :> side list) in
   let len = List.length seg in
   if len > 222 then failwith "segment is too long";
   let head_zero_bits = 224 - len - 2 in

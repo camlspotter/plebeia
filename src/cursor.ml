@@ -330,14 +330,14 @@ let rec go_ups (Cursor (trail, _node, _context) as c ) ss =
           | _::ss, _::segs -> f ss segs
           | [], _ -> assert false
         in
-        f ss (segs :> Path.side list)
+        f ss segs
       in
       go_up c >>= fun c -> go_ups c ss'
   | Top, _ -> assert false
 in
 
       let c = attach trail n context in
-      go_ups c (segment :> Path.side list)
+      go_ups c segment
 
 let upsert cur segment value =
   alter cur segment (fun x ->
@@ -405,7 +405,7 @@ let rec traverse log rev_path (Cursor (trail, n, context)) =
       traverse (Up_from d :: log') rev_path c
   | Extender (seg, _, _, _, _), (Down_to _ :: _ | []), rev_path ->
       let c = from_Ok @@ go_down_extender c in
-      traverse (Down_to Center :: log) (List.rev_append (seg :> Path.side list) rev_path) c
+      traverse (Down_to Center :: log) (List.rev_append seg rev_path) c
   | Extender (_, _, _, _, _), Up_from _ :: [], _ -> c
   | Extender (seg, _, _, _, _), Up_from _ :: Down_to d :: log', rev_path ->
       let rev_path =
@@ -414,7 +414,7 @@ let rec traverse log rev_path (Cursor (trail, n, context)) =
           | [], _ -> rev_path
           | _, [] -> assert false
         in
-        f (seg :> Path.side list) rev_path
+        f seg rev_path
       in
       let c = from_Ok @@ go_up c in
       traverse (Up_from d :: log') rev_path c

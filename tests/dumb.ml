@@ -46,7 +46,6 @@ let check_node (n, trail) =
   | _ -> Error "Start node is not Tree"
 
 let subtree ntrail seg =
-  let seg = (seg : Path.segment :> Path.side list) in
   let rec aux ((n, trail) as cur) = function
     | [] -> 
         begin match n with
@@ -88,7 +87,6 @@ let parent ((n, _) as ntrail) =
   | _ -> Error "not Tree"
   
 let get_node_seg ntrail seg =
-  let seg = (seg : Path.segment :> Path.side list) in
   let rec aux ((n, trail) as ntrail) = function
     | [] -> Ok ntrail
     | Path.Left :: seg' ->
@@ -115,7 +113,6 @@ let get ntrail seg =
   | _ -> Error "Not Leaf"
 
 let alter ntrail seg f =
-  let seg = (seg : Path.segment :> Path.side list) in
   let rec aux (n, trail) = function
     | [] -> f n >>= fun v -> Ok (v, trail)
     | Path.Left :: seg' ->

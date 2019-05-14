@@ -204,7 +204,7 @@ let validate_node context (node : node) =
               aux node >>= function
               | Extender _ -> Error "Extender cannot carry Extender"
               | v' ->
-                  if List.length (seg :> Path.side list) > 223 then 
+                  if List.length seg > 223 then 
                     Error "segment too long"
                   else 
                     (match ir, indexing_rule v' with

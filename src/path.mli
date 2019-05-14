@@ -15,7 +15,7 @@ val dummy_side : side
 (** Whenever we need to consistently pick side that doesn't really correspond
   to a real side. By convention, it is Left. *)
 
-type segment = private side list
+type segment = side list
 (** A segment is always just a list of sides. TODO: use bit arithmetic for
   speed and memory footprint.*)
 

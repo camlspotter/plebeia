@@ -24,8 +24,7 @@ let decode h =
   in
   of_side_list @@ clean @@ f 0
 
-let encode (seg : segment) =
-  let seg = (seg :> side list) in
+let encode seg =
   let len = List.length seg in
   if len > 222 then failwith "segment is too long";
   let head_zero_bits = 224 - len - 2 in
