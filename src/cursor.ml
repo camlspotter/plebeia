@@ -289,9 +289,12 @@ let delete cur segment =
   | Some cur ->
       access_gen cur segment >>= function 
       | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
-      | (Cursor (trail, _n, context), None) ->  (* XXXX cannot be Internal node? *)
-          remove_up trail context 
-          >>= parent 
+      | (Cursor (trail, n, context), None) ->  
+          match view context n with
+          | Bud _ | Leaf _ ->
+              remove_up trail context 
+              >>= parent  (* XXX not good... *)
+          | _ -> Error "Cannot remove Internal_node or Extender"
 
 let alter (Cursor (trail, _, context) as cur) segment alteration =
   (* XXX 2 cases. not cool *)
@@ -313,7 +316,6 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
         | Some segs -> diverge c segs >>| fun trail -> (trail, None)
       end >>= fun (trail, nopt) ->
       alteration nopt >>= fun n -> 
-      (* XXX fragile... *)
 
 let rec go_ups (Cursor (trail, _node, _context) as c ) ss = 
   match trail, ss with
@@ -333,6 +335,7 @@ let rec go_ups (Cursor (trail, _node, _context) as c ) ss =
       go_up c >>= fun c -> go_ups c ss'
   | Top, _ -> assert false
 in
+
       let c = attach trail n context in
       go_ups c (segment :> Path.side list)
 
