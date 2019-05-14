@@ -61,10 +61,7 @@ let test_path_of_trail c seg =
   let c' = from_Some @@ from_Ok @@ go_below_bud c in
   match access_gen c' seg with
   | Ok (Cursor (trail, _, _), None) ->
-      (* XXX tricky.  Since it skips the top bud, the path of the trail
-         is not exactly as same as the segment
-      *)
-      if path_of_trail trail <> [[]; (seg :> Path.side list)] then begin
+      if List.flatten @@ path_of_trail trail <> (seg :> Path.side list) then begin
         failwith
           (String.concat "/" (List.map (fun x -> Path.of_side_list x |> Path.to_string) (path_of_trail trail))
         ^ "  /= " ^ Path.to_string seg)
@@ -78,162 +75,162 @@ let test_path_of_trail c seg =
       dump_cursor c;
       failwith e
 
-        let random_insertions st sz =
-          let validate context n =
-            default (Debug.validate_node context n) (fun e -> 
-                to_file "invalid.dot" @@ Debug.dot_of_node n;
-                prerr_endline "Saved the current node to invalid.dot";
-                failwith e);
-          in
-          test_with_cursor @@ fun c ->
-          let bindings = Hashtbl.create 101 in
-          let rec f c dumb i =
-            if i = sz then (c, dumb)
-            else 
-              let length = Random.State.int st 10 + 3 in
-              let seg = random_segment ~length st in
-              let c, dumb = 
-                let s = Path.to_string seg in
-                let v = value (Path.to_string seg) in
+let random_insertions st sz =
+  let validate context n =
+    default (Debug.validate_node context n) (fun e -> 
+        to_file "invalid.dot" @@ Debug.dot_of_node n;
+        prerr_endline "Saved the current node to invalid.dot";
+        failwith e);
+  in
+  test_with_cursor @@ fun c ->
+  let bindings = Hashtbl.create 101 in
+  let rec f c dumb i =
+    if i = sz then (c, dumb)
+    else 
+      let length = Random.State.int st 10 + 3 in
+      let seg = random_segment ~length st in
+      let c, dumb = 
+        let s = Path.to_string seg in
+        let v = value (Path.to_string seg) in
 
-                (* get *)
-                begin match get c seg, Dumb.get dumb seg with
-                  | Ok _, Ok _ -> ()
-                  | Error _, Error _ -> ()
-                  | _ -> assert false
-                end;
-
-                (* subtree *)
-                begin match subtree c seg, Dumb.subtree dumb seg with
-                  | Ok _, Ok _ -> ()
-                  | Error _, Error _ -> ()
-                  | _ -> assert false
-                end;
-
-                match Random.State.int st 2 with
-                | 0 -> begin
-                    (* insert *)
-                    match 
-                      insert c seg v,
-                      Dumb.insert dumb seg v
-                    with
-                    | Ok c, Ok dumb -> 
-                        let Cursor (_, n, context) = c in
-
-                        (* compare the entire tree *)
-                        if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
-                          to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
-                          to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
-                          to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
-                          assert false
-                        end;
-
-                        (* check the invariants of the node *)
-                        validate context n;
-
-                        (* record the insertion *)
-                        Hashtbl.replace bindings seg (`Value v);
-                        test_path_of_trail c seg;
-                        (c, dumb)
-                    | Error _, Error _ -> (c, dumb)
-                    | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
-                    | Error e, Ok _ -> 
-                        Format.eprintf "impl: %s (seg=%s)@." e s; 
-                        Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
-                        assert false
-                  end
-                | 1 -> begin
-                    (* upsert *)
-                    match 
-                      upsert c seg v,
-                      Dumb.upsert dumb seg v
-                    with
-                    | Ok c, Ok dumb -> 
-                        (* print_command (); *)
-                        let Cursor (_, n, context) = c in
-                        if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
-                          to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
-                          to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
-                          to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
-                          assert false
-                        end;
-                        validate context n;
-                        Hashtbl.replace bindings seg (`Value v);
-                        test_path_of_trail c seg;
-                        (c, dumb)
-                    | Error _, Error _ -> (c, dumb)
-                    | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
-                    | Error e, Ok _ -> 
-                        Format.eprintf "impl: %s (seg=%s)@." e s; 
-                        Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
-                        assert false
-                  end
-        (*
-                | 2 -> begin
-                    (* create_subtree *)
-                    match 
-                      create_subtree c seg,
-                      Dumb.create_subtree dumb seg
-                    with
-                    | Ok c, Ok dumb -> 
-                        (* print_command (); *)
-                        let Cursor (_, n, context) = c in
-                        if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
-                          to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
-                          to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
-                          to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
-                          assert false
-                        end;
-                        validate context n;
-                        Hashtbl.replace bindings seg `Subtree;
-                        (c, dumb)
-                    | Error _, Error _ -> (c, dumb)
-                    | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
-                    | Error e, Ok _ -> 
-                        Format.eprintf "impl: %s (seg=%s)@." e s; 
-                        Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
-                        assert false
-                  end
-        *)
-                | _ -> assert false
-              in
-              f c dumb (i+1)
-          in
-          let dumb = Dumb.empty () in
-          let c, dumb = f c dumb 0 in
-          to_file "random_insertions.dot" @@ Debug.dot_of_cursor c;
-          Hashtbl.iter (fun seg x -> 
-              match x with
-              | `Value v -> assert (get c seg = Ok v)
-              | `Subtree -> assert (match subtree c seg with Ok _ -> true | _ -> false)
-            ) bindings;
-
-          (* hash and commit *)
-          let _c, _ = hash c in
-          let c, _ = from_Ok @@ commit c in
-
-          (* deletion *)
-          let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
-          let Cursor (_, n, _), _ = 
-            List.fold_left (fun (c, dumb) (seg, _) ->
-                let Cursor (_, n, context) as c = match delete c seg with 
-                  | Ok c -> 
-                      let _c, _ = hash c in
-                      let c, _ = from_Ok @@ commit c in
-                      c
-                  | Error e -> 
-                      to_file "deletion.dot" @@ Debug.dot_of_cursor c;
-                      failwith e
-                in
-                let dumb = from_Ok @@ Dumb.delete dumb seg in
-                assert (Dumb.get_node dumb = Dumb.of_plebeia_node context n);
-                validate context n;
-                (c, dumb)) (c, dumb) bindings
-          in
-          match n with
-          | View (Bud (None, _, _, _)) -> ()
+        (* get *)
+        begin match get c seg, Dumb.get dumb seg with
+          | Ok _, Ok _ -> ()
+          | Error _, Error _ -> ()
           | _ -> assert false
+        end;
 
-        let () = 
-          let st = Random.State.make_self_init () in
-          for _ = 1 to 1000 do random_insertions st 100 done
+        (* subtree *)
+        begin match subtree c seg, Dumb.subtree dumb seg with
+          | Ok _, Ok _ -> ()
+          | Error _, Error _ -> ()
+          | _ -> assert false
+        end;
+
+        match Random.State.int st 2 with
+        | 0 -> begin
+            (* insert *)
+            match 
+              insert c seg v,
+              Dumb.insert dumb seg v
+            with
+            | Ok c, Ok dumb -> 
+                let Cursor (_, n, context) = c in
+
+                (* compare the entire tree *)
+                if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
+                  to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
+                  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
+                  to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
+                  assert false
+                end;
+
+                (* check the invariants of the node *)
+                validate context n;
+
+                (* record the insertion *)
+                Hashtbl.replace bindings seg (`Value v);
+                test_path_of_trail c seg;
+                (c, dumb)
+            | Error _, Error _ -> (c, dumb)
+            | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
+            | Error e, Ok _ -> 
+                Format.eprintf "impl: %s (seg=%s)@." e s; 
+                Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
+                assert false
+          end
+        | 1 -> begin
+            (* upsert *)
+            match 
+              upsert c seg v,
+              Dumb.upsert dumb seg v
+            with
+            | Ok c, Ok dumb -> 
+                (* print_command (); *)
+                let Cursor (_, n, context) = c in
+                if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
+                  to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
+                  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
+                  to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
+                  assert false
+                end;
+                validate context n;
+                Hashtbl.replace bindings seg (`Value v);
+                test_path_of_trail c seg;
+                (c, dumb)
+            | Error _, Error _ -> (c, dumb)
+            | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
+            | Error e, Ok _ -> 
+                Format.eprintf "impl: %s (seg=%s)@." e s; 
+                Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
+                assert false
+          end
+(*
+        | 2 -> begin
+            (* create_subtree *)
+            match 
+              create_subtree c seg,
+              Dumb.create_subtree dumb seg
+            with
+            | Ok c, Ok dumb -> 
+                (* print_command (); *)
+                let Cursor (_, n, context) = c in
+                if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
+                  to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
+                  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
+                  to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
+                  assert false
+                end;
+                validate context n;
+                Hashtbl.replace bindings seg `Subtree;
+                (c, dumb)
+            | Error _, Error _ -> (c, dumb)
+            | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
+            | Error e, Ok _ -> 
+                Format.eprintf "impl: %s (seg=%s)@." e s; 
+                Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
+                assert false
+          end
+*)
+        | _ -> assert false
+      in
+      f c dumb (i+1)
+  in
+  let dumb = Dumb.empty () in
+  let c, dumb = f c dumb 0 in
+  to_file "random_insertions.dot" @@ Debug.dot_of_cursor c;
+  Hashtbl.iter (fun seg x -> 
+      match x with
+      | `Value v -> assert (get c seg = Ok v)
+      | `Subtree -> assert (match subtree c seg with Ok _ -> true | _ -> false)
+    ) bindings;
+
+  (* hash and commit *)
+  let _c, _ = hash c in
+  let c, _ = from_Ok @@ commit c in
+
+  (* deletion *)
+  let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
+  let Cursor (_, n, _), _ = 
+    List.fold_left (fun (c, dumb) (seg, _) ->
+        let Cursor (_, n, context) as c = match delete c seg with 
+          | Ok c -> 
+              let _c, _ = hash c in
+              let c, _ = from_Ok @@ commit c in
+              c
+          | Error e -> 
+              to_file "deletion.dot" @@ Debug.dot_of_cursor c;
+              failwith e
+        in
+        let dumb = from_Ok @@ Dumb.delete dumb seg in
+        assert (Dumb.get_node dumb = Dumb.of_plebeia_node context n);
+        validate context n;
+        (c, dumb)) (c, dumb) bindings
+  in
+  match n with
+  | View (Bud (None, _, _, _)) -> ()
+  | _ -> assert false
+
+let () = 
+  let st = Random.State.make_self_init () in
+  for _ = 1 to 1000 do random_insertions st 100 done
