@@ -87,7 +87,10 @@ let random_insertions st sz =
   let rec f c dumb i =
     if i = sz then (c, dumb)
     else 
+(*
       let length = Random.State.int st 10 + 3 in
+*)
+      let length = Random.State.int st 5 + 2 in
       let seg = random_segment ~length st in
       let c, dumb = 
         let s = Path.to_string seg in
@@ -107,7 +110,22 @@ let random_insertions st sz =
           | _ -> assert false
         end;
 
-        match Random.State.int st 2 with
+        let compare_trees dumb (Cursor (_, n, context) as c) =
+          (* compare the entire tree *)
+          if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
+            to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
+            to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
+            to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
+            begin match go_top c with
+              | Error _ -> prerr_endline "no root dump"
+              | Ok (Cursor (_, n, context)) ->
+                  to_file "plebeia_dumb_root.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
+            end;
+            assert false
+          end
+        in
+
+        match if true then 2 else Random.State.int st 5 with
         | 0 -> begin
             (* insert *)
             match 
@@ -115,16 +133,8 @@ let random_insertions st sz =
               Dumb.insert dumb seg v
             with
             | Ok c, Ok dumb -> 
+                compare_trees dumb c;
                 let Cursor (_, n, context) = c in
-
-                (* compare the entire tree *)
-                if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
-                  to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
-                  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
-                  to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
-                  assert false
-                end;
-
                 (* check the invariants of the node *)
                 validate context n;
 
@@ -147,13 +157,8 @@ let random_insertions st sz =
             with
             | Ok c, Ok dumb -> 
                 (* print_command (); *)
+                compare_trees dumb c;
                 let Cursor (_, n, context) = c in
-                if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
-                  to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
-                  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
-                  to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
-                  assert false
-                end;
                 validate context n;
                 Hashtbl.replace bindings seg (`Value v);
                 test_path_of_trail c seg;
@@ -165,8 +170,7 @@ let random_insertions st sz =
                 Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
-(*
-        | 2 -> begin
+        | _ -> begin
             (* create_subtree *)
             match 
               create_subtree c seg,
@@ -174,13 +178,8 @@ let random_insertions st sz =
             with
             | Ok c, Ok dumb -> 
                 (* print_command (); *)
+                compare_trees dumb c;
                 let Cursor (_, n, context) = c in
-                if Dumb.get_node dumb <> Dumb.of_plebeia_node context n then begin
-                  to_file "dumb.dot" @@ Dumb.dot_of_cursor dumb;
-                  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
-                  to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n;
-                  assert false
-                end;
                 validate context n;
                 Hashtbl.replace bindings seg `Subtree;
                 (c, dumb)
@@ -191,8 +190,9 @@ let random_insertions st sz =
                 Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
-*)
+(*
         | _ -> assert false
+*)
       in
       f c dumb (i+1)
   in

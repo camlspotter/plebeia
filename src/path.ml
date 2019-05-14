@@ -9,8 +9,12 @@ let empty = []
 
 let concat = (@)
 
+let string_of_side = function
+  | Left -> "L"
+  | Right -> "R"
+
 let to_string s =
-  String.concat "" (List.map (function Left -> "L" | Right -> "R") s)
+  String.concat "" (List.map string_of_side s)
 
 let of_string s =
   let rec aux st = function
@@ -36,7 +40,7 @@ let rec common_prefix seg1 seg2 = match (seg1, seg2) with
 let of_side_list l = l
 
 (* XXXX quite similar to Segment_encoding.encode *)
-let to_key seg =
+let _to_key seg =
   let buf = Buffer.create 128 in
   let rec f = function
     | x1 :: x2 :: x3 :: x4 :: x5 :: x6 :: x7 :: x8 :: seg ->

@@ -5,6 +5,8 @@ open Error
 open Types
 open Node
 
+let dot_of_cursor_ref = ref (fun _ -> assert false)
+    
 let attach trail node context =
   (* Attaches a node to a trail even if the indexing type and hashing type is incompatible with
      the trail by tagging the modification. Extender types still have to match. *)
@@ -122,12 +124,10 @@ let go_up (Cursor (trail, node, context))  = match trail with
   | Left (_, _, Modified_Right, _)|Right (_, _, Modified_Left, _)|
     Budded (_, Modified_Right, _)|Extended (_, _, Modified_Right, _) -> assert false
 
-(* not used
 let rec go_top (Cursor (trail, _, _) as c) =
   match trail with
   | Top -> Ok c
   | _ -> go_up c >>= go_top
-*)
 
 let parent c =
   let rec aux c =
@@ -289,7 +289,7 @@ let delete cur segment =
   | Some cur ->
       access_gen cur segment >>= function 
       | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
-      | (Cursor (trail, _n, context), None) -> 
+      | (Cursor (trail, _n, context), None) ->  (* XXXX cannot be Internal node? *)
           remove_up trail context 
           >>= parent 
 
@@ -297,6 +297,7 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
   (* XXX 2 cases. not cool *)
   go_below_bud cur >>= function
   | None ->
+      assert (trail = _Top);
       alteration None >>= fun n' ->
       let n' = NotHashed.extend segment n' in
       let n' = NotHashed.bud (Some n') in
@@ -312,7 +313,28 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
         | Some segs -> diverge c segs >>| fun trail -> (trail, None)
       end >>= fun (trail, nopt) ->
       alteration nopt >>= fun n -> 
-      parent @@ attach trail n context
+      (* XXX fragile... *)
+
+let rec go_ups (Cursor (trail, _node, _context) as c ) ss = 
+  match trail, ss with
+  | Budded _, _ -> go_up c >>= fun c -> go_ups c ss
+  | _, [] -> return c
+  | (Left _ | Right _), _ ->
+      go_up c >>= fun c -> go_ups c (List.tl ss)
+  | Extended (_, segs, _, _), _ ->
+      let ss' = 
+        let rec f ss segs = match ss, segs with
+          | ss, [] -> ss
+          | _::ss, _::segs -> f ss segs
+          | [], _ -> assert false
+        in
+        f ss (segs :> Path.side list)
+      in
+      go_up c >>= fun c -> go_ups c ss'
+  | Top, _ -> assert false
+in
+      let c = attach trail n context in
+      go_ups c (segment :> Path.side list)
 
 let upsert cur segment value =
   alter cur segment (fun x ->
@@ -320,17 +342,17 @@ let upsert cur segment value =
      match x with
      | None -> y
      | Some (Leaf _) -> y
-     | Some _ -> Error "a non Leaf node already present for this path")
+     | Some _ -> Error "a non Leaf node already presents for this path")
 
 let insert cur segment value =
   alter cur segment (function
       | None -> Ok (View (_Leaf (value, Not_Indexed, Not_Hashed, Not_Indexed_Any)))
-      | Some _ -> Error "a node already present for this path")
+      | Some _ -> Error "a node already presents for this path")
 
 let create_subtree cur segment =
   alter cur segment (function
       | None -> Ok (NotHashed.bud None)
-      | Some _ -> Error "a node already present for this path")
+      | Some _ -> Error "a node already presents for this path")
 
 let root context h = 
   match Hashtbl.find_opt context.Context.roots_table h with

@@ -15,6 +15,8 @@ val subtree : cursor -> segment -> (cursor, error) result
 val create_subtree: cursor -> segment -> (cursor, error) result
 (** Create a subtree (bud). Think "mkdir segment" *)
 
+val go_top : cursor -> (cursor, error) result
+
 val parent : cursor -> (cursor, error) result
 (** Moves the cursor back to the parent tree. Think "cd .." *)
 
@@ -37,6 +39,9 @@ val snapshot: cursor -> segment -> segment -> (cursor, error) result
     another segment location. *)
 
 val go_below_bud : cursor -> (cursor option, error) result
+(** This function expects a cursor positionned on a bud 
+    and moves it one step below. *)
+
 val go_down_extender : cursor -> (cursor, error) result
 val go_side : Path.side -> cursor -> (cursor, error) result
 val go_up : cursor -> (cursor, error) result
@@ -60,3 +65,6 @@ module NotHashed : sig
   val bud : node option -> node
   val internal : node -> node -> indexing_rule -> node
 end
+
+val dot_of_cursor_ref : (cursor -> string) ref
+

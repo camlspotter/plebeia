@@ -10,3 +10,9 @@ let to_hex s =
 let from_Some = function
   | Some x -> x
   | None -> assert false
+
+
+let to_file fn s =
+  let oc = open_out fn in
+  output_string oc s;
+  close_out oc

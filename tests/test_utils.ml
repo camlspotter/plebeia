@@ -32,10 +32,7 @@ let from_Some = function
   | Some x -> x
   | _ -> failwith "Not Some"
 
-let to_file fn s =
-  let oc = open_out fn in
-  output_string oc s;
-  close_out oc
+let to_file = Utils.to_file
 
 let shuffle st xs =
   let a = Array.of_list xs in

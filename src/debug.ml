@@ -141,6 +141,8 @@ end
 let dot_of_node = Dot.of_node
 let dot_of_cursor = Dot.of_cursor
 
+let () = Cursor.dot_of_cursor_ref := dot_of_cursor
+ 
 (* Bud -> Leaf and Bud -> Bud are invalid, but not excluded by the GADT *)
 let validate_node context (node : node) =
   let rec aux : node -> (view, string) result = 

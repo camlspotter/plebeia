@@ -8,6 +8,9 @@ type side = Left | Right
 (** Binary tree, by convention when a bool or a bit is used, 0 = false = Left
   and 1 = true = Right *)
 
+val string_of_side : side -> string
+(* L or R *)
+  
 val dummy_side : side
 (** Whenever we need to consistently pick side that doesn't really correspond
   to a real side. By convention, it is Left. *)
