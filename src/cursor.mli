@@ -48,15 +48,36 @@ val go_up : cursor -> (cursor, error) result
 val access_gen : cursor -> segment -> (cursor * (segment * segment * segment) option, error) result
 
 type where_from =
-  | Down_to of dir
-  | Up_from of dir
+  | From_above of dir
+  | From_below of dir
 
 and dir =
   | Left
   | Right
   | Center
 
-val traverse : where_from list -> Path.side list -> cursor -> cursor
+type position = 
+  where_from list (* Where the traversal comes from *)
+  * cursor (* The cursor *)
+  
+val traverse : position -> position option
+(** Traverse the entire tree 
+
+    let f cursor =
+      let rec loop acc (_, cursor as pos) =
+        (* do something over cursor *)
+        let acc = ... in
+        (* update the position and loop *)
+        match traverse pos with
+        | None -> acc
+        | Some pos -> loop acc pos
+      in
+      loop ([], cursor)
+    
+    * For huge trees, you may want to [forget] on memory nodes.
+*)
+
+val dot_of_cursor_ref : (cursor -> string) ref
 
 (** Tools to create Not_Indexed and Not_Hashed nodes *)
 module NotHashed : sig
@@ -65,6 +86,3 @@ module NotHashed : sig
   val bud : node option -> node
   val internal : node -> node -> indexing_rule -> node
 end
-
-val dot_of_cursor_ref : (cursor -> string) ref
-

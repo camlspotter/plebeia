@@ -77,6 +77,10 @@ let go_down_extender (Cursor (trail, n, context)) =
                             indexed_implies_hashed), below, context))
   | _ -> Error "Attempted to go down an extender but did not find an extender"
 
+(* Go up 1 level of tree.  
+   Note that this can be more than 1 levels in segments,
+   because of the extenders
+*)
 let go_up (Cursor (trail, node, context))  = match trail with
   | Top -> Error "cannot go above top"
   | Left (prev_trail, right,
@@ -317,24 +321,25 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
       end >>= fun (trail, nopt) ->
       alteration nopt >>= fun n -> 
 
-let rec go_ups (Cursor (trail, _node, _context) as c ) ss = 
-  match trail, ss with
-  | Budded _, _ -> go_up c >>= fun c -> go_ups c ss
-  | _, [] -> return c
-  | (Left _ | Right _), _ ->
-      go_up c >>= fun c -> go_ups c (List.tl ss)
-  | Extended (_, segs, _, _), _ ->
-      let ss' = 
-        let rec f ss segs = match ss, segs with
-          | ss, [] -> ss
-          | _::ss, _::segs -> f ss segs
-          | [], _ -> assert false
-        in
-        f ss segs
+      (* go back along the segments to the "original" position *)
+      let rec go_ups (Cursor (trail, _node, _context) as c ) ss = 
+        match trail, ss with
+        | Budded _, _ -> go_up c >>= fun c -> go_ups c ss
+        | _, [] -> return c
+        | (Left _ | Right _), _ ->
+            go_up c >>= fun c -> go_ups c (List.tl ss)
+        | Extended (_, segs, _, _), _ ->
+            let ss' = 
+              let rec f ss segs = match ss, segs with
+                | ss, [] -> ss
+                | _::ss, _::segs -> f ss segs
+                | [], _ -> assert false
+              in
+              f ss segs
+            in
+            go_up c >>= fun c -> go_ups c ss'
+        | Top, _ -> assert false
       in
-      go_up c >>= fun c -> go_ups c ss'
-  | Top, _ -> assert false
-in
 
       let c = attach trail n context in
       go_ups c segment
@@ -363,61 +368,64 @@ let root context h =
   | Some i -> Ok (_Cursor( _Top, Disk(i, Not_Extender), context))
 
 type where_from =
-  | Down_to of dir
-  | Up_from of dir
+  | From_above of dir
+  | From_below of dir
 
 and dir =
   | Left
   | Right
   | Center
 
-let rec traverse log rev_path (Cursor (trail, n, context)) = 
+type position = where_from list * cursor
+  
+(* XXX must forget already traversed nodes, if they are on disk *)
+let traverse (log, Cursor (trail, n, context)) = 
   let v = match n with
     | Disk (i, ewit) -> load_node context i ewit
     | View v -> v
   in
   let c = _Cursor (trail, View v, context) in
-  match v, log, rev_path with
-  | Leaf _, [], _ -> c
-  | Leaf _, Down_to d :: log', _ :: rev_path -> 
+  match v, log with
+  | _, From_below _ :: From_below _ :: _ -> assert false
+
+  | Leaf _, From_below _ :: _ -> assert false
+  | Leaf _, [] -> None
+  | Leaf _, From_above d :: log -> 
       let c = from_Ok @@ go_up c in
-      traverse (Up_from d :: log') rev_path c
-  | Bud (None, _, _, _), [], _ -> c
-  | Bud (None, _, _, _), Down_to d :: log', rev_path -> 
+      Some (From_below d :: log, c)
+
+  | Bud (None, _, _, _), From_below _ :: _ -> assert false
+  | Bud (None, _, _, _), [] -> None
+  | Bud (None, _, _, _), From_above d :: log -> 
       let c = from_Ok @@ go_up c in
-      traverse (Up_from d :: log') rev_path c
-  | Bud (Some _, _, _, _), Up_from _ :: [], _ -> c
-  | Bud (Some _, _, _, _), Up_from _ :: Down_to d :: log', _ :: rev_path ->
+      Some (From_below d :: log, c)
+
+  | Bud (Some _, _, _, _), From_below _ :: [] -> None
+  | Bud (Some _, _, _, _), From_below _ :: From_above d :: log ->
       let c = from_Ok @@ go_up c in
-      traverse (Up_from d :: log') rev_path c
-  | Bud (Some _, _, _, _), (Down_to _ :: _ | []), rev_path ->
+      Some (From_below d :: log, c)
+  | Bud (Some _, _, _, _), (From_above _ :: _ | []) ->
       let c = from_Some @@ from_Ok @@ go_below_bud c in
-      traverse (Down_to Center :: log) rev_path c
-  | Internal _, (Down_to _ :: _ | []), rev_path ->
+      Some (From_above Center :: log, c)
+
+  | Internal _, From_below Center :: _ -> assert false
+  | Internal _, (From_above _ :: _ | []) ->
       let c = from_Ok @@ go_side Path.Left c in
-      traverse (Down_to Left :: log) (Path.Left :: rev_path) c
-  | Internal _, Up_from Left :: log', rev_path ->
+      Some (From_above Left :: log, c)
+  | Internal _, From_below Left :: log ->
       let c = from_Ok @@ go_side Path.Right c in
-      traverse (Down_to Right :: log') (Path.Right :: rev_path) c
-  | Internal _, Up_from Right :: [], _ -> c
-  | Internal _, Up_from Right :: Down_to d :: log', _ :: rev_path ->
+      Some (From_above Right :: log, c)
+  | Internal _, From_below Right :: [] -> None
+  | Internal _, From_below Right :: From_above d :: log ->
       let c = from_Ok @@ go_up c in
-      traverse (Up_from d :: log') rev_path c
-  | Extender (seg, _, _, _, _), (Down_to _ :: _ | []), rev_path ->
+      Some (From_below d :: log, c)
+
+  | Extender (_seg, _, _, _, _), (From_above _ :: _ | []) ->
       let c = from_Ok @@ go_down_extender c in
-      traverse (Down_to Center :: log) (List.rev_append seg rev_path) c
-  | Extender (_, _, _, _, _), Up_from _ :: [], _ -> c
-  | Extender (seg, _, _, _, _), Up_from _ :: Down_to d :: log', rev_path ->
-      let rev_path =
-        let rec f seg rev_path = match seg, rev_path with
-          | s::seg, s'::rev_path -> assert (s = s');  f seg rev_path
-          | [], _ -> rev_path
-          | _, [] -> assert false
-        in
-        f seg rev_path
-      in
+      Some (From_above Center :: log, c)
+  | Extender (_, _, _, _, _), From_below _ :: [] -> None
+  | Extender (_seg, _, _, _, _), From_below _ :: From_above d :: log ->
       let c = from_Ok @@ go_up c in
-      traverse (Up_from d :: log') rev_path c
-  | _ -> assert false
+      Some (From_below d :: log, c)
 
 let snapshot _ _ _ = failwith "not implemented"

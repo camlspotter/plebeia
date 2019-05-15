@@ -224,6 +224,38 @@ let random_insertions st sz =
   let _c, _ = hash c in
   let c, _ = from_Ok @@ commit c in
 
+  (* traversal: visit the leaf and bud and check all are covered *)
+  let bindings' = Hashtbl.copy bindings in
+  let rec loop (log, Cursor (trail, n, context) as pos) =
+    begin match log, view context n with
+    | ([] | From_above _ :: _), Leaf _ ->
+        let s = match path_of_trail trail with [[]; s] -> s | _ -> assert false in
+        (* Format.eprintf "value seg: %s@." @@ Path.to_string s; *)
+        begin match Hashtbl.find_opt bindings' s with
+          | Some `Value _ -> Hashtbl.remove bindings' s
+          | _ -> assert false
+        end
+    | ([] | From_above _ :: _), Bud _ ->
+        begin match path_of_trail trail with 
+          | [[]] -> ()
+          | [[]; s] ->
+              begin
+                (* Format.eprintf "subtree seg: %s@." @@ Path.to_string s; *)
+                match Hashtbl.find_opt bindings' s with
+                | Some `Subtree -> Hashtbl.remove bindings' s
+                | _ -> assert false
+              end
+          | _ -> assert false
+        end
+    | _ -> ()
+    end;
+    match traverse pos with
+    | None -> 
+        assert (Hashtbl.fold (fun k v acc -> (k,v)::acc) bindings' [] = [])
+    | Some pos -> loop pos
+  in
+  loop ([], c);
+        
   (* deletions to the empty *)
   let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
   let Cursor (_, n, _), _ = 

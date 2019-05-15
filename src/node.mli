@@ -140,6 +140,9 @@ val _Extended :
 val load_node_ref : (Context.t -> Index.t -> extender_witness -> view) ref
 val load_node : Context.t -> Index.t -> extender_witness -> view
 
+val may_forget : node -> node option
+(** If the node is indexed, forget the details *)
+    
 val view : Context.t -> node -> view
 
 type cursor = private
@@ -159,4 +162,3 @@ val _Cursor : (trail * node * Context.t) -> cursor
 
 val path_of_trail : trail -> Path.side list list
 (** Path side list of the given trail, splitted by buds *)
-    

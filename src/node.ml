@@ -298,6 +298,14 @@ let load_node_ref = ref (fun _ _ _ -> assert false)
 
 let load_node context index ewit = !load_node_ref context index ewit
 
+let may_forget = function
+  | Disk _ as n -> Some n
+  | View (Internal (_, _, Indexed i, _, _)) -> Some (Disk (i, Not_Extender))
+  | View (Bud (_, Indexed i, _, _)) -> Some (Disk (i, Not_Extender))
+  | View (Leaf (_, Indexed i, _, _)) -> Some (Disk (i, Not_Extender))
+  | View (Extender (_, _, Indexed i, _, _)) -> Some (Disk (i, Is_Extender))
+  | _ -> None
+
 type cursor =
     Cursor of trail
               * node
@@ -390,6 +398,6 @@ let path_of_trail trail =
     | Budded (tr, _, _) -> aux ([], xs::xss) tr
     | Left (tr, _, _, _) -> aux (Path.Left :: xs, xss) tr
     | Right (_, tr, _, _) -> aux (Path.Right :: xs, xss) tr
-    | Extended (tr, seg, _, _) -> aux ((seg :> Path.side list) @ xs, xss) tr
+    | Extended (tr, seg, _, _) -> aux (seg @ xs, xss) tr
   in
   aux ([], []) trail
