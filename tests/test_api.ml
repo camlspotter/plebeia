@@ -81,14 +81,18 @@ let validate context n =
       prerr_endline "Saved the current node to invalid.dot";
       failwith e)
 
-let random_insertions st sz =
-  test_with_cursor @@ fun c ->
-  let bindings = Hashtbl.create 101 in
+let random_segment st =
+  let length = Random.State.int st 10 + 3 in
+  random_segment ~length st 
 
-  let random_segment st =
-    let length = Random.State.int st 10 + 3 in
-    random_segment ~length st 
-  in
+(* Add random leafs and subdirs to plebeia and dumb trees,
+   checking the consistency between them.  
+   It returns, the final trees and a hashtbl of added leafs and subdirs.
+   
+   The input trees must be equivalent.
+*)
+let add_random st sz c dumb =
+  let bindings = Hashtbl.create 101 in
 
   let rec f c dumb i =
     if i = sz then (c, dumb)
@@ -211,7 +215,6 @@ let random_insertions st sz =
       in
       f c dumb (i+1)
   in
-  let dumb = Dumb.empty () in
   let c, dumb = f c dumb 0 in
   to_file "random_insertions.dot" @@ Debug.dot_of_cursor c;
   Hashtbl.iter (fun seg x -> 
@@ -223,6 +226,15 @@ let random_insertions st sz =
   (* hash and commit *)
   let _c, _ = hash c in
   let c, _ = from_Ok @@ commit c in
+
+  c, dumb, bindings
+  
+let random_insertions st sz =
+  test_with_cursor @@ fun c ->
+
+  let dumb = Dumb.empty () in
+
+  let c, dumb, bindings = add_random st sz c dumb in
 
   (* traversal: visit the leaf and bud and check all are covered *)
   let bindings' = Hashtbl.copy bindings in
