@@ -1,5 +1,7 @@
 (** Key-value store for leaf data using reference counting
-    for deletion. TODO provide persistence to disk. *)
+    for deletion. 
+                  
+    TODO: provide persistence to disk. Currently it is on memory. *)
 
 (** Type of a key-value store. *)
 type t
