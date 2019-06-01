@@ -2,7 +2,6 @@ module type S = sig
 
   (** Module manipulating patricia trees and persisting them to disk *)
   
-  
   module Context : sig
     type t
     (** A context represents the storage of a collection of trees sharing
