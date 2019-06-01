@@ -5,6 +5,8 @@ open Error
 open Types
 open Node
 
+type t = cursor
+  
 let dot_of_cursor_ref = ref (fun _ -> assert false)
     
 let attach trail node context =
