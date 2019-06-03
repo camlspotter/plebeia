@@ -134,7 +134,7 @@ let rec parse_cell context i =
             end
       end
 
-  | -33l -> (* leaf whose value is in the KVS *)
+  | -33l -> (* leaf whose value is in the external KVS *)
       begin match context.Context.leaf_table with
         | None -> assert false (* no external KVS created *)
         | Some kvs ->
@@ -156,6 +156,8 @@ let rec parse_cell context i =
       let (bufs, _size) = Chunk.get_chunks context @@ Index.pred i in
       let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
       _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
+
+  | x when -256l <= x && x <= -36l -> assert false
 
   | _ -> 
       let s_224 = C.copy buf 0 28 in
