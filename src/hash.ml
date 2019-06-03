@@ -75,34 +75,3 @@ let extend_to_hash56 h =
     (h ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
 
 let shorten_to_hash28 h = String.sub h 0 28 
-
-(*
-let of_leaf v =
-  of_storage_hash @@ hash_list [ "\000"; Value.to_string v]
-
-
-(* XXX correct? *)
-let of_empty_bud = of_string (String.make 56 '\000')
-
-(* the hash of a bud node is the hash of its child *)
-let of_bud = function
-  | None -> of_empty_bud
-  | Some h -> h
-
-(*
-   |<-     H(0x01 || l || h)    ->|
-   |                           |00|0...........................01|
-*)
-let of_internal_node l r =
-  of_storage_hash @@ reset_last_2bits @@ hash_list [ "\001"; l; r ]
-
-(*
-   |<-                       H_child                           ->|
-   | The first 224bits of H_child |0......01|<- segment bits ->|1|
-*) 
-let of_extender seg h =
-  of_string (String.sub h 0 28 ^ Segment_encoding.encode seg)
-
-let of_extender' ~segment_code h =
-  of_string (String.sub h 0 28 ^ segment_code)
-*)

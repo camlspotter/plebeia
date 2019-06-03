@@ -135,10 +135,13 @@ let rec parse_cell context i =
       end
 
   | -33l -> (* leaf whose value is in the KVS *)
-      let h = get_hash buf in
-      begin match KVS.get_opt context.Context.leaf_table h with
-        | None -> raise (LoadFailure (Printf.sprintf "Hash %s is not found in KVS" @@ to_hex @@ Hash.to_string h))
-        | Some v -> _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
+      begin match context.Context.leaf_table with
+        | None -> assert false (* no external KVS created *)
+        | Some kvs ->
+            let h = get_hash buf in
+            match KVS.get_opt kvs h with
+            | None -> raise (LoadFailure (Printf.sprintf "Hash %s is not found in KVS" @@ to_hex @@ Hash.to_string h))
+            | Some v -> _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
       end
 
   | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
@@ -203,10 +206,10 @@ let write_small_leaf context v =
   let buf = make_buf context i in
   write_string (Value.to_string v) buf 0 len
 
-let write_large_leaf_to_kvs context h v =
+let write_large_leaf_to_kvs kvs h v =
   let len = Value.length v in
   assert (len > 32);
-  KVS.insert context.Context.leaf_table h v
+  KVS.insert kvs h v
 
 let write_large_leaf_to_plebeia context v =
   ignore @@ Chunk.write_to_chunks context 1000 (Value.to_string v)
@@ -272,17 +275,17 @@ let write_leaf context v h =
     set_index buf (Uint32.of_int (len - 33)) (* 1 => -32  32 -> -1 *)
   end else begin
     let h = Hash.shorten_to_hash28 h in
-    if context.store_in_leaf_table then begin
-      let buf = make_buf context i in
-      let h = Hash.to_string h in
-      write_string h buf 0 28;
-      set_index buf (Uint32.of_int32 (-33l));
-    end else begin
-      let buf = make_buf context i in
-      let h = Hash.to_string h in
-      write_string h buf 0 28;
-      set_index buf (Uint32.of_int32 (-35l));
-    end
+    let k = 
+      match context.leaf_table with
+      | Some _kvs ->
+          (* kvs should be filled out of this function *)
+          -33l
+      | None -> -35l
+    in
+    let buf = make_buf context i in
+    let h = Hash.to_string h in
+    write_string h buf 0 28;
+    set_index buf (Uint32.of_int32 k)
   end;
   _Leaf (v, Indexed i, Hashed h, Indexed_and_Hashed), i, h
 
@@ -324,15 +327,16 @@ let commit_node context node =
         if 1 <= len && len <= 32 then begin
           write_small_leaf context value;
           write_leaf context value h
-        end else 
-          if context.Context.store_in_leaf_table then begin
-            let h28 = Hash.shorten_to_hash28 h in
-            write_large_leaf_to_kvs context h28 value;
-            write_leaf context value h
-          end else begin
-            write_large_leaf_to_plebeia context value;
-            write_leaf context value h
-          end
+        end else begin
+          match context.Context.leaf_table with
+          | Some kvs -> 
+              let h28 = Hash.shorten_to_hash28 h in
+              write_large_leaf_to_kvs kvs h28 value;
+              write_leaf context value h
+          | None ->
+              write_large_leaf_to_plebeia context value;
+              write_leaf context value h
+        end
         
     | Bud (Some underneath, Not_Indexed, h, _) ->
         let (node, _, h') = commit_aux underneath in

@@ -4,14 +4,16 @@ open Types
 type t = {
   array : Bigstring.t ;
   (* mmaped array where the nodes are written and indexed. *)
+
   mutable length : Index.t ;
   (* Current length of the node table. *)
-  leaf_table  : KVS.t ;
-  (* Hash table  mapping leaf hashes to their values. *)
-  store_in_leaf_table : bool ;
-  (* If [false], all the values are stored in the tree *)
+
+  leaf_table  : KVS.t option ;
+  (* External Key-Value-Store.  Hash table mapping leaf hashes to their values. *)
+
   roots_table : (Hash.hash56, Index.t) Hashtbl.t ;
   (* Hash table mapping root hashes to indices in the array. *)
+
   fd : Unix.file_descr ; 
   (* File descriptor to the mapped file *)
 }
@@ -30,8 +32,7 @@ let make ?pos ?(shared=false) ?(length=(-1)) ?(use_kvs=false) fn =
       char c_layout shared [| length |] in
   { array ;
     length = Uint32.zero ;
-    leaf_table = KVS.make () ;
-    store_in_leaf_table = use_kvs;
+    leaf_table = if use_kvs then Some (KVS.make ()) else None ;
     roots_table = Hashtbl.create 1 ;
     fd = fd ;
   }

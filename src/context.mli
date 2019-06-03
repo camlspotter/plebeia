@@ -3,14 +3,16 @@ open Types
 type t = {
   array : Bigstring.t ;
   (* mmaped array where the nodes are written and indexed. *)
+
   mutable length : Index.t ;
   (* Current length of the node table. *)
-  leaf_table  : KVS.t ;
-  (* Hash table  mapping leaf hashes to their values. *)
-  store_in_leaf_table : bool ;
-  (* If [false], all the values are stored in the tree *)
+
+  leaf_table  : KVS.t option ;
+  (* External Key-Value-Store.  Hash table mapping leaf hashes to their values. *)
+
   roots_table : (Hash.hash56, Index.t) Hashtbl.t ;
   (* Hash table mapping root hashes to indices in the array. *)
+
   fd : Unix.file_descr ; 
   (* File descriptor to the mapped file *)
 }
