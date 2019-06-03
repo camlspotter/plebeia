@@ -2,7 +2,8 @@
 
 Hash of a node has 448bit length.
 
-`H(x) = Blake2B(28, x)`
+`H(x) = Blake2B(28, x)`, which has 224bit length.
+`||` is for byte/string append.
 
 ```
 leaf      |<-      H(0x00 || v)        ->|
@@ -15,9 +16,11 @@ bud       |<------------------ hash of its child ---------------------->|
 internal  |<-     H(0x01 || l || h)    ->|
           |                          |0|0|0...........................01|
 
-extender  |<-                       H_child                           ->|
-          | The first 224bits of H_child |0*1|<- segment bits ------->|1|
+extender  |<------------------ hash of its child ---------------------->|
+          | The first 224bits of H_child |00...1|<- segment bits ---->|1|
 ```
+
+See the following sectrions for further details.
 
 ### Leaf
 
@@ -58,8 +61,8 @@ The hash of an extender is the first 28bytes of its child's hash,
 followed by 224bits of its segment encoding (see below).
 
 ```
-extender  |<-                       H_child                           ->|
-          | The first 224bits of H_child |0*1|<- segment bits ------->|1|
+extender  |<------------------ hash of its child ---------------------->|
+          | The first 224bits of H_child |000...1|<- segment bits --->|1|
 ```
 
 #### Segment encoding
@@ -72,7 +75,7 @@ extender  |<-                       H_child                           ->|
 * then prepended as many bits of zeros to make the entire length become 224bits:
 
 ```
-          |0*1|<- segment bits ------->|1|
+          |000...1|<- segment bits --->|1|
 ```
 
 From the definition of the segment encoding, the maximum length of segments is 224-2 = 222.
@@ -96,8 +99,8 @@ to 2^32 - 1 - 256.
 The index part value more than 2^32 - 256 to 2^32 - 1 are used for *tags*.
 
 * 2^32 -1 to 2^32-32 : small leaves, whose contents are stored in the previous cell
-* 2^32 -33 : bud
-* 2^32 -34 : large leaves, whose contents are stored in an external KVS
+* 2^32 -34 : bud
+* 2^32 -33 : large leaves, whose contents are stored in an external KVS
 * 2^32 -35 : large leaves in Plebeia.  Their contents are stored in Plebeia cells.
 * Others from 2^32 -256 : reserved
 

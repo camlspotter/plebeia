@@ -46,7 +46,7 @@ is inspired from the one described by Vitalik Buterin [here](https://ethresear.c
 
 #### Node storage format
 
-Note: This is obsolete.  Check Layout.md for the latest version used in the implementation.
+Note: This is obsolete.  Check `Layout.md` for the latest version used in the implementation.
 
 All nodes are stored in an array with 256 bit cells. The constant size makes it easy for nodes
 to refer to each other using an index in the array.
