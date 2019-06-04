@@ -2,6 +2,8 @@ type t = (Hash.hash28, Value.t * int) Hashtbl.t
 
 let make () = Hashtbl.create 0
 
+let close _ = ()
+
 let insert table h v =
   match Hashtbl.find_opt table h with
   | None -> Hashtbl.add table h (v, 1)

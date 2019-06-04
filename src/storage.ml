@@ -2,6 +2,7 @@ open Stdint
 open Utils
 open Types
 open Node
+open Context
 
 (** node storage.
     See Layout.md for the format *)
@@ -24,10 +25,7 @@ let write_string s buf off len =
   if slen <> len then begin Format.eprintf "write_string: %d <> %d@." slen len; assert false end;
   C.blit_from_string s 0 buf off len
 
-let make_buf context i =
-  (* XXX May overflow in 32bits arch! *)
-  let i = Index.to_int i in 
-  C.of_bigarray ~off:(i*32) ~len:32 context.Context.array
+let make_buf context i = Mtree.get_cell context.mtree i
 
 (* get the last 32 bits *)
 let get_index buf : Index.t = Index.of_uint32 @@ C.get_uint32 buf 28
@@ -48,15 +46,12 @@ module Chunk = struct
     let size = C.get_uint16 buf 26 in
     (cdr, size)
 
-  let chunk_contents context ~first_index nbytes =
-    C.of_bigarray ~off:(Uint32.to_int first_index * 32) ~len:nbytes context.Context.array
-
   let get_chunk context last_index =
     let cdr, size = get_footer_fields context last_index in
     (* Format.eprintf "Loading from %d size=%d@." (Index.to_int last_index) size; *)
     let ncells = ncells size in
     let first_index = Uint32.(last_index - of_int ncells + one) in
-    (chunk_contents context ~first_index size, size, cdr)
+    (Mtree.get_bytes context.mtree first_index size, size, cdr)
 
   let get_chunks context last_index =
     let rec aux (bufs, size) last_index =
@@ -74,9 +69,9 @@ module Chunk = struct
     let cdr_pos = ncells * 32 - 4 in
     let size_pos = cdr_pos - 2 in
 
-    let i = Context.new_indices context ncells in
+    let i = Mtree.new_indices context.mtree ncells in
     let last_index = Index.(i + of_int ncells - one) in
-    let chunk = chunk_contents context ~first_index:i (32 * ncells) in
+    let chunk = Mtree.get_bytes context.mtree i (32 * ncells) in
 
     C.blit_from_string s off chunk 0 len;
     (* Format.eprintf "Blit to %d %S@." (Index.to_int last_index) (String.sub s off len); *)
@@ -135,7 +130,7 @@ let rec parse_cell context i =
       end
 
   | -33l -> (* leaf whose value is in the external KVS *)
-      begin match context.Context.leaf_table with
+      begin match Mtree.kvs context.mtree with
         | None -> assert false (* no external KVS created *)
         | Some kvs ->
             let h = get_hash buf in
@@ -204,7 +199,7 @@ let zero_24 = String.make 24 '\000'
 let write_small_leaf context v =
   let len = Value.length v in
   assert (1 <= len && len <= 32);
-  let i = Context.new_index context in
+  let i = Mtree.new_index context.mtree in
   let buf = make_buf context i in
   write_string (Value.to_string v) buf 0 len
 
@@ -218,7 +213,7 @@ let write_large_leaf_to_plebeia context v =
 
 let write_internal context nl nr h =
   (* internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| *)
-  let i = Context.new_index context in
+  let i = Mtree.new_index context.mtree in
   let buf = make_buf context i in
 
   let hstr = Hash.to_string h in
@@ -249,7 +244,7 @@ let write_internal context nl nr h =
 let write_empty_bud context =
   (* XXX No point to store the empty bud... *)
   (* empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 34 ------------------------->| *)
-  let i = Context.new_index context in
+  let i = Mtree.new_index context.mtree in
   let buf = make_buf context i in
   write_string bud_first_28 buf 0 28;
   set_index buf (Uint32.of_int32 (-34l));
@@ -258,7 +253,7 @@ let write_empty_bud context =
 
 let write_bud context n h = 
   (* bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 34 ------------------------->| *)
-  let i = Context.new_index context in
+  let i = Mtree.new_index context.mtree in
   let buf = make_buf context i in
   write_string zero_24 buf 0 24;
   C.set_uint32 buf 24 @@ index n;
@@ -268,7 +263,7 @@ let write_bud context n h =
 let write_leaf context v h =
   (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
   (* contents are already written *)
-  let i = Context.new_index context in
+  let i = Mtree.new_index context.mtree in
   let len = Value.length v in
   if 1 <= len && len <= 32 then begin
     let buf = make_buf context i in
@@ -278,7 +273,7 @@ let write_leaf context v h =
   end else begin
     let h = Hash.shorten_to_hash28 h in
     let k = 
-      match context.leaf_table with
+      match Mtree.kvs context.mtree with
       | Some _kvs ->
           (* kvs should be filled out of this function *)
           -33l
@@ -293,7 +288,7 @@ let write_leaf context v h =
 
 let write_extender context seg n h =
   (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
-  let i = Context.new_index context in
+  let i = Mtree.new_index context.mtree in
   let buf = make_buf context i in
   write_string (Segment_encoding.encode seg) buf 0 28;
   set_index buf @@ index n;
@@ -330,7 +325,7 @@ let commit_node context node =
           write_small_leaf context value;
           write_leaf context value h
         end else begin
-          match context.Context.leaf_table with
+          match Mtree.kvs context.mtree with
           | Some kvs -> 
               let h28 = Hash.shorten_to_hash28 h in
               write_large_leaf_to_kvs kvs h28 value;

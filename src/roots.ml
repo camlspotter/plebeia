@@ -9,6 +9,10 @@ type t =
   ; fd : Unix.file_descr
   }
 
+let index_removed = Stdint.Uint32.max_int
+                      
+let exists = Sys.file_exists
+
 let create path =
   let open Unix in
   if Sys.file_exists path then failwith "roots file already exists"
@@ -20,12 +24,13 @@ let read_commit fd =
   let open Unix in
   let buf = Bytes.create 60 in
   let r = read fd buf 0 60 in
-  if r <> 60 then failwith (string_of_int r) (* XXX *)
+  if r = 0 then None (* EOF *)
+  else if r <> 60 then failwith (string_of_int r) (* XXX *)
   (* XXX garbage may exist, if write_commit fails. we have to ignore them *)
   else
-    (Hash.hash56_of_string @@ Bytes.sub_string buf 0 56,
-     let cstr = Cstruct.of_bytes buf in
-     Stdint.Uint32.of_int32 @@ Cstruct.LE.get_uint32 cstr 56)
+    Some (Hash.hash56_of_string @@ Bytes.sub_string buf 0 56,
+          let cstr = Cstruct.of_bytes buf in
+          Stdint.Uint32.of_int32 @@ Cstruct.LE.get_uint32 cstr 56)
     
 let write_commit fd hash index =
   let open Unix in
@@ -45,21 +50,32 @@ let open_ path =
   let tbl = Hashtbl.create 1001 in
   let rec loop () =
     match read_commit fd with
-    | exception (Failure x) when x = "0" -> { tbl; fd }
+    | None -> { tbl; fd }
+    | Some (h,i) when i = index_removed -> 
+        Hashtbl.remove tbl h;
+        loop ()
+    | Some (h,i) -> 
+        Hashtbl.replace tbl h i; (* XXX overwrite should be warned *)
+        loop ()
     | exception (Failure _) ->
         (* XXX garbate found, overwrite from here. 
            XXX we have to rewind to the point of the last valid read
         *)
         { tbl; fd }
-    | (h,i) -> 
-        Hashtbl.replace tbl h i; (* XXX overwrite should be warned *)
-        loop ()
   in
   loop ()
 
 let add { tbl; fd } hash index =
   Hashtbl.replace tbl hash index; (* XXX overwrite should be warned *)
   write_commit fd hash index
+
+let mem { tbl ; _ } = Hashtbl.mem tbl
+
+let remove ({ tbl; fd } as t) hash =
+  if mem t hash then begin
+    Hashtbl.remove tbl hash;
+    write_commit fd hash index_removed
+  end else ()
 
 let find { tbl ; _ } = Hashtbl.find_opt tbl
 

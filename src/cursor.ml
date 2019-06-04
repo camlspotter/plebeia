@@ -365,7 +365,7 @@ let create_subtree cur segment =
       | Some _ -> Error "a node already presents for this path")
 
 let root context h = 
-  match Hashtbl.find_opt context.Context.roots_table h with
+  match Roots.find context.Context.roots h with
   | None -> Error "The root is not found in the roots_table"
   | Some i -> Ok (_Cursor( _Top, Disk(i, Not_Extender), context))
 

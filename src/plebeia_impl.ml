@@ -11,6 +11,7 @@ module Context = Context
 module NodeHash = NodeHash
 module Storage = Storage
 module Cursor = Cursor
+module Roots = Roots
   
 let to_disk context n =
   let n, i, h = Storage.commit_node context n in
@@ -27,15 +28,15 @@ let commit (Cursor (trail, _, _) as c) =
   match trail with
   | Top -> 
       let (Cursor (_ , _, context) as c), i, h = commit c in
-      begin match Hashtbl.find_opt context.Context.roots_table h with
+      begin match Roots.find context.roots h with
         | Some i' -> Error (c, i, h, i') (* Hash collision *)
-        | None -> Hashtbl.add context.Context.roots_table h i; Ok (c, h)
+        | None -> Roots.add context.roots h i; Ok (c, h)
       end
         
   | _ -> failwith "commit: cursor must point to a root"
 
 let gc ~src:_ _ ~dest:_ = failwith "not implemented"
 
-let open_context ~filename:_ = failwith "not implemented"
-
 let hash = NodeHash.hash
+
+let open_ = Context.open_

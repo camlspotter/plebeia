@@ -1,54 +1,26 @@
-open Stdint
-open Types
-
 type t = {
-  array : Bigstring.t ;
-  (* mmaped array where the nodes are written and indexed. *)
+  mtree : Mtree.t ; 
+  (* sparse Merkle tree *)
 
-  mutable length : Index.t ;
-  (* Current length of the node table. *)
-
-  leaf_table  : KVS.t option ;
-  (* External Key-Value-Store.  Hash table mapping leaf hashes to their values. *)
-
-  roots_table : (Hash.hash56, Index.t) Hashtbl.t ;
-  (* Hash table mapping root hashes to indices in the array. *)
-
-  fd : Unix.file_descr ; 
-  (* File descriptor to the mapped file *)
+  roots : Roots.t ;
+  (* Persisitent DB of root hashes to indices in the array. *)
 }
 
-let make ?pos ?(shared=false) ?(length=(-1)) ?(use_kvs=false) fn =
-  let fd = Unix.openfile fn [O_RDWR] 0o644 in
-  let array =
-    (* length = -1 means that the size of [fn] determines the size of
-       [array]. This is almost certainly NOT what we want. Rather the array
-       should be made x% bigger than the file (say x ~ 25%). When the array
-       is close to being full, the file should be closed and reopened with
-       a bigger length.
-    *) (* FIXME *)
-    let open Bigarray in
-    array1_of_genarray @@ Unix.map_file fd ?pos
-      char c_layout shared [| length |] in
-  { array ;
-    length = Uint32.zero ;
-    leaf_table = if use_kvs then Some (KVS.make ()) else None ;
-    roots_table = Hashtbl.create 1 ;
-    fd = fd ;
+let make ?pos ?shared ?kvs ?length fn =
+  let mtree = Mtree.make ?pos ?shared ?kvs ?length fn in
+  let roots = Roots.create (fn ^ "_roots") in
+  { mtree ;
+    roots
   }
 
-let new_index c =
-  (* XXX check of size *)
-  let i = Uint32.succ c.length in
-  c.length <- i;
-  i
-
-let new_indices c n =
-  (* XXX check of size *)
-  assert (n > 0);
-  let i = Uint32.succ c.length in
-  c.length <- Index.(c.length + of_int n);
-  i
-
-let free { fd ; _ } = Unix.close fd
+let open_ ?pos ?shared ?kvs fn =
+  if not @@ Sys.file_exists fn then make ?pos ?shared ?kvs fn 
+  else
+    let mtree = Mtree.open_ ?pos ?shared fn in
+    let roots = Roots.open_ (fn ^ "_roots") in
+    { mtree ; roots }
+  
+let close { mtree ; roots ; _ } = 
+  Roots.close roots;
+  Mtree.close mtree
 

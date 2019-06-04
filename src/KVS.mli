@@ -9,6 +9,8 @@ type t
 (** New, empty table *)
 val make : unit -> t
 
+val close : t -> unit
+
 (** Inserts a key in the table, or update the reference
     count if the key is already present. *)
 val insert   : t -> Hash.hash28 -> Value.t -> unit

@@ -25,7 +25,7 @@ module type S = sig
   
   type value
   
-  val open_context : filename:string -> Context.t
+  val open_ : ?pos: int64 -> ?shared: bool -> ?kvs: KVS.t -> string -> Context.t
   (** Opens or creates a new context backed up at a given location
       in the filesystem. *)
   
