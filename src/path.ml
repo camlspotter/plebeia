@@ -68,6 +68,9 @@ let _to_key seg =
 let to_key seg =
   let buf = Buffer.create 128 in
   let rec f = function
+    | Left :: Left :: Left :: Left :: Left :: Left :: Left :: Left :: [] ->
+        Some (Buffer.contents buf)
+    | _ :: _ :: _ :: _ :: _ :: _ :: _ :: _ :: [] -> None
     | x1 :: x2 :: x3 :: x4 :: x5 :: x6 :: x7 :: x8 :: seg ->
         let bit = function
           | Left -> 0
@@ -85,7 +88,6 @@ let to_key seg =
         in
         Buffer.add_char buf (Char.chr byte);
         f seg
-    | [] -> Some (Buffer.contents buf)
     | _ -> None (* XXX error detail *)
   in
   f seg
@@ -96,10 +98,11 @@ let of_key s =
     if i < 0 then acc
     else
       let c = Char.code @@ String.unsafe_get s i in
+      if c = 0 then assert false;
       let p n = if c land n = 0 then Left else Right in
       f ([ p 128 ; p 64; p 32; p 16; p 8; p 4; p 2; p 1 ] @ acc) (i - 1)
   in
-  f [] (String.length s - 1)
+  f [] (String.length s - 1) @ [Left; Left; Left; Left; Left; Left; Left; Left]
 
 let () =
   assert (to_key @@ of_key "hello world" = Some "hello world")
