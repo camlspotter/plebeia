@@ -306,7 +306,6 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
   (* XXX 2 cases. not cool *)
   go_below_bud cur >>= function
   | None ->
-      assert (trail = _Top);
       alteration None >>= fun n' ->
       let n' = NotHashed.extend segment n' in
       let n' = NotHashed.bud (Some n') in
@@ -363,11 +362,6 @@ let create_subtree cur segment =
   alter cur segment (function
       | None -> Ok (NotHashed.bud None)
       | Some _ -> Error "a node already presents for this path")
-
-let root context h = 
-  match Roots.find context.Context.roots h with
-  | None -> Error "The root is not found in the roots_table"
-  | Some i -> Ok (_Cursor( _Top, Disk(i, Not_Extender), context))
 
 type where_from =
   | From_above of dir

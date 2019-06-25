@@ -1,11 +1,16 @@
 (executables
- (names segment_encoding test_api storage chunk)
+ (names segment_encoding test_api storage chunk test_roots)
  (libraries plebeia))
 
 (alias
  (name test_api)
  (deps test_api.exe)
  (action (run ./test_api.exe)))
+  
+(alias
+ (name test_roots)
+ (deps test_roots.exe)
+ (action (run ./test_roots.exe)))
   
 (alias
  (name test_segment_encoding)
@@ -27,4 +32,6 @@
  (deps (alias test_segment_encoding)
        (alias test_api)
        (alias test_storage)
-       (alias test_chunk)))
+       (alias test_chunk)
+       (alias test_roots)
+       ))

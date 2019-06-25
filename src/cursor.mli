@@ -3,10 +3,6 @@ open Node
 
 type t = cursor
 
-val root : Context.t -> hash -> (t, error) result
-(** Gets the root cursor corresponding to a given root hash in the
-    context. *)
-
 val empty : Context.t -> t
 (** Creates a cursor to a new, empty tree. *)
 

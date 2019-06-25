@@ -26,7 +26,7 @@ let decode h =
 
 let encode seg =
   let len = List.length seg in
-  if len > 222 then failwith "segment is too long";
+  if len > 222 then failwith (Printf.sprintf "segment is too long (%d)" len);
   let head_zero_bits = 224 - len - 2 in
   let head_zero_bytes = head_zero_bits / 8 in
   let bytes = Bytes.make 28 '\000' in

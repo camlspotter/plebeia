@@ -44,6 +44,30 @@ let () =
   assert (v = value "RRRR")
 
 let () = 
+  (* subtree *)
+  test_with_cursor @@ fun c ->
+  let c = ok_or_fail @@ create_subtree c (path "RRR") in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let c = ok_or_fail @@ create_subtree c (path "RRR") in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let c = ok_or_fail @@ create_subtree c (path "RRR") in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let c = ok_or_fail @@ create_subtree c (path "RRR") in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let c = ok_or_fail @@ create_subtree c (path "RRR") in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let v = value "RRR/RRR/RRR/RRR/RRR/LLL" in
+  let c = ok_or_fail @@ insert c (path "LLL") v in
+  let c = ok_or_fail @@ go_top c in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let v' = ok_or_fail @@ get c (path "LLL") in
+  assert (v = v')
+
+let () = 
   ignore @@ from_Ok @@ test_with_cursor @@ fun c ->
   let c = from_Ok @@ insert c (path "RR") (value "RR") in
   let _ = 
@@ -225,7 +249,7 @@ let add_random st sz c dumb =
 
   (* hash and commit *)
   let _c, _ = hash c in
-  let c, _ = from_Ok @@ commit c in
+  let c, _, _ = from_Ok @@ commit c in
 
   c, dumb, bindings
   
@@ -275,7 +299,7 @@ let random_insertions st sz =
         let Cursor (_, n, context) as c = match delete c seg with 
           | Ok c -> 
               let _c, _ = hash c in
-              let c, _ = from_Ok @@ commit c in
+              let c, _, _ = from_Ok @@ commit c in
               c
           | Error e -> 
               to_file "deletion.dot" @@ Debug.dot_of_cursor c;

@@ -20,7 +20,7 @@ module type S = sig
   type segment
   (** A segment represents a path from the root of a tree to a leaf or
       to the root of a sub-tree. *)
-  
+
   type error
   
   type value
@@ -28,15 +28,19 @@ module type S = sig
   val open_ : ?pos: int64 -> ?shared: bool -> ?kvs: KVS.t -> string -> Context.t
   (** Opens or creates a new context backed up at a given location
       in the filesystem. *)
-  
+
+  val close : Context.t -> unit
+    
   val gc: src:Context.t -> hash list -> dest:Context.t -> unit
   (** Copies from the src context trees rooted in the hash list
       into a new context. Used for garbage collection. *)
   
   module Cursor : sig
+(*
     val root : Context.t -> hash -> (cursor, error) result
     (** Gets the root cursor corresponding to a given root hash in the
         context. *)
+*)
   
     val empty : Context.t -> cursor
     (** Creates a cursor to a new, empty tree. *)
@@ -70,15 +74,17 @@ module type S = sig
         another segment location. *)
   end
 
-  val commit: cursor -> (cursor * hash, cursor * index * hash * index) result
+  val commit: cursor -> (cursor * index * hash, error) result
   (** Commits the change made in a cursor to disk. 
       The cursor must point to a root. 
       Returns the updated cursor and its new root hash. 
 
+(* XXX It must be implemented outside 
       If the same root hash [h] is already bound to an index [i'] 
       in the roots table, the function returns an [Error (c, i, h, i')],
       WITHOUT adding the index [i] new change to the roots table.
       Even in this case, the changes are stored in the node storage.
+*)
   *)
   
   val hash: cursor -> (cursor * hash)

@@ -27,16 +27,13 @@ let commit (Cursor (trail, node, context)) =
 let commit (Cursor (trail, _, _) as c) =
   match trail with
   | Top -> 
-      let (Cursor (_ , _, context) as c), i, h = commit c in
-      begin match Roots.find context.roots h with
-        | Some i' -> Error (c, i, h, i') (* Hash collision *)
-        | None -> Roots.add context.roots h i; Ok (c, h)
-      end
-        
-  | _ -> failwith "commit: cursor must point to a root"
+      let c, i, h = commit c in
+      Ok (c, i, h)
+  | _ -> failwith "commit: cursor must point to a root" (* XXX *)
 
 let gc ~src:_ _ ~dest:_ = failwith "not implemented"
 
 let hash = NodeHash.hash
 
 let open_ = Context.open_
+let close = Context.close

@@ -45,20 +45,24 @@ let shuffle st xs =
   done;
   Array.to_list a
 
+let with_temp_file ?(postfix="test") f =
+  let fn = Filename.temp_file "plebeia" postfix in
+  try
+    let res = f fn in
+    Unix.unlink fn; (* If the funciton fails, the temp file should remain for postmortem analysis *)
+    res
+  with
+  | e -> prerr_endline "damn"; raise e
+  
 let test_with_context length f =
-  let context =
-    let fn = Filename.temp_file "plebeia" "test" in
-    Context.make ~shared:true ~length fn
-  in
-  Exn.protect (fun () -> f context) (fun () -> Context.close context)
+  with_temp_file (fun fn ->
+    let context = Context.make ~shared:true ~length fn in
+    Exn.protect (fun () -> f context) (fun () -> Context.close context))
   
 let test_with_cursor f =
-  let context =
-    let fn = Filename.temp_file "plebeia" "test" in
-    Context.make ~shared:true ~length:1000000 fn
-  in
-  let cursor = Cursor.empty context in
-  Exn.protect (fun () -> f cursor) (fun () -> Context.close context)
+  test_with_context 1000000 (fun context ->
+    let cursor = Cursor.empty context in
+    f cursor)
     
 let path_of_string s = from_Some @@ Path.of_string s
 
