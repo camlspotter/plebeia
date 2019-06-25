@@ -65,15 +65,22 @@ let make_array fd ~pos ?(shared=false) mapped_length =
 
 let resize required t =
   let open Uint32 in
-  let new_mapped_length = t.mapped_length + max required resize_step in
+  let new_mapped_length = 
+    (* XXX inefficient *)
+    let rec f x =
+      if x < required then f (x + resize_step)
+      else x
+    in
+    f t.mapped_length 
+  in
+  Format.eprintf "Storage: resizing to %Ld (required %Ld)@." (Uint32.to_int64 new_mapped_length) (Uint32.to_int64 required);
   let array = make_array t.fd ~pos:t.pos ~shared:t.shared new_mapped_length in
   t.array <- array;
   t.mapped_length <- new_mapped_length
 
 let may_resize =
-  let open Uint32 in
   fun required t ->
-    if t.mapped_length - t.current_length < required then 
+    if t.mapped_length < required then 
       resize required t
     else ()
   
@@ -126,13 +133,16 @@ let new_index c =
   let i = c.current_length in
   let i' = Uint32.succ i in
   set_current_length c i';
+  may_resize i' c;
   i
 
 let new_indices c n =
   (* XXX check of size *)
   assert (n > 0);
   let i = c.current_length in
-  set_current_length c Index.(i + of_int n);
+  let i' = Uint32.(i + of_int n) in
+  set_current_length c i';
+  may_resize i' c;
   i
 
 let close { fd ; array ; current_length ; kvs ; _ } =
