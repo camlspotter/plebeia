@@ -6,9 +6,10 @@
 
    TODO: each add/remove accesses disk.  We can make the IO buffered.
 *)
+open Types
 
 type t = 
-  { tbl : (Types.hash, Types.index) Hashtbl.t  (* all are in the memory *)
+  { tbl : (Hash.hash56, Index.t) Hashtbl.t  (* all are in the memory *)
   ; fd : Unix.file_descr
   }
 

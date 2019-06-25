@@ -27,7 +27,7 @@ let rec string_of_node : node -> int -> string = fun node indent ->
       (string_of_node left (indent + 1))
       (string_of_node right (indent + 1))
   | View (Extender (segment, node, _, _, _)) ->
-    Printf.sprintf "%s[%s]- %s" indent_string (Path.to_string segment)
+    Printf.sprintf "%s[%s]- %s" indent_string (Segment.to_string segment)
       (string_of_node node (indent + 1))
 
 module Dot = struct
@@ -80,7 +80,7 @@ module Dot = struct
           let n = Printf.sprintf "Extender%d" cntr in
           (n,
            extender n
-           :: link n n' ~label:(Path.to_string segment)
+           :: link n n' ~label:(Segment.to_string segment)
            :: s,
            cntr + 1)
     in
@@ -121,7 +121,7 @@ module Dot = struct
         let cntr = cntr + 1 in
         let (ss, cntr) = of_trail n cntr trail in
         ([ extender n;
-           link n dst ~label:(Path.to_string segment) ]
+           link n dst ~label:(Segment.to_string segment) ]
          @ ss,
          cntr)
     

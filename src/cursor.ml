@@ -26,18 +26,18 @@ let attach trail node context =
 (* Tools to create Not_Indexed and Not_Hashed nodes *)
 module NotHashed : sig
   val leaf : Value.t -> node
-  val extend : Path.segment -> node -> node
+  val extend : Segment.segment -> node -> node
   val bud : node option -> node
   val internal : node -> node -> indexing_rule -> node
 end = struct
   let leaf v = View (_Leaf (v, Not_Indexed, Not_Hashed, Not_Indexed_Any))
 
-  let extend : Path.segment -> node -> node = fun segment node ->
-    if segment = Path.empty then node
+  let extend : Segment.segment -> node -> node = fun segment node ->
+    if segment = Segment.empty then node
     else 
       match node with
       | View (Extender (seg, n, _, _, _)) ->
-          View (_Extender (Path.concat segment seg, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))
+          View (_Extender (Segment.concat segment seg, n, Not_Indexed, Not_Hashed, Not_Indexed_Any))
       | _ ->
           View (_Extender (segment, node, Not_Indexed, Not_Hashed, Not_Indexed_Any))
   let bud no = View (_Bud (no, Not_Indexed, Not_Hashed, Not_Indexed_Any))
@@ -60,11 +60,11 @@ let go_side side (Cursor (trail, n, context)) =
   match view context n with
   | Internal (l, r, indexing_rule, hashed_is_transitive, indexed_implies_hashed) ->
       Ok (match side with
-          | Path.Right ->
+          | Segment.Right ->
               _Cursor (_Right (l, trail,
                              Unmodified (indexing_rule, hashed_is_transitive),
                              indexed_implies_hashed), r, context)
-          | Path.Left ->
+          | Segment.Left ->
               _Cursor (_Left (trail, r,
                             Unmodified (indexing_rule, hashed_is_transitive),
                             indexed_implies_hashed), l, context))
@@ -149,7 +149,7 @@ let unify_extenders prev_trail node context = match node with
   | View (Extender (seg, n, _, _, _)) ->
       begin match prev_trail with
         | Extended (prev_trail', seg', _mr, _iih) ->
-            Ok (attach prev_trail' (NotHashed.extend (Path.concat seg' seg) n) context)
+            Ok (attach prev_trail' (NotHashed.extend (Segment.concat seg' seg) n) context)
         | _ -> Ok (attach prev_trail node context)
       end
   | _ -> Ok (attach prev_trail node context)
@@ -161,10 +161,10 @@ let rec remove_up trail context = match trail with
   | Extended (prev_trail, _, _, _) -> remove_up prev_trail context
   (* for Left and Right, we may need to squash Extenders in prev_trail *)
   | Left (prev_trail, right, _, _) ->
-      let n = NotHashed.extend Path.(of_side_list [Right]) right in
+      let n = NotHashed.extend Segment.(of_side_list [Right]) right in
       unify_extenders prev_trail n context
   | Right (left, prev_trail, _, _) ->
-      let n = NotHashed.extend Path.(of_side_list [Left]) left in
+      let n = NotHashed.extend Segment.(of_side_list [Left]) left in
       unify_extenders prev_trail n context
 
 (* Let [c] is a cursor which points an Extender, whose segment is [common_prefix @ remaining_extender].
@@ -175,26 +175,26 @@ let rec remove_up trail context = match trail with
 let diverge (Cursor (trail, extender, _context)) (common_prefix, remaining_extender, remaining_segment) =
   match extender with
   | View (Extender (_seg, n, _ir, _hit, _iih)) -> (* _seg = common_prefix @ remaining_extender *)
-      begin match Path.cut remaining_segment, Path.cut remaining_extender with
+      begin match Segment.cut remaining_segment, Segment.cut remaining_extender with
         | None, _ -> Error "diverge: remaining_segment is empty"
         | _, None -> Error "diverge: remaining_extender is empty"
         | Some (side, seg), Some (side', seg') -> 
             (* go down along common_prefix *)
             assert (side <> side');
             let trail = 
-              if Path.is_empty common_prefix then trail 
+              if Segment.is_empty common_prefix then trail 
               else _Extended (trail, common_prefix, Modified_Left, Not_Indexed_Any)
             in
             let n' = NotHashed.extend seg' n in
             match side with
-            | Path.Left -> 
-                if Path.is_empty seg then
+            | Segment.Left -> 
+                if Segment.is_empty seg then
                   Ok (_Left (trail, n', Modified_Left, Not_Indexed_Any))
                 else
                   Ok (_Extended (_Left (trail, n', Modified_Left, Not_Indexed_Any),
                             seg, Modified_Left, Not_Indexed_Any))
-            | Path.Right -> 
-                if Path.is_empty seg then
+            | Segment.Right -> 
+                if Segment.is_empty seg then
                   Ok (_Right (n', trail, Modified_Right, Not_Indexed_Any))
                 else
                   Ok (_Extended (_Right (n', trail, Modified_Right, Not_Indexed_Any),
@@ -210,7 +210,7 @@ let access_gen cur segment =
   (* returns the cursor found by following the segment from the given cursor *)
   let rec aux (Cursor (trail, n, context) as cur) segment =
     let v = view context n in
-    match Path.cut segment with
+    match Segment.cut segment with
     | None -> Ok (cur, None)
     | Some (dir, segment_rest) ->
         match v with
@@ -245,8 +245,8 @@ let access_gen cur segment =
                     hashed_is_transitive,
                     indexed_implies_hashed) ->
           let (_, remaining_extender, remaining_segment) as common_prefix =
-            Path.common_prefix extender segment in
-          if remaining_extender = Path.empty then
+            Segment.common_prefix extender segment in
+          if remaining_extender = Segment.empty then
             let new_trail =
               _Extended (trail, extender,
                        Unmodified (
@@ -255,7 +255,7 @@ let access_gen cur segment =
                        indexed_implies_hashed) in
             aux (_Cursor (new_trail, node_below, context)) remaining_segment
           else
-            if remaining_segment = Path.empty then
+            if remaining_segment = Segment.empty then
               Error "Finished in the middle of an Extender"
             else
               (* diverge *)
@@ -406,10 +406,10 @@ let traverse (log, Cursor (trail, n, context)) =
 
   | Internal _, From_below Center :: _ -> assert false
   | Internal _, (From_above _ :: _ | []) ->
-      let c = from_Ok @@ go_side Path.Left c in
+      let c = from_Ok @@ go_side Segment.Left c in
       Some (From_above Left :: log, c)
   | Internal _, From_below Left :: log ->
-      let c = from_Ok @@ go_side Path.Right c in
+      let c = from_Ok @@ go_side Segment.Right c in
       Some (From_above Right :: log, c)
   | Internal _, From_below Right :: [] -> None
   | Internal _, From_below Right :: From_above d :: log ->

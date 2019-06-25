@@ -1,19 +1,18 @@
-open Plebeia
-module P = Plebeia.Plebeia_impl
-open Plebeia.Error
+module P =Plebeia.Plebeia_impl
+open P.Error (* for >>= *)
   
 (* unoptimized tree *)
 type t = 
   | Null
-  | Leaf of Value.t
+  | Leaf of P.Value.t
   | Tree of t
   | Node of t * t
     
 type trail = Root | Treed of trail | Left of t * trail | Right of t * trail
 
-type segment = Path.segment
+type segment = P.Segment.t
 type error = string
-type value = Plebeia.Plebeia_impl.value
+type value = P.Value.t
 type context = unit
 
 type cursor = t * trail
@@ -31,10 +30,10 @@ let rec of_plebeia_node : P.Context.t -> P.node -> t = fun context -> function
       | Leaf (v, _, _, _) -> Leaf v
       | Extender (seg, n, _, _, _) ->
           let rec aux n seg =
-            match Path.cut seg with
+            match P.Segment.cut seg with
             | None -> n
-            | Some (Path.Left, seg) -> Node (aux n seg, Null)
-            | Some (Path.Right, seg) -> Node (Null, aux n seg)
+            | Some (P.Segment.Left, seg) -> Node (aux n seg, Null)
+            | Some (P.Segment.Right, seg) -> Node (Null, aux n seg)
           in 
           aux (of_plebeia_node context n) seg
   
@@ -52,14 +51,14 @@ let subtree ntrail seg =
         | Tree _ -> Ok cur
         | _ -> Error "Reached to non Tree"
         end
-    | Path.Left :: seg' ->
+    | P.Segment.Left :: seg' ->
         begin match n with
         | Null -> Error "Null"
         | Leaf _ -> Error "Leaf"
         | Tree _ -> Error "Tree in middle"
         | Node (l, r) -> aux (l, Left (r, trail)) seg'
         end
-    | Path.Right :: seg' ->
+    | P.Segment.Right :: seg' ->
         begin match n with
         | Null -> Error "Null"
         | Leaf _ -> Error "Leaf"
@@ -89,14 +88,14 @@ let parent ((n, _) as ntrail) =
 let get_node_seg ntrail seg =
   let rec aux ((n, trail) as ntrail) = function
     | [] -> Ok ntrail
-    | Path.Left :: seg' ->
+    | P.Segment.Left :: seg' ->
         begin match n with
         | Null -> Error "Null"
         | Leaf _ -> Error "Leaf"
         | Tree _ -> Error "Tree in middle"
         | Node (l, r) -> aux (l, Left (r, trail)) seg'
         end
-    | Path.Right :: seg' ->
+    | P.Segment.Right :: seg' ->
         begin match n with
         | Null -> Error "Null"
         | Leaf _ -> Error "Leaf"
@@ -115,14 +114,14 @@ let get ntrail seg =
 let alter ntrail seg f =
   let rec aux (n, trail) = function
     | [] -> f n >>= fun v -> Ok (v, trail)
-    | Path.Left :: seg' ->
+    | P.Segment.Left :: seg' ->
         begin match n with
         | Null -> aux (Null, Left (Null, trail)) seg'
         | Leaf _ -> Error "Leaf"
         | Tree _ -> Error "Tree in middle"
         | Node (l, r) -> aux (l, Left (r, trail)) seg'
         end
-    | Path.Right :: seg' ->
+    | P.Segment.Right :: seg' ->
         begin match n with
         | Null -> aux (Null, Right (Null, trail)) seg'
         | Leaf _ -> Error "Leaf"
@@ -167,7 +166,7 @@ let link ?label n1 n2 =
   | Some l -> Printf.sprintf "%s -> %s [label=\"%s\"];" n1 n2 l
 
 let null n = Printf.sprintf "%s [shape=point];" n
-let leaf n value = Printf.sprintf "%s [label=%S];" n (Value.to_string value)
+let leaf n value = Printf.sprintf "%s [label=%S];" n (P.Value.to_string value)
 let tree n = Printf.sprintf "%s [shape=diamond, label=\"\"];" n
 let node n = Printf.sprintf "%s [shape=circle, label=\"\"];" n
     

@@ -4,16 +4,21 @@
     to maximize correctness and cares second about efficiency. Extracting
     and efficient C program from F* should be explored. *)
 
-include Types
+module Index = Types.Index
+module Value = Value
+type error = Types.error
 include Node
-
+module Segment = Segment
+module Hash = Hash
 module Context = Context
-type context = Context.t
-
 module NodeHash = NodeHash
 module Storage = Storage
 module Cursor = Cursor
 module Roots = Roots
+module KVS = KVS
+module Segment_encoding = Segment_encoding
+module Utils = Utils
+module Error = Error
   
 let to_disk context n =
   let n, i, h = Storage.commit_node context n in

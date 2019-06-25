@@ -40,7 +40,7 @@ and view =
      committing the tree to disk.
   *)
 
-  | Extender of Path.segment
+  | Extender of Segment.t
                 * node
                 * indexing_rule
                 * hashed_is_transitive
@@ -60,7 +60,7 @@ let view_shape_invariant : view -> (unit, error) result = function
   | Bud (Some (View (Leaf _)), _, _, _) -> Error "Bud: cannot have Leaf"
   | Bud (Some (View (Internal _)), _, _, _) -> Ok ()
   | Bud (Some (View (Extender _)), _, _, _) -> Ok ()
-  | Extender (seg, _, _, _, _) when Path.is_empty seg -> Error "Extender: cannot have empty segment"
+  | Extender (seg, _, _, _, _) when Segment.is_empty seg -> Error "Extender: cannot have empty segment"
   | Extender (_, Disk (_, Not_Extender), _, _, _) -> Ok ()
   | Extender (_, Disk (_, Is_Extender), _, _, _) -> Error "Extender: cannot have Disk with Is_Extender"
   | Extender (_, Disk (_, Maybe_Extender), _, _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
@@ -206,7 +206,7 @@ type trail =
 
   | Extended of
       trail
-      * Path.segment
+      * Segment.t
       * modified_rule
       * indexed_implies_hashed
   (* not the use of the "extender" and "not extender" type to enforce
@@ -214,7 +214,7 @@ type trail =
 
 let trail_shape_invariant = function
   | Extended (Extended _, _, _, _) -> Error "Extended: cannot have Extended"
-  | Extended (_, seg, _, _) when Path.is_empty seg -> Error "Extended: invalid empty segment"
+  | Extended (_, seg, _, _) when Segment.is_empty seg -> Error "Extended: invalid empty segment"
   | _ -> Ok ()
 
 let trail_modified_rule_invariant = function
@@ -396,8 +396,8 @@ let path_of_trail trail =
   let rec aux (xs, xss) = function
     | Top -> xs :: xss
     | Budded (tr, _, _) -> aux ([], xs::xss) tr
-    | Left (tr, _, _, _) -> aux (Path.Left :: xs, xss) tr
-    | Right (_, tr, _, _) -> aux (Path.Right :: xs, xss) tr
+    | Left (tr, _, _, _) -> aux (Segment.Left :: xs, xss) tr
+    | Right (_, tr, _, _) -> aux (Segment.Right :: xs, xss) tr
     | Extended (tr, seg, _, _) -> aux (seg @ xs, xss) tr
   in
   aux ([], []) trail

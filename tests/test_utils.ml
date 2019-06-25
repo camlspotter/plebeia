@@ -14,7 +14,7 @@ module RS = Random.State
 let random_string st len = String.init len (fun _ -> Char.chr @@ RS.int st 256)
     
 let random_segment ?length st =
-  let open Path in
+  let open Segment in
   let open Random.State in
   let length = 
     match length with
@@ -64,7 +64,7 @@ let test_with_cursor f =
     let cursor = Cursor.empty context in
     f cursor)
     
-let path_of_string s = from_Some @@ Path.of_string s
+let path_of_string s = from_Some @@ Segment.of_string s
 
 let ok_or_fail = function
   | Ok x -> x

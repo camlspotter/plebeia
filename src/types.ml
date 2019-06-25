@@ -1,9 +1,6 @@
 open Stdint
 
 type error = string
-type value = Value.t
-type segment = Path.segment
-type hash = Hash.hash56
 
 module Index = Uint32
 (* XXX In 64bit arch, we can simply use unboxed int *)

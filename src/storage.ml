@@ -295,7 +295,7 @@ let write_extender context seg n h =
 
 (* XXX Operations are NOT atomic at all *)
 let commit_node context node =
-  let rec commit_aux : node -> (node * Index.t * hash) = function
+  let rec commit_aux : node -> (node * Index.t * Hash.hash56) = function
     | Disk (index, wit) ->
         let v, i, h = commit_aux' (load_node context index wit) in
         View v, i, h
@@ -303,7 +303,7 @@ let commit_node context node =
         let v, i, h = commit_aux' v in
         View v, i, h
 
-  and commit_aux' : view -> (view * Index.t * hash) = fun v -> 
+  and commit_aux' : view -> (view * Index.t * Hash.hash56) = fun v -> 
     match v with
     (* easy case where it's already commited *)
     | Leaf (_, Indexed i, Hashed h, _) -> (v, i, h)

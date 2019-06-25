@@ -43,7 +43,7 @@ and view = private
      committing the tree to disk.
   *)
 
-  | Extender of Path.segment
+  | Extender of Segment.t
                 * node
                 * indexing_rule
                 * hashed_is_transitive
@@ -77,7 +77,7 @@ val _Leaf : Value.t
         * hashed_is_transitive
         * indexed_implies_hashed -> view
 
-val _Extender : Path.segment
+val _Extender : Segment.t
                * node
                * indexing_rule
                * hashed_is_transitive
@@ -111,7 +111,7 @@ type trail = private
 
   | Extended of
       trail
-      * Path.segment
+      * Segment.t
       * modified_rule
       * indexed_implies_hashed
 
@@ -133,7 +133,7 @@ val _Budded :
     * indexed_implies_hashed -> trail
 val _Extended :
     trail
-    * Path.segment
+    * Segment.t
     * modified_rule
     * indexed_implies_hashed -> trail
 
@@ -160,5 +160,5 @@ type cursor = private
 
 val _Cursor : (trail * node * Context.t) -> cursor
 
-val path_of_trail : trail -> Path.side list list
-(** Path side list of the given trail, splitted by buds *)
+val path_of_trail : trail -> Segment.side list list
+(** Segment side list of the given trail, splitted by buds *)

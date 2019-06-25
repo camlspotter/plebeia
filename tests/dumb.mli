@@ -1,5 +1,5 @@
-type segment = Plebeia.Path.segment
-type value = Plebeia.Plebeia_impl.value
+type segment = Plebeia.Plebeia_impl.Segment.t
+type value = Plebeia.Plebeia_impl.Value.t
 
 type context = unit
 type error = string

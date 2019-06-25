@@ -1,8 +1,8 @@
-open Plebeia
+open Plebeia.Plebeia_impl
 open Test_utils
 
 let bit_slow_encode_segment seg =
-  let open Path in
+  let open Segment in
   let len = List.length seg in
   if len > 222 then failwith "segment is too long";
   let head_zero_bits = 224 - len - 2 in
@@ -30,7 +30,7 @@ let bit_slow_encode_segment seg =
   fill_bytes byte_pos bit_pos (Right :: seg @ [Right] : side list) (* XXX inefficient *)
 
 let slow_encode_segment seg =
-  let open Path in
+  let open Segment in
   let len = List.length seg in
   if len > 222 then failwith "segment is too long";
   let head_zero_bits = 224 - len - 2 in

@@ -16,6 +16,7 @@ val dummy_side : side
   to a real side. By convention, it is Left. *)
 
 type segment = side list
+type t = segment
 (** A segment is always just a list of sides. TODO: use bit arithmetic for
   speed and memory footprint.*)
 

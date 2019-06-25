@@ -1,4 +1,4 @@
-open Path
+open Segment
 
 let decode h =
   assert (String.length h = 28);

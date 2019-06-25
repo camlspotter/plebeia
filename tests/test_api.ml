@@ -1,4 +1,3 @@
-open Plebeia
 open Plebeia.Plebeia_impl
 open Error
 open Test_utils
@@ -16,9 +15,9 @@ let () =
   let c = ok_or_fail @@ upsert c (path "LL") (value "fooLL") in
   let c = from_Some @@ ok_or_fail @@ go_below_bud c in
   let c = ok_or_fail @@ go_down_extender c in
-  let c = ok_or_fail @@ go_side Path.Left c in
+  let c = ok_or_fail @@ go_side Segment.Left c in
   let c = ok_or_fail @@ go_up c in
-  let c = ok_or_fail @@ go_side Path.Right c in
+  let c = ok_or_fail @@ go_side Segment.Right c in
   let c = ok_or_fail @@ go_up c in
   let c = ok_or_fail @@ go_up c in
   let c = ok_or_fail @@ go_up c in
@@ -87,8 +86,8 @@ let test_path_of_trail c seg =
   | Ok (Cursor (trail, _, _), None) ->
       if List.flatten @@ path_of_trail trail <> seg then begin
         failwith
-          (String.concat "/" (List.map (fun x -> Path.of_side_list x |> Path.to_string) (path_of_trail trail))
-        ^ "  /= " ^ Path.to_string seg)
+          (String.concat "/" (List.map (fun x -> Segment.of_side_list x |> Segment.to_string) (path_of_trail trail))
+        ^ "  /= " ^ Segment.to_string seg)
       end
   | Ok (Cursor (_trail, _, _), Some _) -> 
       (* middle of extender *)
@@ -123,8 +122,8 @@ let add_random st sz c dumb =
     else 
       let seg = random_segment st in
       let c, dumb = 
-        let s = Path.to_string seg in
-        let v = value (Path.to_string seg) in
+        let s = Segment.to_string seg in
+        let v = value (Segment.to_string seg) in
 
         (* get *)
         begin match get c seg, Dumb.get dumb seg with
@@ -266,7 +265,7 @@ let random_insertions st sz =
     begin match log, view context n with
     | ([] | From_above _ :: _), Leaf _ ->
         let s = match path_of_trail trail with [[]; s] -> s | _ -> assert false in
-        (* Format.eprintf "value seg: %s@." @@ Path.to_string s; *)
+        (* Format.eprintf "value seg: %s@." @@ Segment.to_string s; *)
         begin match Hashtbl.find_opt bindings' s with
           | Some `Value _ -> Hashtbl.remove bindings' s
           | _ -> assert false
@@ -276,7 +275,7 @@ let random_insertions st sz =
           | [[]] -> ()
           | [[]; s] ->
               begin
-                (* Format.eprintf "subtree seg: %s@." @@ Path.to_string s; *)
+                (* Format.eprintf "subtree seg: %s@." @@ Segment.to_string s; *)
                 match Hashtbl.find_opt bindings' s with
                 | Some `Subtree -> Hashtbl.remove bindings' s
                 | _ -> assert false

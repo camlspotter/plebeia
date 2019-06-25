@@ -3,5 +3,5 @@
    |0*1|<- segment bits upto 222 bits ->|1|
 *)
 
-val encode : Path.segment -> string
-val decode : string -> Path.segment
+val encode : Segment.t -> string
+val decode : string -> Segment.t
