@@ -10,7 +10,7 @@ module Chunk : sig
   val test_write_read : Random.State.t -> Context.t -> unit
 end
 
-val commit_node : Context.t -> node -> node * index * Hash.hash56
+val commit_node : Context.t -> node -> node * Index.t * Hash.t
 
 val load_node : Context.t -> Index.t -> extender_witness -> view
 (** Read the node from context.array, parse it and create a view node with it. *)

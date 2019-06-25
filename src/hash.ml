@@ -38,10 +38,11 @@ let hash_list = Blake2B_28.of_strings
 type h28
 type h56
 
-type 'a t = string
+type 'a gen = string
 
-type hash28 = h28 t
-type hash56 = h56 t
+type hash28 = h28 gen
+type hash56 = h56 gen
+type t = hash56
 
 let to_string x = x
 let hash28_of_string x = assert (String.length x = 28); x
@@ -70,7 +71,7 @@ let reset_last_2bits s =
 
 *)
 
-let extend_to_hash56 h =
+let extend_to_t h =
   hash56_of_string
     (h ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
 

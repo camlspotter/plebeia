@@ -363,6 +363,15 @@ let create_subtree cur segment =
       | None -> Ok (NotHashed.bud None)
       | Some _ -> Error "a node already presents for this path")
 
+let subtree_or_create cur segment =
+  (* XXX inefficient *)
+  let cur = 
+    match create_subtree cur segment with
+    | Ok cur -> cur
+    | Error _ -> cur
+  in
+  subtree cur segment
+
 type where_from =
   | From_above of dir
   | From_below of dir

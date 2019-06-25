@@ -59,7 +59,7 @@ and view = private
 val indexed : node -> bool
 val index : node -> Index.t option
 val hashed : node -> bool
-val hash_of_view : view -> Hash.hash56 option
+val hash_of_view : view -> Hash.t option
 
 (* Constructors with invariant checks *)
 

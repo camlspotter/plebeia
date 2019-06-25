@@ -135,7 +135,7 @@ let rec parse_cell context i =
             let h = get_hash buf in
             match KVS.get_opt kvs h with
             | None -> raise (LoadFailure (Printf.sprintf "Hash %s is not found in KVS" @@ to_hex @@ Hash.to_string h))
-            | Some v -> _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
+            | Some v -> _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h), Indexed_and_Hashed)
       end
 
   | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
@@ -143,13 +143,13 @@ let rec parse_cell context i =
       let h = get_hash buf in
       let buf = make_buf context (Index.pred i) in
       let v = Value.of_string @@ C.copy buf 0 l in
-      _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
+      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h), Indexed_and_Hashed)
 
   | -35l -> (* leaf whose value is in Plebeia *)
       let h = get_hash buf in
       let (bufs, _size) = Chunk.get_chunks context @@ Index.pred i in
       let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
-      _Leaf (v, Indexed i, Hashed (Hash.extend_to_hash56 h), Indexed_and_Hashed)
+      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h), Indexed_and_Hashed)
 
   | x when -256l <= x && x <= -36l -> assert false
 
@@ -176,7 +176,7 @@ let rec parse_cell context i =
             let c = Char.code @@ C.get_char buf 27 in
             (Char.chr (c land 0xfc), (c land 2) = 2)
           in
-          let h = Hash.extend_to_hash56 @@ Hash.hash28_of_string (s_0_215 ^ String.make 1 c_216_223) in
+          let h = Hash.extend_to_t @@ Hash.hash28_of_string (s_0_215 ^ String.make 1 c_216_223) in
           let i' = get_index buf in
           if refer_to_right then
             _Internal (Disk (Index.pred i, Maybe_Extender), Disk (i', Maybe_Extender), Indexed i, Hashed h, Indexed_and_Hashed)
@@ -295,7 +295,7 @@ let write_extender context seg n h =
 
 (* XXX Operations are NOT atomic at all *)
 let commit_node context node =
-  let rec commit_aux : node -> (node * Index.t * Hash.hash56) = function
+  let rec commit_aux : node -> (node * Index.t * Hash.t) = function
     | Disk (index, wit) ->
         let v, i, h = commit_aux' (load_node context index wit) in
         View v, i, h
@@ -303,7 +303,7 @@ let commit_node context node =
         let v, i, h = commit_aux' v in
         View v, i, h
 
-  and commit_aux' : view -> (view * Index.t * Hash.hash56) = fun v -> 
+  and commit_aux' : view -> (view * Index.t * Hash.t) = fun v -> 
     match v with
     (* easy case where it's already commited *)
     | Leaf (_, Indexed i, Hashed h, _) -> (v, i, h)

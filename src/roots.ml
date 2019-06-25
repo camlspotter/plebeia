@@ -9,7 +9,7 @@
 open Types
 
 type t = 
-  { tbl : (Hash.hash56, Index.t) Hashtbl.t  (* all are in the memory *)
+  { tbl : (Hash.t, Index.t) Hashtbl.t  (* all are in the memory *)
   ; fd : Unix.file_descr
   }
 
@@ -41,7 +41,7 @@ let read_commit fd =
     
 let write_commit fd hash index =
   let open Unix in
-  let hash = (hash : Hash.hash56 :> string) in
+  let hash = (hash : Hash.t :> string) in
   let buf = Bytes.create 60 in
   Bytes.blit_string hash 0 buf 0 56;
   let cstr = Cstruct.create 4 in

@@ -2,7 +2,7 @@ open Hash
 open Node
 
 let of_leaf v =
-  extend_to_hash56 @@ hash_list [ "\000"; Value.to_string v]
+  extend_to_t @@ hash_list [ "\000"; Value.to_string v]
 
 (* XXX correct? *)
 let of_empty_bud = hash56_of_string @@ String.make 56 '\000'
@@ -17,7 +17,7 @@ let of_bud = function
    |                          |0|0|0...........................01|
 *)
 let of_internal l r =
-  extend_to_hash56 
+  extend_to_t 
   @@ reset_last_2bits 
   @@ hash_list [ "\001"; to_string l; to_string r ]
 
@@ -28,19 +28,19 @@ let of_internal l r =
 let of_extender seg h =
   hash56_of_string (String.sub (to_string h) 0 28 ^ Segment_encoding.encode seg)
 
-let of_extender' ~segment_code (h : hash56) =
+let of_extender' ~segment_code (h : t) =
   hash56_of_string (String.sub (to_string h) 0 28 ^ segment_code)
 
 
 
 let hash (Cursor (trail, node, context)) =
-  let rec hash_aux : node -> (node * hash56) = function
+  let rec hash_aux : node -> (node * t) = function
     | Disk (index, wit) -> 
         let v, h = hash_aux' (load_node context index wit) in View v, h
     | View v -> 
         let v, h = hash_aux' v in View v, h
 
-  and hash_aux' : view -> (view * hash56) = fun v -> 
+  and hash_aux' : view -> (view * t) = fun v -> 
     match v with
     (* easy case where it's already hashed *)
     | Leaf (_, _, Hashed h, _) -> (v, h)

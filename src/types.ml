@@ -5,15 +5,13 @@ type error = string
 module Index = Uint32
 (* XXX In 64bit arch, we can simply use unboxed int *)
 
-type index = Index.t
-
 type indexed_implies_hashed =
   | Indexed_and_Hashed
   | Not_Indexed_Any
   (* Type used to prove that all indexed nodes have been hashed. *)
 
 type hashed_is_transitive =
-  | Hashed of Hash.hash56
+  | Hashed of Hash.t
   | Not_Hashed
   (* Type used to prove that if a node is hashed then so are its children.
      The type also provides the hash as a witness.*)
@@ -39,7 +37,7 @@ type extender_witness =
   | Is_Extender   
 
 type hashed_witness =
-  | Hashed of Hash.hash56
+  | Hashed of Hash.t
   | Not_Hashed
 
 type indexed_witness =

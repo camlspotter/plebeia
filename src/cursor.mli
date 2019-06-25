@@ -13,6 +13,9 @@ val subtree : t -> Segment.t -> (t, error) result
 val create_subtree: t -> Segment.t -> (t, error) result
 (** Create a subtree (bud). Think "mkdir segment" *)
 
+val subtree_or_create : t -> Segment.t -> (t, error) result
+(** Same as subtree but create a subtree if not exists *)
+    
 val go_top : t -> (t, error) result
 
 val parent : t -> (t, error) result

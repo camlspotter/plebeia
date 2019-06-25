@@ -1,13 +1,13 @@
 open Hash 
 open Node
 
-val of_empty_bud : hash56
-val of_bud : hash56 option -> hash56
-val of_leaf : Value.t -> hash56
-val of_internal : hash56 -> hash56 -> hash56
-val of_extender : Segment.t -> hash56 -> hash56
-val of_extender' : segment_code:string -> hash56 -> hash56 
+val of_empty_bud : t
+val of_bud : t option -> t
+val of_leaf : Value.t -> t
+val of_internal : t -> t -> t
+val of_extender : Segment.t -> t -> t
+val of_extender' : segment_code:string -> t -> t 
 
-val hash: cursor -> (cursor * hash56)
+val hash: cursor -> (cursor * t)
 (** Computes the hash of the cursor without committing. *)
 
