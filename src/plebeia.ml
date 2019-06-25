@@ -1,10 +1,11 @@
 include (Plebeia_impl 
          : Plebeia_intf.S
-         with type value = Value.t
+         with type context = Context.t
+          and type value   = Value.t
           and type segment = Path.segment
-          and type error = string
-          and type hash = Hash.hash56
-          and type index = Types.Index.t
+          and type error   = string
+          and type hash    = Hash.hash56
+          and type index   = Types.Index.t
         )
 
 module Plebeia_impl = Plebeia_impl

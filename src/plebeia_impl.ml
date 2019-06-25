@@ -8,6 +8,8 @@ include Types
 include Node
 
 module Context = Context
+type context = Context.t
+
 module NodeHash = NodeHash
 module Storage = Storage
 module Cursor = Cursor
