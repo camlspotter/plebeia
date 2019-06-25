@@ -7,14 +7,11 @@
 type t
 (** Storage type *)
   
-val exists : string -> bool
-(** Check the root storage exists *)
-
 val create : string -> t
-(** Create a new root storage *)
-  
+(** Create a new root storage.  Note that if the file already exists, it is truncated. *)
+
 val open_ : string -> t
-(** Open an exising root storage *)
+(** Create a new, or open an exising root storage *)
 
 val close : t -> unit
 (** Close the root storage *)
