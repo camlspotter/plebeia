@@ -94,12 +94,12 @@ type trail = private
   | Top
   | Left of (* we took the left branch of an internal node *)
       trail
-      * node
+      * node (* the right node *)
       * modified_rule
       * indexed_implies_hashed
 
   | Right of (* we took the right branch of an internal node *)
-      node
+      node (* the left node *)
       * trail
       * modified_rule
       * indexed_implies_hashed

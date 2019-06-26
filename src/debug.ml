@@ -38,10 +38,21 @@ module Dot = struct
     | None -> Printf.sprintf "%s -> %s;" n1 n2
     | Some l -> Printf.sprintf "%s -> %s [label=\"%s\"];" n1 n2 l
 
+  let indexing_rule = function
+    | Types.Left_Not_Indexed -> "i?"
+    | Types.Right_Not_Indexed -> "?i"
+    | Types.Indexed _ -> "I"
+    | Types.Not_Indexed -> "i"
+      
+  let modified_rule = function
+    | Modified_Left -> "*_"
+    | Modified_Right -> "_*"
+    | Unmodified (ir, _) -> indexing_rule ir
+      
   let disk n = Printf.sprintf "%s [shape=box];" n
-  let leaf n value = Printf.sprintf "%s [label=%S];" n (Value.to_string value)
-  let bud n = Printf.sprintf "%s [shape=diamond, label=\"\"];" n
-  let internal n = Printf.sprintf "%s [shape=circle, label=\"\"];" n
+  let leaf n value ir = Printf.sprintf "%s [label=\"%s%s\"];" n (Value.to_string value) ir
+  let bud n ir = Printf.sprintf "%s [shape=diamond, label=\"%s\"];" n ir
+  let internal n ir = Printf.sprintf "%s [shape=circle, label=\"%s\"];" n ir
   let extender = internal
 
   let of_node_aux cntr root =
@@ -49,37 +60,37 @@ module Dot = struct
       | Disk (index, _) -> 
           let n = Printf.sprintf "Disk%Ld" (Index.to_int64 index) in
           (n, [disk n], cntr)
-      | View (Leaf (value, _, _, _)) ->
+      | View (Leaf (value, ir, _, _)) ->
           let n = Printf.sprintf "Leaf%d\n" cntr in
-          (n, [leaf n value], cntr+1)
-      | View (Bud  (Some node , _, _, _)) ->
+          (n, [leaf n value (indexing_rule ir)], cntr+1)
+      | View (Bud  (Some node , ir, _, _)) ->
           let n', s, cntr = aux cntr node in
           let n = Printf.sprintf "Bud%d" cntr in
           (n, 
-           [bud n;
+           [bud n (indexing_rule ir);
             link n n'
            ] @ s,
            cntr + 1)
-      | View (Bud  (None , _, _, _)) ->
+      | View (Bud  (None , ir, _, _)) ->
           let n = Printf.sprintf "Bud%d" cntr in
           (n, 
-           [bud n], 
+           [bud n (indexing_rule ir)], 
            cntr + 1)
-      | View (Internal (left, right, _, _, _)) ->
+      | View (Internal (left, right, ir, _, _)) ->
           let ln, ls, cntr = aux cntr left in 
           let rn, rs, cntr = aux cntr right in 
           let n = Printf.sprintf "Internal%d" cntr in
           (n,
-           [ internal n;
+           [ internal n (indexing_rule ir);
              link n ln ~label:"L";
              link n rn ~label:"R" ]
            @ ls @ rs,
            cntr + 1)
-      | View (Extender (segment, node, _, _, _)) ->
+      | View (Extender (segment, node, ir, _, _)) ->
           let n', s, cntr = aux cntr node in
           let n = Printf.sprintf "Extender%d" cntr in
           (n,
-           extender n
+           extender n (indexing_rule ir)
            :: link n n' ~label:(Segment.to_string segment)
            :: s,
            cntr + 1)
@@ -88,39 +99,39 @@ module Dot = struct
   
   let rec of_trail dst cntr = function
     | Top -> ([], cntr)
-    | Left (trail, r, _, _) ->
+    | Left (trail, r, mr, _) ->
         let n = Printf.sprintf "Internal%d" cntr in
         let cntr = cntr + 1 in
         let r, ss, cntr = of_node_aux cntr r in
         let (ss', cntr) = of_trail n cntr trail in
-        ([ internal n;
+        ([ internal n (modified_rule mr);
            link n dst ~label:"L";
            link n r ~label:"R" ]
          @ ss @ ss',
          cntr)
-    | Right (l, trail, _, _) ->
+    | Right (l, trail, mr, _) ->
         let n = Printf.sprintf "Internal%d" cntr in
         let cntr = cntr + 1 in
         let l, ss, cntr = of_node_aux cntr l in
         let (ss', cntr) = of_trail n cntr trail in
-        ([ internal n;
+        ([ internal n (modified_rule mr);
            link n l ~label:"L";
            link n dst ~label:"R" ]
          @ ss @ ss',
          cntr)
-    | Budded (trail, _, _) ->
+    | Budded (trail, mr, _) ->
         let n = Printf.sprintf "Bud%d" cntr in
         let cntr = cntr + 1 in
         let (ss, cntr) = of_trail n cntr trail in
-        ([ bud n;
+        ([ bud n (modified_rule mr);
            link n dst ]
          @ ss,
          cntr)
-    | Extended (trail, segment, _, _) -> 
+    | Extended (trail, segment, mr, _) -> 
         let n = Printf.sprintf "Extender%d" cntr in
         let cntr = cntr + 1 in
         let (ss, cntr) = of_trail n cntr trail in
-        ([ extender n;
+        ([ extender n (modified_rule mr);
            link n dst ~label:(Segment.to_string segment) ]
          @ ss,
          cntr)

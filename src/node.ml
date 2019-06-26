@@ -75,7 +75,7 @@ let indexed = function
   | View (Leaf (_, Indexed _, _, _)) -> true
   | View (Internal (_, _, Indexed _, _, _)) -> true
   | View (Extender (_, _, Indexed _, _, _)) -> true
-  | _ -> false
+  | View (Bud _ | Leaf _ | Internal _ | Extender _) -> false
 
 let index = function
   | Disk (i,_) -> Some i
@@ -83,7 +83,7 @@ let index = function
   | View (Leaf (_, Indexed i, _, _)) -> Some i
   | View (Internal (_, _, Indexed i, _, _)) -> Some i
   | View (Extender (_, _, Indexed i, _, _)) -> Some i
-  | _ -> None
+  | View (Bud _ | Leaf _ | Internal _ | Extender _) -> None
 
 let view_indexing_rule_invariant : view -> (unit, error) result = function
   | Bud (None, Indexed _, _, _) -> Ok ()

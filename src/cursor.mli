@@ -16,6 +16,16 @@ val create_subtree: t -> Segment.t -> (t, error) result
 val subtree_or_create : t -> Segment.t -> (t, error) result
 (** Same as subtree but create a subtree if not exists *)
     
+type access_result =
+  | Empty_bud (* The bud is empty *)
+  | Collide of cursor * view (* The segment was blocked by an existing leaf or bud *)
+  | Middle_of_extender of cursor * Segment.t * Segment.t * Segment.t (* The segment ends or diverges at the middle of an Extender with the common prefix, the remaining extender, and the rest of segment *)
+  | Reached of cursor * view (* just reached to a node *)
+
+val error_access : access_result -> ('a, error) result
+
+val xaccess_gen : t -> Segment.t -> (access_result, error) result
+
 val go_top : t -> (t, error) result
 
 val parent : t -> (t, error) result
@@ -46,7 +56,6 @@ val go_below_bud : t -> (t option, error) result
 val go_down_extender : t -> (t, error) result
 val go_side : Segment.side -> t -> (t, error) result
 val go_up : t -> (t, error) result
-val access_gen : t -> Segment.t -> (t * (Segment.t * Segment.t * Segment.t) option, error) result
 
 type where_from =
   | From_above of dir

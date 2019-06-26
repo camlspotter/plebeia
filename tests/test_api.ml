@@ -3,10 +3,17 @@ open Error
 open Test_utils
 open Cursor
 
+module RS = Random.State
+
 module Debug = Plebeia.Debug
 
 module Dumb = Dumb
 
+let dump_cursor c =
+  let Cursor (_, n, context) = c in
+  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
+  to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n
+  
 let () = 
   test_with_cursor @@ fun c ->
   save_to_dot "test_1.dot" c;
@@ -58,6 +65,7 @@ let () =
   let v = value "RRR/RRR/RRR/RRR/RRR/LLL" in
   let c = ok_or_fail @@ insert c (path "LLL") v in
   let c = ok_or_fail @@ go_top c in
+  let c, _, _ = ok_or_fail @@ commit c in
   let c = ok_or_fail @@ subtree c (path "RRR") in
   let c = ok_or_fail @@ subtree c (path "RRR") in
   let c = ok_or_fail @@ subtree c (path "RRR") in
@@ -67,6 +75,32 @@ let () =
   assert (v = v')
 
 let () = 
+  test_with_cursor @@ fun c ->
+  let c = ok_or_fail @@ create_subtree c (path "LRRR") in
+  let c = ok_or_fail @@ go_top c in
+  let c = ok_or_fail @@ create_subtree c (path "LLLR") in
+  let c = ok_or_fail @@ go_top c in
+  let c, _, _ = ok_or_fail @@ commit c in
+  let c = ok_or_fail @@ create_subtree c (path "RRRR") in
+  let c = ok_or_fail @@ go_top c in
+  let c = ok_or_fail @@ subtree c (path "LLLR") in
+  let c = ok_or_fail @@ create_subtree c (path "LRRL") in (* once failed here due to a bug of alter *)
+  ignore c
+
+let () =
+  test_with_cursor @@ fun c ->
+  let c = ok_or_fail @@ create_subtree c (path "RRR") in
+  let c = ok_or_fail @@ go_top c in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  let c = ok_or_fail @@ insert c (path "RRL") (value "1") in
+  let c = ok_or_fail @@ go_top c in
+  let c, _, _ = ok_or_fail @@ commit c in
+  let c = ok_or_fail @@ subtree c (path "RRR") in
+  save_to_dot "debug.dot" c;
+  let c = ok_or_fail @@ delete c (path "RRL") in (* Once failed here *)
+  ignore c
+    
+let () = 
   ignore @@ from_Ok @@ test_with_cursor @@ fun c ->
   let c = from_Ok @@ insert c (path "RR") (value "RR") in
   let _ = 
@@ -75,24 +109,26 @@ let () =
   in
   return ()
 
-let dump_cursor c =
-  let Cursor (_, n, context) = c in
-  to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
-  to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n
-  
 let test_path_of_trail c seg = 
-  let c' = from_Some @@ from_Ok @@ go_below_bud c in
-  match access_gen c' seg with
-  | Ok (Cursor (trail, _, _), None) ->
+  match xaccess_gen c seg with
+  | Ok (Reached (Cursor (trail, _, _), _v)) ->
       if List.flatten @@ path_of_trail trail <> seg then begin
         failwith
           (String.concat "/" (List.map (fun x -> Segment.of_side_list x |> Segment.to_string) (path_of_trail trail))
         ^ "  /= " ^ Segment.to_string seg)
       end
-  | Ok (Cursor (_trail, _, _), Some _) -> 
+  | Ok (Middle_of_extender _) ->
       (* middle of extender *)
       dump_cursor c;
       assert false
+  | Ok x -> 
+      let e = match error_access x with
+        | Ok _ -> assert false
+        | Error e -> e
+      in
+      dump_cursor c;
+      failwith e
+        
   | Error e -> 
       (* no path ? *)
       dump_cursor c;
@@ -104,10 +140,6 @@ let validate context n =
       prerr_endline "Saved the current node to invalid.dot";
       failwith e)
 
-let random_segment st =
-  let length = Random.State.int st 10 + 3 in
-  random_segment ~length st 
-
 (* Add random leafs and subdirs to plebeia and dumb trees,
    checking the consistency between them.  
    It returns, the final trees and a hashtbl of added leafs and subdirs.
@@ -116,6 +148,11 @@ let random_segment st =
 *)
 let add_random st sz c dumb =
   let bindings = Hashtbl.create 101 in
+
+  let random_segment st =
+    let length = RS.int st 10 + 3 in
+    random_segment ~length st 
+  in
 
   let rec f c dumb i =
     if i = sz then (c, dumb)
@@ -169,7 +206,7 @@ let add_random st sz c dumb =
           end
         in
 
-        match Random.State.int st 3 with
+        match RS.int st 3 with
         | 0 -> begin
             (* insert *)
             match 
@@ -251,68 +288,68 @@ let add_random st sz c dumb =
   let c, _, _ = from_Ok @@ commit c in
 
   c, dumb, bindings
-  
-let random_insertions st sz =
-  test_with_cursor @@ fun c ->
 
-  let dumb = Dumb.empty () in
+  let random_insertions st sz =
+    test_with_cursor @@ fun c ->
 
-  let c, dumb, bindings = add_random st sz c dumb in
+    let dumb = Dumb.empty () in
 
-  (* traversal: visit the leaf and bud and check all are covered *)
-  let bindings' = Hashtbl.copy bindings in
-  let rec loop (log, Cursor (trail, n, context) as pos) =
-    begin match log, view context n with
-    | ([] | From_above _ :: _), Leaf _ ->
-        let s = match path_of_trail trail with [[]; s] -> s | _ -> assert false in
-        (* Format.eprintf "value seg: %s@." @@ Segment.to_string s; *)
-        begin match Hashtbl.find_opt bindings' s with
-          | Some `Value _ -> Hashtbl.remove bindings' s
-          | _ -> assert false
-        end
-    | ([] | From_above _ :: _), Bud _ ->
-        begin match path_of_trail trail with 
-          | [[]] -> ()
-          | [[]; s] ->
-              begin
-                (* Format.eprintf "subtree seg: %s@." @@ Segment.to_string s; *)
-                match Hashtbl.find_opt bindings' s with
-                | Some `Subtree -> Hashtbl.remove bindings' s
-                | _ -> assert false
-              end
-          | _ -> assert false
-        end
-    | _ -> ()
-    end;
-    match traverse pos with
-    | None -> 
-        assert (Hashtbl.fold (fun k v acc -> (k,v)::acc) bindings' [] = [])
-    | Some pos -> loop pos
-  in
-  loop ([], c);
-        
-  (* deletions to the empty *)
-  let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
-  let Cursor (_, n, _), _ = 
-    List.fold_left (fun (c, dumb) (seg, _) ->
-        let Cursor (_, n, context) as c = match delete c seg with 
-          | Ok c -> 
-              let _c, _ = hash c in
-              let c, _, _ = from_Ok @@ commit c in
-              c
-          | Error e -> 
-              to_file "deletion.dot" @@ Debug.dot_of_cursor c;
-              failwith e
-        in
-        let dumb = from_Ok @@ Dumb.delete dumb seg in
-        assert (Dumb.get_node dumb = Dumb.of_plebeia_node context n);
-        validate context n;
-        (c, dumb)) (c, dumb) bindings
-  in
-  match n with
-  | View (Bud (None, _, _, _)) -> ()
-  | _ -> assert false
+    let c, dumb, bindings = add_random st sz c dumb in
+
+    (* traversal: visit the leaf and bud and check all are covered *)
+    let bindings' = Hashtbl.copy bindings in
+    let rec loop (log, Cursor (trail, n, context) as pos) =
+      begin match log, view context n with
+      | ([] | From_above _ :: _), Leaf _ ->
+          let s = match path_of_trail trail with [[]; s] -> s | _ -> assert false in
+          (* Format.eprintf "value seg: %s@." @@ Segment.to_string s; *)
+          begin match Hashtbl.find_opt bindings' s with
+            | Some `Value _ -> Hashtbl.remove bindings' s
+            | _ -> assert false
+          end
+      | ([] | From_above _ :: _), Bud _ ->
+          begin match path_of_trail trail with 
+            | [[]] -> ()
+            | [[]; s] ->
+                begin
+                  (* Format.eprintf "subtree seg: %s@." @@ Segment.to_string s; *)
+                  match Hashtbl.find_opt bindings' s with
+                  | Some `Subtree -> Hashtbl.remove bindings' s
+                  | _ -> assert false
+                end
+            | _ -> assert false
+          end
+      | _ -> ()
+      end;
+      match traverse pos with
+      | None -> 
+          assert (Hashtbl.fold (fun k v acc -> (k,v)::acc) bindings' [] = [])
+      | Some pos -> loop pos
+    in
+    loop ([], c);
+
+    (* deletions to the empty *)
+    let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
+    let Cursor (_, n, _), _ = 
+      List.fold_left (fun (c, dumb) (seg, _) ->
+          let Cursor (_, n, context) as c = match delete c seg with 
+            | Ok c -> 
+                let _c, _ = hash c in
+                let c, _, _ = from_Ok @@ commit c in
+                c
+            | Error e -> 
+                to_file "deletion.dot" @@ Debug.dot_of_cursor c;
+                failwith e
+          in
+          let dumb = from_Ok @@ Dumb.delete dumb seg in
+          assert (Dumb.get_node dumb = Dumb.of_plebeia_node context n);
+          validate context n;
+          (c, dumb)) (c, dumb) bindings
+    in
+    match n with
+    | View (Bud (None, _, _, _)) -> ()
+    | _ -> assert false
 
 let () = 
-  let st = Random.State.make_self_init () in
+  let st = RS.make_self_init () in
   for _ = 1 to 1000 do random_insertions st 100 done

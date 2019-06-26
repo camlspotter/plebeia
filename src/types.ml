@@ -41,5 +41,5 @@ type hashed_witness =
   | Not_Hashed
 
 type indexed_witness =
-  | Indexed of Index.t
+  | Indexed of Index.t (* XXX name crash *)
   | Not_Indexed

@@ -157,7 +157,7 @@ let unify_extenders prev_trail node context = match node with
 let rec remove_up trail context = match trail with
   | Top -> Error "cannot remove top"
   | Budded (prev_trail, _, _) ->
-      Ok (_Cursor (prev_trail, NotHashed.bud None, context))
+      Ok (attach prev_trail (NotHashed.bud None) context)
   | Extended (prev_trail, _, _, _) -> remove_up prev_trail context
   (* for Left and Right, we may need to squash Extenders in prev_trail *)
   | Left (prev_trail, right, _, _) ->
@@ -206,16 +206,22 @@ let diverge (Cursor (trail, extender, _context)) (common_prefix, remaining_exten
   or diverges in the middle of an extender, it returns the common prefix
   information. 
 *)
+type access_result =
+  | Empty_bud (* The bud is empty *)
+  | Collide of cursor * view (* The segment was blocked by an existing leaf or bud *)
+  | Middle_of_extender of cursor * Segment.t * Segment.t * Segment.t (* The segment ends or diverges at the middle of an Extender with the common prefix, the remaining extender, and the rest of segment *)
+  | Reached of cursor * view (* just reached to a node *)
+
 let access_gen cur segment =
   (* returns the cursor found by following the segment from the given cursor *)
-  let rec aux (Cursor (trail, n, context) as cur) segment =
+  let rec aux (Cursor (trail, n, context)) segment =
     let v = view context n in
+    let cur = _Cursor (trail, View v, context) in
     match Segment.cut segment with
-    | None -> Ok (cur, None)
+    | None -> Ok (Reached (cur, v))
     | Some (dir, segment_rest) ->
         match v with
-        | Leaf _ -> Error "Reached a leaf before finishing"
-        | Bud _ ->  Error "Reached a bud before finishing"
+        | Leaf _ | Bud _ ->  Ok (Collide (cur, v))
         | Internal (l, r,
                     internal_node_indexing_rule,
                     hashed_is_transitive,
@@ -244,7 +250,7 @@ let access_gen cur segment =
                     indexing_rule,
                     hashed_is_transitive,
                     indexed_implies_hashed) ->
-          let (_, remaining_extender, remaining_segment) as common_prefix =
+          let (shared, remaining_extender, remaining_segment) =
             Segment.common_prefix extender segment in
           if remaining_extender = Segment.empty then
             let new_trail =
@@ -255,63 +261,64 @@ let access_gen cur segment =
                        indexed_implies_hashed) in
             aux (_Cursor (new_trail, node_below, context)) remaining_segment
           else
-            if remaining_segment = Segment.empty then
-              Error "Finished in the middle of an Extender"
-            else
-              (* diverge *)
-              Ok (cur, Some common_prefix)
+            Ok (Middle_of_extender (cur, shared, remaining_extender, remaining_segment))
   in
   aux cur segment
 
-let subtree cur segment =
+(* go_below_bud + access are always paired *)
+let xaccess_gen cur seg =
   go_below_bud cur >>= function
-  | None -> Error "Nothing beneath this bud"
-  | Some cur ->
-      access_gen cur segment >>= function 
-      | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
-      | (Cursor (trail, n, context), None) -> 
-          match view context n with
-          | Bud _ as v -> Ok (_Cursor (trail, View v, context))
-          | _ -> Error "Reached to a non Bud"
+  | None -> Ok Empty_bud 
+  | Some cur -> access_gen cur seg
 
-let get cur segment = 
-  go_below_bud cur >>= function
-  | None -> Error "Nothing beneath this bud"
-  | Some cur ->
-      access_gen cur segment >>= function 
-      | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
-      | (Cursor (_, n, context), None) -> 
-          match view context n with
-          | Leaf (v, _, _, _) -> Ok v
-          | _ -> Error "Reached to a non Leaf"
+let error_access = function
+  | Empty_bud -> Error "Nothing beneath this bud"
+  | Collide _ -> Error "Reached to a leaf or bud before finishing"
+  | Middle_of_extender (_, _, _, []) -> 
+      Error "Finished at the middle of an Extender"
+  | Middle_of_extender (_, _, _, _) -> 
+      Error "Diverged in the middle of an Extender"
+  | Reached (_, Bud _) -> Error "Reached to a Bud"
+  | Reached (_, Leaf _) -> Error "Reached to a Leaf"
+  | Reached (_, Internal _) -> Error "Reached to an Internal"
+  | Reached (_, Extender _) -> Error "Reached to an Extender"
+  
+let subtree cur seg =
+   xaccess_gen cur seg >>= function
+   | Reached (cur, Bud _) -> Ok cur
+   | res -> error_access res
+
+let get cur seg = 
+  xaccess_gen cur seg >>= function
+  | Reached (_, Leaf (v, _, _, _)) -> Ok v
+  | res -> error_access res
 
 let empty context =
   (* A bud with nothing underneath, i.e. an empty tree or an empty sub-tree. *)
   _Cursor (_Top, NotHashed.bud None, context)
 
-let delete cur segment =
-  go_below_bud cur >>= function
-  | None -> Error "Nothing beneath this bud"
-  | Some cur ->
-      access_gen cur segment >>= function 
-      | (_, Some _) -> Error "Terminated or diverged in the middle of an Extender"
-      | (Cursor (trail, n, context), None) ->  
-          match view context n with
-          | Bud _ | Leaf _ ->
-              remove_up trail context 
-              >>= parent  (* XXX not good... *)
-          | _ -> Error "Cannot remove Internal_node or Extender"
+let delete cur seg =
+  xaccess_gen cur seg >>= function
+  | Reached (Cursor (trail, _, context), (Bud _ | Leaf _)) -> 
+      remove_up trail context 
+      >>= parent  (* XXX not good... *)
+  | res -> error_access res
 
 let alter (Cursor (trail, _, context) as cur) segment alteration =
-  (* XXX 2 cases. not cool *)
-  go_below_bud cur >>= function
-  | None ->
+  xaccess_gen cur segment >>= function
+  | Empty_bud -> 
       alteration None >>= fun n' ->
       let n' = NotHashed.extend segment n' in
       let n' = NotHashed.bud (Some n') in
-      Ok (_Cursor (trail, n', context))
-  | Some cur -> 
-      access_gen cur segment >>= fun (c,segsopt) ->
+      Ok (attach trail n' context)
+  | (Reached (c, _) | Middle_of_extender (c, _, _, _::_) as res) ->
+      (* XXX cleanup required *)
+      let segsopt = match res with
+        | Reached _ -> None
+        | Middle_of_extender (_c, shared, rest_extender, rest_segment) ->
+            Some (shared, rest_extender, rest_segment)
+        | _ -> assert false
+      in
       begin match segsopt with
         | None -> 
             (* Should we view the node? *)
@@ -321,7 +328,9 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
         | Some segs -> diverge c segs >>| fun trail -> (trail, None)
       end >>= fun (trail, nopt) ->
       alteration nopt >>= fun n -> 
-
+      let c = attach trail n context in
+      (* XXX alter cannot dive into more than one bud, therefore
+         going up should be much simpler *)
       (* go back along the segments to the "original" position *)
       let rec go_ups (Cursor (trail, _node, _context) as c ) ss = 
         match trail, ss with
@@ -341,9 +350,8 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
             go_up c >>= fun c -> go_ups c ss'
         | Top, _ -> assert false
       in
-
-      let c = attach trail n context in
       go_ups c segment
+  | res -> error_access res
 
 let upsert cur segment value =
   alter cur segment (fun x ->

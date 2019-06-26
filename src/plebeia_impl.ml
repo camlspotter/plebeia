@@ -19,6 +19,7 @@ module Segment_encoding = Segment_encoding
 module Utils = Utils
 module Error = Error
 module Key = Key
+module Types = Types
 
 include Node
 
