@@ -4,10 +4,9 @@
     to maximize correctness and cares second about efficiency. Extracting
     and efficient C program from F* should be explored. *)
 
+type error = Types.error
 module Index = Types.Index
 module Value = Value
-type error = Types.error
-include Node
 module Segment = Segment
 module Hash = Hash
 module Context = Context
@@ -19,7 +18,10 @@ module KVS = KVS
 module Segment_encoding = Segment_encoding
 module Utils = Utils
 module Error = Error
-  
+module Key = Key
+
+include Node
+
 let to_disk context n =
   let n, i, h = Storage.commit_node context n in
   match n with

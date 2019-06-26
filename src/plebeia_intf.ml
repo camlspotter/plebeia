@@ -20,12 +20,16 @@ module type S = sig
   module Segment : sig
     type side = Left | Right
     type t = side list
-        
-    val of_key : string -> t
   end
   (** A segment represents a path from the root of a tree to a leaf or
       to the root of a sub-tree. *)
 
+  module Key : sig
+    type t = string
+    val to_segment : t -> Segment.t option
+    val of_segment : Segment.t -> t option
+  end
+  
   module Segment_encoding : sig
     val encode : Segment.t -> string
     val decode : string -> Segment.t
