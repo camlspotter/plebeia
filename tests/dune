@@ -1,5 +1,5 @@
 (executables
- (names segment_encoding test_api storage chunk test_roots)
+ (names segment_encoding test_api storage chunk test_roots test_key)
  (libraries plebeia))
 
 (alias
@@ -28,10 +28,16 @@
  (action (run ./chunk.exe)))
   
 (alias
+ (name test_key)
+ (deps test_key.exe)
+ (action (run ./test_key.exe)))
+  
+(alias
  (name runtest)
  (deps (alias test_segment_encoding)
        (alias test_api)
        (alias test_storage)
        (alias test_chunk)
        (alias test_roots)
+       (alias test_key)
        ))
