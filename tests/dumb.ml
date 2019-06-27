@@ -23,12 +23,12 @@ let rec of_plebeia_node : P.Context.t -> P.node -> t = fun context -> function
   | Disk (i, wit) -> of_plebeia_node context (View (P.load_node context i wit))
   | View n  -> 
       match n with
-      | Bud (None, _, _, _) -> Tree Null
-      | Bud (Some n, _, _, _) -> Tree (of_plebeia_node context n)
-      | Internal (l, r, _, _, _) -> Node (of_plebeia_node context l,
+      | Bud (None, _, _) -> Tree Null
+      | Bud (Some n, _, _) -> Tree (of_plebeia_node context n)
+      | Internal (l, r, _, _) -> Node (of_plebeia_node context l,
                                           of_plebeia_node context r)
-      | Leaf (v, _, _, _) -> Leaf v
-      | Extender (seg, n, _, _, _) ->
+      | Leaf (v, _, _) -> Leaf v
+      | Extender (seg, n, _, _) ->
           let rec aux n seg =
             match P.Segment.cut seg with
             | None -> n

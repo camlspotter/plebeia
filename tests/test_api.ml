@@ -347,7 +347,7 @@ let add_random st sz c dumb =
           (c, dumb)) (c, dumb) bindings
     in
     match n with
-    | View (Bud (None, _, _, _)) -> ()
+    | View (Bud (None, _, _)) -> ()
     | _ -> assert false
 
 let () = 

@@ -1,14 +1,45 @@
 open Types
 
-(** Constructors of view, trail, and cursor are private, 
+(* XXX Constructors of view, trail, and cursor should be private, 
    to prevent invalid values formed 
 *)
+
+type hashed_is_transitive =
+  | Hashed of Hash.t
+  | Not_Hashed
+  (** Type used to prove that if a node is hashed then so are its children.
+      The type also provides the hash as a witness.*)
+
+type indexing_rule =
+  | Indexed of Index.t
+  | Left_Not_Indexed (* Right may not be indexed either *)
+  | Right_Not_Indexed (* Left may not be indexed either *)
+  | Not_Indexed
+  (** This rule expresses the following invariant : if a node is indexed, then
+      its children are necessarily indexed. Less trivially, if an internal node is not
+      indexed then at least one of its children is not yet indexed. The reason
+      is that we never construct new nodes that just point to only existing nodes. 
+      This property guarantees that when we write internal nodes on
+      disk, at least one of the child can be written adjacent to its parent. *)
+
+type extender_witness =
+  | Maybe_Extender (* Not sure it is an Extender or not *)
+  | Not_Extender   (* Sure it is NOT an Extender *)
+  | Is_Extender    (* Sure it is an Extender *)
+
+type hashed_witness =
+  | Hashed of Hash.t
+  | Not_Hashed
 
 type node =
   | Disk of Index.t * extender_witness
   (* Represents a node stored on the disk at a given index, the node hasn't
      been loaded yet. Although it's considered hash for simplicity's sake,
-     reading the hash requires a disk access and is expensive. *)
+     reading the hash requires a disk access and is expensive. 
+  
+     extender_witness carries the information whether the node is 
+     an Extender or not.
+  *)
 
   | View of view
   (* A view node is the in-memory structure manipulated by programs in order
@@ -19,15 +50,18 @@ and view = private
   | Internal of node * node
                * indexing_rule
                * hashed_is_transitive
-               * indexed_implies_hashed
-
-  (* An internal node , left and right children and an internal path segment
-     to represent part of the path followed by the key in the tree. *)
+  (* An internal node, left and right children and an internal path segment
+     to represent part of the path followed by the key in the tree. 
+  
+     indexing_rule carries the index if the node is indexed.  Otherwise,
+     it carries XXX
+     
+     hashed_is_transitive carries the hash of the node if already computed.
+  *)
 
   | Bud of node option
           * indexing_rule
           * hashed_is_transitive
-          * indexed_implies_hashed
   (* Buds represent the end of a segment and the beginning of a new tree. They
      are used whenever there is a natural hierarchical separation in the key
      or, in general, when one wants to be able to grab sub-trees. For instance
@@ -36,7 +70,6 @@ and view = private
   | Leaf of Value.t
           * indexing_rule
           * hashed_is_transitive
-          * indexed_implies_hashed
   (* Leaf of a tree, the end of a path, contains or points to a value.
      The current implementation is a bit hackish and leaves are written
      on *two* cells, not one. This is important to keep in mind when
@@ -47,7 +80,6 @@ and view = private
                 * node
                 * indexing_rule
                 * hashed_is_transitive
-                * indexed_implies_hashed
   (* Extender node, contains a path to the next node. Represents implicitely
      a collection of internal nodes where one child is Null. *)
 
@@ -61,22 +93,22 @@ val hash_of_view : view -> Hash.t option
 val _Internal : node * node
                * indexing_rule
                * hashed_is_transitive
-               * indexed_implies_hashed -> view
+               -> view
 val _Bud : node option
         * indexing_rule
         * hashed_is_transitive
-        * indexed_implies_hashed -> view
+        -> view
 
 val _Leaf : Value.t
         * indexing_rule
         * hashed_is_transitive
-        * indexed_implies_hashed -> view
+        -> view
 
 val _Extender : Segment.t
                * node
                * indexing_rule
                * hashed_is_transitive
-               * indexed_implies_hashed -> view
+               -> view
 
 type modified_rule =
   | Modified_Left
@@ -96,24 +128,20 @@ type trail = private
       trail
       * node (* the right node *)
       * modified_rule
-      * indexed_implies_hashed
 
   | Right of (* we took the right branch of an internal node *)
       node (* the left node *)
       * trail
       * modified_rule
-      * indexed_implies_hashed
 
   | Budded of
       trail
       * modified_rule
-      * indexed_implies_hashed
 
   | Extended of
       trail
       * Segment.t
       * modified_rule
-      * indexed_implies_hashed
 
 (** Constructors with invariant checks *)
 
@@ -121,21 +149,21 @@ val _Top : trail
 val _Left : trail
     * node
     * modified_rule
-    * indexed_implies_hashed -> trail
+    -> trail
 val _Right : 
     node
     * trail
     * modified_rule
-    * indexed_implies_hashed -> trail
+    -> trail
 val _Budded :
     trail
     * modified_rule
-    * indexed_implies_hashed -> trail
+    -> trail
 val _Extended :
     trail
     * Segment.t
     * modified_rule
-    * indexed_implies_hashed -> trail
+    -> trail
 
 val load_node_ref : (Context.t -> Index.t -> extender_witness -> view) ref
 (** Placeholder of node loading from a context *)

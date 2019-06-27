@@ -43,25 +43,25 @@ let hash (Cursor (trail, node, context)) =
   and hash_aux' : view -> (view * t) = fun v -> 
     match v with
     (* easy case where it's already hashed *)
-    | Leaf (_, _, Hashed h, _) -> (v, h)
-    | Bud (_, _, Hashed h, _) -> (v, h)
-    | Internal (_, _, _, Hashed h, _)  -> (v, h)
-    | Extender (_, _, _, Hashed h, _) -> (v, h)
+    | Leaf (_, _, Hashed h) -> (v, h)
+    | Bud (_, _, Hashed h) -> (v, h)
+    | Internal (_, _, _, Hashed h)  -> (v, h)
+    | Extender (_, _, _, Hashed h) -> (v, h)
 
     (* hashing is necessary below *)
-    | Leaf (v, _, Not_Hashed, _) -> 
+    | Leaf (v, _, Not_Hashed) -> 
         let h = of_leaf v in
-        (_Leaf (v, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+        (_Leaf (v, Not_Indexed, Hashed h), h)
 
-    | Bud (Some underneath, _, Not_Hashed, _) ->
+    | Bud (Some underneath, _, Not_Hashed) ->
         let (node, h) = hash_aux underneath in
-        (_Bud (Some node, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+        (_Bud (Some node, Not_Indexed, Hashed h), h)
 
-    | Bud (None, _, Not_Hashed, _) ->
+    | Bud (None, _, Not_Hashed) ->
         let h = of_empty_bud in
-        (_Bud (None, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+        (_Bud (None, Not_Indexed, Hashed h), h)
 
-    | Internal (left, right, Left_Not_Indexed, Not_Hashed, _) -> (
+    | Internal (left, right, Left_Not_Indexed, Not_Hashed) -> (
         let (left, hl) = hash_aux left
         and (right, hr) = hash_aux right in
         (*
@@ -69,9 +69,9 @@ let hash (Cursor (trail, node, context)) =
            |                           |00|0...........................01|
         *)
         let h = of_internal hl hr in
-        (_Internal (left, right, Left_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+        (_Internal (left, right, Left_Not_Indexed, Hashed h), h))
 
-    | Internal (left, right, Right_Not_Indexed, Not_Hashed, _) -> (
+    | Internal (left, right, Right_Not_Indexed, Not_Hashed) -> (
         let (left, hl) = hash_aux left
         and (right, hr) = hash_aux right in
         (*
@@ -79,18 +79,18 @@ let hash (Cursor (trail, node, context)) =
            |                           |00|0...........................01|
         *)
         let h = of_internal hl hr in
-        (_Internal (left, right, Right_Not_Indexed, Hashed h, Not_Indexed_Any), h))
+        (_Internal (left, right, Right_Not_Indexed, Hashed h), h))
 
-    | Extender (segment, underneath, _, Not_Hashed, _)  ->
+    | Extender (segment, underneath, _, Not_Hashed)  ->
         let (underneath, h) = hash_aux underneath in
         (*
            |<-                       H_child                           ->|
            | The first 224bits of H_child |0......01|<- segment bits ->|1|
         *) 
         let h = of_extender segment h in
-        (_Extender (segment, underneath, Not_Indexed, Hashed h, Not_Indexed_Any), h)
+        (_Extender (segment, underneath, Not_Indexed, Hashed h), h)
 
-    | Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed, _) -> assert false
+    | Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed) -> assert false
   in 
   let (node, h) =  hash_aux node in
   (_Cursor (trail, node, context), h)

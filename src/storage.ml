@@ -117,14 +117,14 @@ let rec parse_cell context i =
   | -34l -> (* bud *)
       begin match C.get_char buf 0 with
         | '\255' -> 
-            _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud, Indexed_and_Hashed)
+            _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud)
         | _ ->  
             (* We must load the child for the hash *)
             let i' = C.get_uint32 buf 24 in
             let v = parse_cell context i' in
             begin match hash_of_view v with
             | None -> assert false
-            | Some h -> _Bud (Some (View v), Indexed i, Hashed h, Indexed_and_Hashed)
+            | Some h -> _Bud (Some (View v), Indexed i, Hashed h)
             end
       end
 
@@ -135,7 +135,7 @@ let rec parse_cell context i =
             let h = get_hash buf in
             match KVS.get_opt kvs h with
             | None -> raise (LoadFailure (Printf.sprintf "Hash %s is not found in KVS" @@ to_hex @@ Hash.to_string h))
-            | Some v -> _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h), Indexed_and_Hashed)
+            | Some v -> _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
       end
 
   | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
@@ -143,13 +143,13 @@ let rec parse_cell context i =
       let h = get_hash buf in
       let buf = make_buf context (Index.pred i) in
       let v = Value.of_string @@ C.copy buf 0 l in
-      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h), Indexed_and_Hashed)
+      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
 
   | -35l -> (* leaf whose value is in Plebeia *)
       let h = get_hash buf in
       let (bufs, _size) = Chunk.get_chunks context @@ Index.pred i in
       let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
-      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h), Indexed_and_Hashed)
+      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
 
   | x when -256l <= x && x <= -36l -> assert false
 
@@ -169,7 +169,7 @@ let rec parse_cell context i =
             | Some h -> h
           in
           let h = NodeHash.of_extender' ~segment_code:seg_code h in
-          _Extender (seg, View v, Indexed i, Hashed h, Indexed_and_Hashed)
+          _Extender (seg, View v, Indexed i, Hashed h)
       | 0 -> (* internal *)
           let s_0_215 = C.copy buf 0 27 (* 216bits *) in
           let c_216_223, refer_to_right = 
@@ -179,9 +179,9 @@ let rec parse_cell context i =
           let h = Hash.extend_to_t @@ Hash.hash28_of_string (s_0_215 ^ String.make 1 c_216_223) in
           let i' = get_index buf in
           if refer_to_right then
-            _Internal (Disk (Index.pred i, Maybe_Extender), Disk (i', Maybe_Extender), Indexed i, Hashed h, Indexed_and_Hashed)
+            _Internal (Disk (Index.pred i, Maybe_Extender), Disk (i', Maybe_Extender), Indexed i, Hashed h)
           else
-            _Internal (Disk (i', Maybe_Extender), Disk(Index.pred i, Maybe_Extender), Indexed i, Hashed h, Indexed_and_Hashed)
+            _Internal (Disk (i', Maybe_Extender), Disk(Index.pred i, Maybe_Extender), Indexed i, Hashed h)
       | _ -> assert false
 
 (* index 32 bits (4294967296)
@@ -238,7 +238,7 @@ let write_internal context nl nr h =
   (* next 32bits *)
   C.set_uint32 buf 28 (if refer_to_left then il else ir);
 
-  _Internal (nl, nr, Indexed i, Hashed h, Indexed_and_Hashed), i, h
+  _Internal (nl, nr, Indexed i, Hashed h), i, h
 
 let write_empty_bud context =
   (* XXX No point to store the empty bud... *)
@@ -247,7 +247,7 @@ let write_empty_bud context =
   let buf = make_buf context i in
   write_string bud_first_28 buf 0 28;
   set_index buf (Uint32.of_int32 (-34l));
-  _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud, Indexed_and_Hashed), i, NodeHash.of_empty_bud
+  _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud), i, NodeHash.of_empty_bud
 
 
 let write_bud context n h = 
@@ -257,7 +257,7 @@ let write_bud context n h =
   write_string zero_24 buf 0 24;
   C.set_uint32 buf 24 @@ index n;
   set_index buf (Uint32.of_int32 (-34l));
-  _Bud (Some n, Indexed i, Hashed h, Indexed_and_Hashed), i, h
+  _Bud (Some n, Indexed i, Hashed h), i, h
 
 let write_leaf context v h =
   (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
@@ -283,7 +283,7 @@ let write_leaf context v h =
     write_string h buf 0 28;
     set_index buf (Uint32.of_int32 k)
   end;
-  _Leaf (v, Indexed i, Hashed h, Indexed_and_Hashed), i, h
+  _Leaf (v, Indexed i, Hashed h), i, h
 
 let write_extender context seg n h =
   (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
@@ -291,7 +291,7 @@ let write_extender context seg n h =
   let buf = make_buf context i in
   write_string (Segment_encoding.encode seg) buf 0 28;
   set_index buf @@ index n;
-  _Extender (seg, n, Indexed i, Hashed h, Indexed_and_Hashed), i, h
+  _Extender (seg, n, Indexed i, Hashed h), i, h
 
 (* XXX Operations are NOT atomic at all *)
 let commit_node context node =
@@ -306,13 +306,13 @@ let commit_node context node =
   and commit_aux' : view -> (view * Index.t * Hash.t) = fun v -> 
     match v with
     (* easy case where it's already commited *)
-    | Leaf (_, Indexed i, Hashed h, _) -> (v, i, h)
-    | Bud (_, Indexed i, Hashed h, _) -> (v, i, h)
-    | Internal (_, _, Indexed i, Hashed h, _)  -> (v, i, h)
-    | Extender (_, _, Indexed i, Hashed h, _) -> (v, i, h)
+    | Leaf (_, Indexed i, Hashed h) -> (v, i, h)
+    | Bud (_, Indexed i, Hashed h) -> (v, i, h)
+    | Internal (_, _, Indexed i, Hashed h)  -> (v, i, h)
+    | Extender (_, _, Indexed i, Hashed h) -> (v, i, h)
 
     (* indexing is necessary below.  If required, the hash is also computed *)
-    | Leaf (value, Not_Indexed, h, _) ->
+    | Leaf (value, Not_Indexed, h) ->
         let h = match h with
           | Not_Hashed -> NodeHash.of_leaf value 
           | Hashed h -> h
@@ -334,7 +334,7 @@ let commit_node context node =
               write_leaf context value h
         end
         
-    | Bud (Some underneath, Not_Indexed, h, _) ->
+    | Bud (Some underneath, Not_Indexed, h) ->
         let (node, _, h') = commit_aux underneath in
         let h = match h with
           | Hashed h -> assert (h = h'); h
@@ -342,14 +342,14 @@ let commit_node context node =
         in
         write_bud context node h
 
-    | Bud (None, Not_Indexed, h, _) ->
+    | Bud (None, Not_Indexed, h) ->
         begin match h with
           | Hashed h -> assert (h = NodeHash.of_empty_bud)
           | _ -> ()
         end;
         write_empty_bud context
 
-    | Internal (left, right, Left_Not_Indexed, h, _) ->
+    | Internal (left, right, Left_Not_Indexed, h) ->
         let (right, _ir, hr) = commit_aux right in
         let (left, _il, hl) = commit_aux left in (* This one must be the latter *)
         let h = match h with
@@ -358,7 +358,7 @@ let commit_node context node =
         in
         write_internal context left right h
 
-    | Internal (left, right, Right_Not_Indexed, h, _) ->
+    | Internal (left, right, Right_Not_Indexed, h) ->
         let (left, _il, hl) = commit_aux left in
         let (right, _ir, hr) = commit_aux right in (* This one must be the latter *)
         let h = match h with
@@ -367,7 +367,7 @@ let commit_node context node =
         in
         write_internal context left right h
 
-    | Extender (segment, underneath, Not_Indexed, h, _)  ->
+    | Extender (segment, underneath, Not_Indexed, h)  ->
         let (underneath, _i, h') = commit_aux underneath in
         let h = match h with
           | Hashed h -> h
@@ -375,20 +375,20 @@ let commit_node context node =
         in
         write_extender context segment underneath h
         
-    | (Leaf (_, Left_Not_Indexed, _, _)|
-       Leaf (_, Right_Not_Indexed, _, _)|
-       Bud (Some _, Left_Not_Indexed, _, _)|
-       Bud (Some _, Right_Not_Indexed, _, _)|
-       Bud (None, Left_Not_Indexed, _, _)|
-       Bud (None, Right_Not_Indexed, _, _)|
-       Internal (_, _, Not_Indexed, _, _)|
-       Extender (_, _, Left_Not_Indexed, _, _)|
-       Extender (_, _, Right_Not_Indexed, _, _)) -> assert false
+    | (Leaf (_, Left_Not_Indexed, _)|
+       Leaf (_, Right_Not_Indexed, _)|
+       Bud (Some _, Left_Not_Indexed, _)|
+       Bud (Some _, Right_Not_Indexed, _)|
+       Bud (None, Left_Not_Indexed, _)|
+       Bud (None, Right_Not_Indexed, _)|
+       Internal (_, _, Not_Indexed, _)|
+       Extender (_, _, Left_Not_Indexed, _)|
+       Extender (_, _, Right_Not_Indexed, _)) -> assert false
 
-    | (Leaf (_, Indexed _, Not_Hashed, _)|Bud (None, Indexed _, Not_Hashed, _)|
-       Bud (Some _, Indexed _, Not_Hashed, _)|
-       Internal (_, _, Indexed _, Not_Hashed, _)|
-       Extender (_, _, Indexed _, Not_Hashed, _)) -> assert false
+    | (Leaf (_, Indexed _, Not_Hashed)|Bud (None, Indexed _, Not_Hashed)|
+       Bud (Some _, Indexed _, Not_Hashed)|
+       Internal (_, _, Indexed _, Not_Hashed)|
+       Extender (_, _, Indexed _, Not_Hashed)) -> assert false
 
   in 
   let (node, i, h) =  commit_aux node in
@@ -413,14 +413,14 @@ let rec load_node_fully context n =
   in
   match v with
   | Leaf _ -> View v
-  | Bud (None, _, _, _) -> View v
-  | Bud (Some n, i, h, x) ->
+  | Bud (None, _, _) -> View v
+  | Bud (Some n, i, h) ->
       let n = load_node_fully context n in
-      View (_Bud (Some n, i, h, x))
-  | Internal (n1, n2, i, h, x) ->
+      View (_Bud (Some n, i, h))
+  | Internal (n1, n2, i, h) ->
       let n1 = load_node_fully context n1 in
       let n2 = load_node_fully context n2 in
-      View (_Internal (n1, n2, i, h, x))
-  | Extender (seg, n, i, h, x) ->
+      View (_Internal (n1, n2, i, h))
+  | Extender (seg, n, i, h) ->
       let n = load_node_fully context n in
-      View (_Extender (seg, n, i, h, x))
+      View (_Extender (seg, n, i, h))

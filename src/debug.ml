@@ -10,23 +10,23 @@ let rec string_of_node : node -> int -> string = fun node indent ->
   let indent_string = String.concat "" (List.init indent (fun _ -> " . ")) in
   match node with
   | (Disk (index, _)) -> Printf.sprintf "%sDisk %Ld" indent_string (Index.to_int64 index)
-  | View (Leaf (value, Indexed i, Hashed h, _x)) ->
+  | View (Leaf (value, Indexed i, Hashed h)) ->
       Printf.sprintf "%sLeaf %S (%Ld, %s)\n" indent_string (Value.to_string value)
         (Index.to_int64 i) (to_hex @@ Hash.to_string h)
-  | View (Leaf (value, _, _, _)) ->
+  | View (Leaf (value, _, _)) ->
       Printf.sprintf "%sLeaf %s\n" indent_string (Value.to_string value)
-  | View (Bud  (node , _, _, _)) ->
+  | View (Bud  (node , _, _)) ->
     let recursive =
       match node with
       | Some node -> string_of_node node (indent + 1)
       | None     ->  "Empty"
     in
     Printf.sprintf "%sBud:\n%s" indent_string recursive
-  | View (Internal (left, right, _, _, _)) ->
+  | View (Internal (left, right, _, _)) ->
     Printf.sprintf "%sInternal:\n%s%s" indent_string
       (string_of_node left (indent + 1))
       (string_of_node right (indent + 1))
-  | View (Extender (segment, node, _, _, _)) ->
+  | View (Extender (segment, node, _, _)) ->
     Printf.sprintf "%s[%s]- %s" indent_string (Segment.to_string segment)
       (string_of_node node (indent + 1))
 
@@ -39,10 +39,10 @@ module Dot = struct
     | Some l -> Printf.sprintf "%s -> %s [label=\"%s\"];" n1 n2 l
 
   let indexing_rule = function
-    | Types.Left_Not_Indexed -> "i?"
-    | Types.Right_Not_Indexed -> "?i"
-    | Types.Indexed _ -> "I"
-    | Types.Not_Indexed -> "i"
+    | Left_Not_Indexed -> "i?"
+    | Right_Not_Indexed -> "?i"
+    | Indexed _ -> "I"
+    | Not_Indexed -> "i"
       
   let modified_rule = function
     | Modified_Left -> "*_"
@@ -60,10 +60,10 @@ module Dot = struct
       | Disk (index, _) -> 
           let n = Printf.sprintf "Disk%Ld" (Index.to_int64 index) in
           (n, [disk n], cntr)
-      | View (Leaf (value, ir, _, _)) ->
+      | View (Leaf (value, ir, _)) ->
           let n = Printf.sprintf "Leaf%d\n" cntr in
           (n, [leaf n value (indexing_rule ir)], cntr+1)
-      | View (Bud  (Some node , ir, _, _)) ->
+      | View (Bud  (Some node , ir, _)) ->
           let n', s, cntr = aux cntr node in
           let n = Printf.sprintf "Bud%d" cntr in
           (n, 
@@ -71,12 +71,12 @@ module Dot = struct
             link n n'
            ] @ s,
            cntr + 1)
-      | View (Bud  (None , ir, _, _)) ->
+      | View (Bud  (None , ir, _)) ->
           let n = Printf.sprintf "Bud%d" cntr in
           (n, 
            [bud n (indexing_rule ir)], 
            cntr + 1)
-      | View (Internal (left, right, ir, _, _)) ->
+      | View (Internal (left, right, ir, _)) ->
           let ln, ls, cntr = aux cntr left in 
           let rn, rs, cntr = aux cntr right in 
           let n = Printf.sprintf "Internal%d" cntr in
@@ -86,7 +86,7 @@ module Dot = struct
              link n rn ~label:"R" ]
            @ ls @ rs,
            cntr + 1)
-      | View (Extender (segment, node, ir, _, _)) ->
+      | View (Extender (segment, node, ir, _)) ->
           let n', s, cntr = aux cntr node in
           let n = Printf.sprintf "Extender%d" cntr in
           (n,
@@ -99,7 +99,7 @@ module Dot = struct
   
   let rec of_trail dst cntr = function
     | Top -> ([], cntr)
-    | Left (trail, r, mr, _) ->
+    | Left (trail, r, mr) ->
         let n = Printf.sprintf "Internal%d" cntr in
         let cntr = cntr + 1 in
         let r, ss, cntr = of_node_aux cntr r in
@@ -109,7 +109,7 @@ module Dot = struct
            link n r ~label:"R" ]
          @ ss @ ss',
          cntr)
-    | Right (l, trail, mr, _) ->
+    | Right (l, trail, mr) ->
         let n = Printf.sprintf "Internal%d" cntr in
         let cntr = cntr + 1 in
         let l, ss, cntr = of_node_aux cntr l in
@@ -119,7 +119,7 @@ module Dot = struct
            link n dst ~label:"R" ]
          @ ss @ ss',
          cntr)
-    | Budded (trail, mr, _) ->
+    | Budded (trail, mr) ->
         let n = Printf.sprintf "Bud%d" cntr in
         let cntr = cntr + 1 in
         let (ss, cntr) = of_trail n cntr trail in
@@ -127,7 +127,7 @@ module Dot = struct
            link n dst ]
          @ ss,
          cntr)
-    | Extended (trail, segment, mr, _) -> 
+    | Extended (trail, segment, mr) -> 
         let n = Printf.sprintf "Extender%d" cntr in
         let cntr = cntr + 1 in
         let (ss, cntr) = of_trail n cntr trail in
@@ -160,17 +160,17 @@ let validate_node context (node : node) =
     (* XXX Todo: No check of indexed_implies_hashed *)
     fun node ->
       let indexing_rule : view -> bool = function
-        | Internal (_, _, Indexed _, _, _) -> true
-        | Bud (_, Indexed _, _, _) -> true
-        | Leaf (_, Indexed _, _, _) -> true
-        | Extender (_, _, Indexed _, _, _) -> true
+        | Internal (_, _, Indexed _, _) -> true
+        | Bud (_, Indexed _, _) -> true
+        | Leaf (_, Indexed _, _) -> true
+        | Extender (_, _, Indexed _, _) -> true
         | _ -> false
       in
       let hashed_is_transitive : view -> bool = function
-        | Internal (_, _, _, Hashed _, _) -> true
-        | Bud (_, _, Hashed _, _) -> true
-        | Leaf (_, _, Hashed _, _) -> true
-        | Extender (_, _, _, Hashed _, _) -> true
+        | Internal (_, _, _, Hashed _) -> true
+        | Bud (_, _, Hashed _) -> true
+        | Leaf (_, _, Hashed _) -> true
+        | Extender (_, _, _, Hashed _) -> true
         | _ -> false
       in
       match node with
@@ -178,8 +178,8 @@ let validate_node context (node : node) =
       | View v -> 
           match v with
           | Leaf _ -> Ok v
-          | Bud (None, _, _, _) -> Ok v
-          | Bud (Some child, ir, hit, _iih) ->
+          | Bud (None, _, _) -> Ok v
+          | Bud (Some child, ir, hit) ->
               begin
                 aux child >>= function
                 | Bud _ -> Error "Bud cannot carry Bud"
@@ -194,7 +194,7 @@ let validate_node context (node : node) =
                      | Not_Hashed, _ -> Ok v
                      | _ -> Error "Bud: Strange hashed_is_transitive")
               end
-          | Internal (l, r, ir, hit, _iih) ->
+          | Internal (l, r, ir, hit) ->
               begin
                 aux l >>= fun l ->
                 aux r >>= fun r -> 
@@ -211,7 +211,7 @@ let validate_node context (node : node) =
                  | Not_Hashed, _, _ -> Ok v
                  | _ -> Error "Internal: Strange hashed_is_transitive")
               end
-          | Extender (seg, node, ir, hit, _) ->
+          | Extender (seg, node, ir, hit) ->
               aux node >>= function
               | Extender _ -> Error "Extender cannot carry Extender"
               | v' ->
