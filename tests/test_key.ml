@@ -38,28 +38,21 @@ let gen_char k st = match k with
 let gen_string st =
   let ki = RS.int st 5 in
   let k = List.nth [Hex ; Lower ; Alphanum ; Ascii ; Binary ] ki in
-  let max_len = match k with
-    | Ascii -> 30
-    | Alphanum -> 35
-    | Lower -> 42
-    | Hex -> 53
-    | Binary -> 26
-  in
-  let len = RS.int st (max_len - 1) + 1 in
+  let len = RS.int st 256 + 1 in
   String.init len (fun _ -> gen_char k st)
 
 let test s =
-  match to_segment s with
-  | None -> assert false
-  | Some seg -> 
-      match of_segment seg with
-      | Some s' when s <> s' ->
+  match to_segments s with
+  | Error s -> failwith s
+  | Ok segs -> 
+      match of_segments segs with
+      | Ok s' when s <> s' ->
           Format.eprintf "ERROR %S => %S@." s s';
           assert false
-      | None ->
-          Format.eprintf "ERROR %S => None@." s;
+      | Ok _ -> ()
+      | Error e -> 
+          Format.eprintf "ERROR %S => %s@." s e;
           assert false
-      | _ -> ()
 
 let () =
   let st = Random.State.make_self_init () in

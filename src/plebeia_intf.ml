@@ -26,8 +26,8 @@ module type S = sig
 
   module Key : sig
     type t = string
-    val to_segment : t -> Segment.t option
-    val of_segment : Segment.t -> t option
+    val to_segments : t -> (Segment.t list, string) result
+    val of_segments : Segment.t list -> (t, string) result
   end
   
   module Segment_encoding : sig
