@@ -212,64 +212,63 @@ type access_result =
   | Middle_of_extender of cursor * Segment.t * Segment.t * Segment.t (* The segment ends or diverges at the middle of an Extender with the common prefix, the remaining extender, and the rest of segment *)
   | Reached of cursor * view (* just reached to a node *)
 
-let access_gen cur segment =
-  (* returns the cursor found by following the segment from the given cursor *)
-  let rec aux (Cursor (trail, n, context)) segment =
-    let v = view context n in
-    let cur = _Cursor (trail, View v, context) in
-    match Segment.cut segment with
-    | None -> Ok (Reached (cur, v))
-    | Some (dir, segment_rest) ->
-        match v with
-        | Leaf _ | Bud _ ->  Ok (Collide (cur, v))
-        | Internal (l, r,
-                    internal_node_indexing_rule,
-                    hashed_is_transitive,
-                    indexed_implies_hashed) -> begin
-            match dir with
-            | Left ->
+let access_gen cur seg =
+  let access_gen_aux cur segment =
+    (* returns the cursor found by following the segment from the given cursor *)
+    let rec aux (Cursor (trail, n, context)) segment =
+      let v = view context n in
+      let cur = _Cursor (trail, View v, context) in
+      match Segment.cut segment with
+      | None -> Ok (Reached (cur, v))
+      | Some (dir, segment_rest) ->
+          match v with
+          | Leaf _ | Bud _ ->  Ok (Collide (cur, v))
+          | Internal (l, r,
+                      internal_node_indexing_rule,
+                      hashed_is_transitive,
+                      indexed_implies_hashed) -> begin
+              match dir with
+              | Left ->
+                let new_trail =
+                  _Left (
+                    trail, r,
+                    Unmodified (
+                      internal_node_indexing_rule,
+                      hashed_is_transitive),
+                    indexed_implies_hashed) in
+                aux (_Cursor (new_trail, l, context)) segment_rest
+              | Right ->
+                let new_trail = 
+                  _Right (
+                    l, trail,
+                    Unmodified (
+                      internal_node_indexing_rule, 
+                      hashed_is_transitive),
+                    indexed_implies_hashed) in
+                aux (_Cursor (new_trail, r, context)) segment_rest
+            end
+          | Extender (extender, node_below,
+                      indexing_rule,
+                      hashed_is_transitive,
+                      indexed_implies_hashed) ->
+            let (shared, remaining_extender, remaining_segment) =
+              Segment.common_prefix extender segment in
+            if remaining_extender = Segment.empty then
               let new_trail =
-                _Left (
-                  trail, r,
-                  Unmodified (
-                    internal_node_indexing_rule,
-                    hashed_is_transitive),
-                  indexed_implies_hashed) in
-              aux (_Cursor (new_trail, l, context)) segment_rest
-            | Right ->
-              let new_trail = 
-                _Right (
-                  l, trail,
-                  Unmodified (
-                    internal_node_indexing_rule, 
-                    hashed_is_transitive),
-                  indexed_implies_hashed) in
-              aux (_Cursor (new_trail, r, context)) segment_rest
-          end
-        | Extender (extender, node_below,
-                    indexing_rule,
-                    hashed_is_transitive,
-                    indexed_implies_hashed) ->
-          let (shared, remaining_extender, remaining_segment) =
-            Segment.common_prefix extender segment in
-          if remaining_extender = Segment.empty then
-            let new_trail =
-              _Extended (trail, extender,
-                       Unmodified (
-                         indexing_rule,
-                         hashed_is_transitive),
-                       indexed_implies_hashed) in
-            aux (_Cursor (new_trail, node_below, context)) remaining_segment
-          else
-            Ok (Middle_of_extender (cur, shared, remaining_extender, remaining_segment))
+                _Extended (trail, extender,
+                         Unmodified (
+                           indexing_rule,
+                           hashed_is_transitive),
+                         indexed_implies_hashed) in
+              aux (_Cursor (new_trail, node_below, context)) remaining_segment
+            else
+              Ok (Middle_of_extender (cur, shared, remaining_extender, remaining_segment))
+    in
+    aux cur segment
   in
-  aux cur segment
-
-(* go_below_bud + access are always paired *)
-let xaccess_gen cur seg =
   go_below_bud cur >>= function
   | None -> Ok Empty_bud 
-  | Some cur -> access_gen cur seg
+  | Some cur -> access_gen_aux cur seg
 
 let error_access = function
   | Empty_bud -> Error "Nothing beneath this bud"
@@ -284,12 +283,12 @@ let error_access = function
   | Reached (_, Extender _) -> Error "Reached to an Extender"
   
 let subtree cur seg =
-   xaccess_gen cur seg >>= function
+   access_gen cur seg >>= function
    | Reached (cur, Bud _) -> Ok cur
    | res -> error_access res
 
 let get cur seg = 
-  xaccess_gen cur seg >>= function
+  access_gen cur seg >>= function
   | Reached (_, Leaf (v, _, _, _)) -> Ok v
   | res -> error_access res
 
@@ -298,14 +297,14 @@ let empty context =
   _Cursor (_Top, NotHashed.bud None, context)
 
 let delete cur seg =
-  xaccess_gen cur seg >>= function
+  access_gen cur seg >>= function
   | Reached (Cursor (trail, _, context), (Bud _ | Leaf _)) -> 
       remove_up trail context 
       >>= parent  (* XXX not good... *)
   | res -> error_access res
 
 let alter (Cursor (trail, _, context) as cur) segment alteration =
-  xaccess_gen cur segment >>= function
+  access_gen cur segment >>= function
   | Empty_bud -> 
       alteration None >>= fun n' ->
       let n' = NotHashed.extend segment n' in

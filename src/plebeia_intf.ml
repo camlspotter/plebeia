@@ -5,31 +5,32 @@ module type S = sig
   end
     
   (** Module manipulating patricia trees and persisting them to disk *)
-  
   module Context : sig
     type t
+    (** A context represents the storage of a collection of trees sharing
+        nodes on disk. *)
   end
-  (** A context represents the storage of a collection of trees sharing
-      nodes on disk. *)
   
   module Hash : sig
     type t
+    (** Root hash of a tree. *)
   end
-  (** Root hash of a tree. *)
 
+  (** A segment represents a path from the root of a tree to a leaf or
+      to the root of a sub-tree. *)
   module Segment : sig
     type side = Left | Right
     type t = side list
   end
-  (** A segment represents a path from the root of a tree to a leaf or
-      to the root of a sub-tree. *)
 
+  (** Human readable directory names *)
   module Key : sig
     type t = string
     val to_segments : t -> (Segment.t list, string) result
     val of_segments : Segment.t list -> (t, string) result
   end
-  
+
+  (** Encoding of segments in nodes *)
   module Segment_encoding : sig
     val encode : Segment.t -> string
     val decode : string -> Segment.t
@@ -37,10 +38,12 @@ module type S = sig
 
   type error = string
 
+  (** Stored value *)
   module Value : sig
     type t
       
     val of_string : string -> t
+    val to_string : t -> string
   end
   
   val open_ : ?pos: int64 -> ?shared: bool -> ?kvs: KVS.t -> string -> Context.t
@@ -56,12 +59,6 @@ module type S = sig
   module Cursor : sig
     type t
     (** Cursor in a tree to efficiently search and edit sub-trees. *)
-  
-(*
-    val root : context -> Hash.t -> (cursor, error) result
-    (** Gets the root cursor corresponding to a given root hash in the
-        context. *)
-*)
   
     val empty : Context.t -> t
     (** Creates a cursor to a new, empty tree. *)
@@ -103,16 +100,8 @@ module type S = sig
   val commit: Cursor.t -> (Cursor.t * Index.t * Hash.t, error) result
   (** Commits the change made in a cursor to disk. 
       The cursor must point to a root. 
-      Returns the updated cursor and its new root hash. 
+      Returns the updated cursor and its new root hash. *)
 
-(* XXX It must be implemented outside 
-      If the same root hash [h] is already bound to an index [i'] 
-      in the roots table, the function returns an [Error (c, i, h, i')],
-      WITHOUT adding the index [i] new change to the roots table.
-      Even in this case, the changes are stored in the node storage.
-*)
-  *)
-  
   val hash: Cursor.t -> (Cursor.t * Hash.t)
   (** Computes the hash of the cursor without committing. *)
                         
@@ -145,8 +134,6 @@ module type S = sig
     (** Remove a root.  If it does not exist, do nothing *)
   end
 
-  module Error : sig
-    type ('a, 'e) t = ('a, 'e) result
-    val (>>=) : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t 
-  end
+  (** Error/Result/Either monad *)
+  module Error : module type of Error
 end

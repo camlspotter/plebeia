@@ -4,6 +4,7 @@ open Node
 exception LoadFailure of error
 
 val parse_cell : Context.t -> Index.t -> view
+(** Exposed for test *)
 
 module Chunk : sig
   (* XXX move to tests *)
@@ -11,7 +12,9 @@ module Chunk : sig
 end
 
 val commit_node : Context.t -> node -> node * Index.t * Hash.t
-
+(** Write a node to the storage, and returns the updated version 
+    of the node with its index and hash *)
+    
 val load_node : Context.t -> Index.t -> extender_witness -> view
 (** Read the node from context.array, parse it and create a view node with it. *)
 

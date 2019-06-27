@@ -1,5 +1,6 @@
-type h28 (* Hash of 28 byte length *)
-type h56 (* Hash of nodes, 56 byte length *)
+type h28 (** Hash of 28 byte length *)
+
+type h56 (** Hash of nodes, 56 byte length *)
 
 type 'h gen = private string
 (** Type for the hash.  The size is given by the type parameter *)

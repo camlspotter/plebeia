@@ -1,4 +1,4 @@
-(* Implementation of the root table.
+(** Implementation of the root table.
    
    All the data should be in memory.
    Very simple append only format on disk.

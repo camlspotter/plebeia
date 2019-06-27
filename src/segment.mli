@@ -9,7 +9,7 @@ type side = Left | Right
   and 1 = true = Right *)
 
 val string_of_side : side -> string
-(* L or R *)
+(** "L" or "R" *)
   
 val dummy_side : side
 (** Whenever we need to consistently pick side that doesn't really correspond

@@ -31,7 +31,7 @@ let doit st (rev_hist, stat_subdirs, stat_inserts, stat_deletes, stat_commits) c
   let seg = random_segment ~length:3 st in
   let rec f cur = function
     | sub::subs ->
-        begin match ok_or_fail @@ xaccess_gen cur sub with
+        begin match ok_or_fail @@ access_gen cur sub with
           | Reached (_, Bud _) ->
               add_hist @@ `subtree sub;
               let cur = ok_or_fail @@ subtree cur sub in
@@ -44,7 +44,7 @@ let doit st (rev_hist, stat_subdirs, stat_inserts, stat_deletes, stat_commits) c
           | _ -> cur (* skip *)
         end
     | [] -> 
-        match ok_or_fail @@ xaccess_gen cur seg with
+        match ok_or_fail @@ access_gen cur seg with
         | Reached (_, Leaf _) ->
             begin match get cur seg with
             | Ok _ -> 

@@ -110,7 +110,7 @@ let () =
   return ()
 
 let test_path_of_trail c seg = 
-  match xaccess_gen c seg with
+  match access_gen c seg with
   | Ok (Reached (Cursor (trail, _, _), _v)) ->
       if List.flatten @@ path_of_trail trail <> seg then begin
         failwith

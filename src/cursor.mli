@@ -2,6 +2,7 @@ open Types
 open Node
 
 type t = cursor
+(** Zipper for Merkle tree *)
 
 val empty : Context.t -> t
 (** Creates a cursor to a new, empty tree. *)
@@ -11,11 +12,13 @@ val subtree : t -> Segment.t -> (t, error) result
     "cd segment/" *)
 
 val create_subtree: t -> Segment.t -> (t, error) result
-(** Create a subtree (bud). Think "mkdir segment" *)
+(** Create a subtree (bud). Think "mkdir segment".
+    The cursor does NOT move from the original position. *)
 
 val subtree_or_create : t -> Segment.t -> (t, error) result
 (** Same as subtree but create a subtree if not exists *)
     
+(** Result of access_gen *)
 type access_result =
   | Empty_bud (* The bud is empty *)
   | Collide of cursor * view (* The segment was blocked by an existing leaf or bud *)
@@ -23,10 +26,13 @@ type access_result =
   | Reached of cursor * view (* just reached to a node *)
 
 val error_access : access_result -> ('a, error) result
+(** Make an access result into an error *)
 
-val xaccess_gen : t -> Segment.t -> (access_result, error) result
+val access_gen : t -> Segment.t -> (access_result, error) result
+(** Follow a segment *)
 
 val go_top : t -> (t, error) result
+(** Move up to the top *)
 
 val parent : t -> (t, error) result
 (** Moves the cursor back to the parent tree. Think "cd .." *)
@@ -37,25 +43,35 @@ val get : t -> Segment.t -> (Value.t, error) result
 
 val insert: t -> Segment.t -> Value.t -> (t, error) result
 (** Inserts a value at the given segment in the current tree.
-    Returns the new cursor if successful. *)
+    The cursor does NOT move from the original position. *)
 
 val upsert: t -> Segment.t -> Value.t -> (t, error) result
-(** Upserts. This can still fail if the segment leads to a subtree. *)
+(** Upserts. This can still fail if the segment leads to a subtree.
+    The cursor does NOT move from the original position. *)
 
 val delete: t -> Segment.t -> (t, error) result
-(** Delete a leaf or subtree. *)
+(** Delete a leaf or subtree.
+    The cursor does NOT move from the original position. *)
 
 val snapshot: t -> Segment.t -> Segment.t -> (t, error) result
 (** Snapshots a subtree at segment and place a soft link to it at
-    another segment location. *)
+    another segment location. 
+
+    Not implemented.
+*)
 
 val go_below_bud : t -> (t option, error) result
 (** This function expects a cursor positionned on a bud 
     and moves it one step below. *)
 
 val go_down_extender : t -> (t, error) result
+(** Go down an Extender node.  The cursor must point to an Extender. *)
+    
 val go_side : Segment.side -> t -> (t, error) result
+(** Go down an Internal node.  The cursor must point to an Internal. *)
+
 val go_up : t -> (t, error) result
+(** Go up one level *)
 
 type where_from =
   | From_above of dir
@@ -88,7 +104,8 @@ val traverse : position -> position option
 *)
 
 val dot_of_cursor_ref : (t -> string) ref
-
+(** Placeholder of Graphviz rendering of cursors *)
+   
 (** Tools to create Not_Indexed and Not_Hashed nodes *)
 module NotHashed : sig
   val leaf : Value.t -> node
