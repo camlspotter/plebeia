@@ -1,10 +1,18 @@
 open Stdint
 open Types
 
+(* XXX Problem in 32bit arch
+     
+   * [Cstruct.of_bigarray] only takes [char] indexed [Bigstring.t].
+   * Offset must be [int] in [Cstruct].
+   
+   The current simple implementation to map the entire file to one [Bigstring.t]
+   restricts the maximum file size in 32bit arch to [1_073_741_823], which is roughly just 1GB.
+*)
+
 type t = {
   mutable array : Bigstring.t ;
   (* mmaped array where the nodes are written and indexed. *)
-  (* XXX should not be accessible from the outside *)
 
   mutable current_length : Index.t ;
   (* Current length of the node table. *)
@@ -30,7 +38,7 @@ module Header = struct
   (* Header is the first cell, which carries the current length *)
   let read a = 
     let cstr = Cstruct.of_bigarray ~off:0 ~len:32 a in
-    Index.of_uint32 @@ Utils.Cstruct.get_uint32 cstr 0 (* XXX dupe *)
+    Index.of_uint32 @@ Utils.Cstruct.get_uint32 cstr 0
 
   let write a i = 
     let cstr = Cstruct.of_bigarray ~off:0 ~len:32 a in
@@ -58,7 +66,8 @@ let make_array fd ~pos ?(shared=false) mapped_length =
   let open Bigarray in
   let size = Int64.(of_uint32 mapped_length * bytes_per_cell + 32L (* header *)) in
   let size = 
-    if size > Int64.of_int Pervasives.max_int then assert false (* XXX *)
+    if size > Int64.of_int Pervasives.max_int then 
+      Utils.failwithf "Size %Ld is too big in this archtecture" (Int64.of_uint32 mapped_length)
     else Int64.to_int size
   in
   array1_of_genarray @@ Unix.map_file fd ~pos char c_layout shared [| size |] 
@@ -66,12 +75,7 @@ let make_array fd ~pos ?(shared=false) mapped_length =
 let resize required t =
   let open Uint32 in
   let new_mapped_length = 
-    (* XXX inefficient *)
-    let rec f x =
-      if x < required then f (x + resize_step)
-      else x
-    in
-    f t.mapped_length 
+    ((required - t.mapped_length) / resize_step + Uint32.one) * resize_step 
   in
   Format.eprintf "Storage: resizing to %Ld (required %Ld)@." (Uint32.to_int64 new_mapped_length) (Uint32.to_int64 required);
   let array = make_array t.fd ~pos:t.pos ~shared:t.shared new_mapped_length in
