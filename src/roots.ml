@@ -36,7 +36,7 @@ let read_commit fd =
     Format.eprintf "%S@." (Bytes.to_string buf);
     Some (Hash.hash56_of_string @@ Bytes.sub_string buf 0 56,
           let cstr = Cstruct.of_bytes buf in
-          Stdint.Uint32.of_int32 @@ Cstruct.LE.get_uint32 cstr 56)
+          Utils.Cstruct.get_uint32 cstr 56)
   end
     
 let write_commit fd hash index =
@@ -45,7 +45,7 @@ let write_commit fd hash index =
   let buf = Bytes.create 60 in
   Bytes.blit_string hash 0 buf 0 56;
   let cstr = Cstruct.create 4 in
-  Cstruct.LE.set_uint32 cstr 0 @@ Stdint.Uint32.to_int32 index;
+  Utils.Cstruct.set_uint32 cstr 0 index;
   Cstruct.blit_to_bytes cstr 0 buf 56 4;
   let w = single_write fd buf 0 60 in
   if w <> 60 then failwith (string_of_int w) (* XXX *)

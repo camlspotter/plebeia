@@ -8,15 +8,7 @@ open Node
 
 exception LoadFailure of error
 
-module C = struct
-  (* Fix of Cstruct, which uses [int32] for [uint32]. *)
-     
-  include Cstruct
-  include Cstruct.LE (* Intel friendly *)
-
-  let get_uint32 buf x = Uint32.of_int32 @@ get_uint32 buf x
-  let set_uint32 buf x v = set_uint32 buf x @@ Uint32.to_int32 v
-end
+module C = Utils.Cstruct
 
 (* Cstruct.blit_from_string, but make sure all the string contents are written *)
 let write_string s buf off len =
@@ -298,6 +290,7 @@ let commit_node context node =
   let rec commit_aux : node -> (node * Index.t * Hash.t) = function
     | Disk (index, wit) ->
         let v, i, h = commit_aux' (load_node context index wit) in
+        assert (index = i);
         View v, i, h
     | View v -> 
         let v, i, h = commit_aux' v in

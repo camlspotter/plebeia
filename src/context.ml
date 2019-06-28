@@ -30,11 +30,11 @@ module Header = struct
   (* Header is the first cell, which carries the current length *)
   let read a = 
     let cstr = Cstruct.of_bigarray ~off:0 ~len:32 a in
-    Index.of_uint32 @@ Uint32.of_int32 @@ Cstruct.LE.get_uint32 cstr 0 (* XXX dupe *)
+    Index.of_uint32 @@ Utils.Cstruct.get_uint32 cstr 0 (* XXX dupe *)
 
   let write a i = 
     let cstr = Cstruct.of_bigarray ~off:0 ~len:32 a in
-    Cstruct.LE.set_uint32 cstr 0 @@ Uint32.to_int32 i
+    Utils.Cstruct.set_uint32 cstr 0 i
 end
 
 let get_cell t i =

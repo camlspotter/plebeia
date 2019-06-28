@@ -27,3 +27,15 @@ module Exn = struct
     | exception e -> fin (); raise e
     | x -> fin (); x
 end
+
+module Cstruct = struct
+  open Stdint
+
+  include Cstruct
+  include Cstruct.LE (* Intel friendly *)
+
+  (* The original [uint32] functions of Cstruct returns **[int32]**.
+     Very confusing, so we patch them here. *)
+  let get_uint32 buf x = Uint32.of_int32 @@ Cstruct.LE.get_uint32 buf x
+  let set_uint32 buf x v = Cstruct.LE.set_uint32 buf x @@ Uint32.to_int32 v
+end
