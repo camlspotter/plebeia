@@ -1,3 +1,8 @@
+(*
+
+   Random insert/upsert/rm/mkdir/rmdir/commit test.
+   
+*)
 open Plebeia.Plebeia_impl
 open Error
 open Test_utils
@@ -6,8 +11,6 @@ open Cursor
 module RS = Random.State
 
 module Debug = Plebeia.Debug
-
-module Dumb = Dumb
 
 let dump_cursor c =
   let Cursor (_, n, context) = c in
