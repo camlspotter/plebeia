@@ -114,10 +114,10 @@ let () =
   let rec f acc = function
     | 0 -> if acc then assert false else ()
     | n ->
-        Format.eprintf "n=%d@." n;
         match test st 10000 with
         | Ok () -> f acc (n - 1)
         | Error (e, hist) ->
+            (* if fails, we try until finding a short example *)
             let len = List.length hist in
             if len < 50 then begin
               List.iter print_hist hist;
