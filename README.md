@@ -2,97 +2,256 @@ Status: early development, do not expect this to work or even compile at this st
 
 # Plebeia
 
-Plebeia is a functional implementation of a sparse Merkle tree through a Patricia trie persisted
-on disk. The library allows the manipulation of in-memory functional views of the trie and perform
-atomic commits of those views to the disk.
+Plebeia is a functional implementation of a sparse Merkle tree through a Patricia trie persisted on disk. The library allows the manipulation of in-memory functional views of the trie and perform atomic commits of those views to the disk.
 
 ## Sub-trees
 
-Plebeia supports sub-trees. That is, a leaf can either contain a value or the root of a sub-tree. Trees
-and sub-trees can be navigated like directories and sub-directories using a cursor implemented with
-a zipper.
+Plebeia supports sub-trees. That is, a leaf can either contain a value or the root of a sub-tree. Trees and sub-trees can be navigated like directories and sub-directories using a cursor implemented with a zipper.
 
-### Storage
+## Storage
 
-The trie is persisted to a file on disk by appending nodes. All nodes take up excatly 256 bit of disk
-space making it easy to index them. Hashes are 448 bit long offering about 111.5 bits of security.
+The trie is persisted to a file on disk by appending nodes. All nodes take up excatly 256 bits (32 bytes) of disk space making it easy to index them. Hashes are 448 bit long offering about 111.5 bits of security.
 
-Leaf data is persisted either in an external key-value store with reference counting or in the same 
-data file as the tree.  Garbage collection of the trie is implemented with a stop and copy approach.
+Leaf data is persisted either in an external key-value store with reference counting or in the same data file as the tree.  Garbage collection of the trie is implemented with a stop and copy approach. (This GC is not implemented.)
 
-#### Hash format
-
-Note: This is obsolete.  Check Layout.md for the latest version used in the implementation.
+## Hash format
 
 Let `H(x)== BLAKE2B(x,28)` be a hash function with a 224 bit digest.
-
-
-  - the hash of a leaf node with value v is taken as `H(0x00 || v)`, forcing the last
-    bit to 0, and followed by a 223 0's and a 1.
-
-  - the hash of a bud node is the hash of its child
-
-  - the hash of an internal node with children hashes `H_LEFT`and `H_RIGHT`is obtained by
-    first computing `H(0x01 || H_LEFT || H_RIGHT)`, forcing the last bit of
-    the hash to 0 and appending 223 0's at the end and a 1.
-
-  - the hash of an extender extending is computed as follow. Let `b0,...,b_(n-1)`
-    represent the path taken by the extender with 0 for left and 1 for right.
-    Prepend 1 in front of the path, and prepend as many 0s as needed in front
-    of the 1 to make 224 bits. Prepend the hash of the extender's child.
 
 The goal is to make the root hash independent of the Patricia implementation. The approach
 is inspired from the one described by Vitalik Buterin [here](https://ethresear.ch/t/optimizing-sparse-merkle-trees/3751/14).
 
-#### Node storage format
+### Leaf
 
-Note: This is obsolete.  Check `Layout.md` for the latest version used in the implementation.
+The hash of a leaf is `H(0x00 || v)` followed by 223bits of zeros and 1bit of one:
 
-All nodes are stored in an array with 256 bit cells. The constant size makes it easy for nodes
-to refer to each other using an index in the array.
+```
+leaf      |<-      H(0x00 || v)        ->|
+          |                              |0...........................01|
+```
 
-This leads to a bit of awkwardness (223 bit hashes, array size limited to 2^32 - 34)
-but the potential benefit is that two nodes can fit in a cache line in 64 bit architectures.
-If it turns out this doesn't make a noticeable difference, it's straightforward to increase
-the size of cells to 320 bits, or introduce variable size cells, and remove much of the
-awkwardness.
+### Bud
 
-- Internal node:
+The hash of the empty bud is all (448bits) zeros:
 
- - First 223 bits: first 223 bit of the hash of the internal node. The last bit does not
- need to be stored as it's always 0, by convention, and the next 224 bits are just 223 0s
- followed by a 1.
+```
+empty bud |0000000000000000000000000000000000000000000000000000000000000|
+```
 
- - 224th bit: 0 if the index refers to the left child, 1 if it refers to the right child.
-   Accomodating this bit is the reason the last bit of the hash is set to 0.
+The hash of a bud with a child is the hash of the child:
 
- - Next 32 bits: index of either the left or right child. The other child is always stored
-   at the index preceding the internal node.
+```
+bud       |<------------------ hash of its child ---------------------->|
+```
 
- For reasons which will become clear the index can only grow to 2^32 - 34.
+### Internal
 
-- Extender node:
+The hash of an internal node with children hashes `l` and `r` is `H(0x01 || l || h)` whose last 2bits are
+reset to zero, followed by 223bits of zeros and 1bit of one:
 
- - First 224 bits: Let `b0,...,b_(n-1)` represent the path taken by the extender with 0 
-   for left and 1 for right. Prepend 1 in front of the path, and prepend as many 0s as needed 
-   in front of the 1 to make 224 bits. 
- - Last 32 bits: 2^32 - 33.
+```
+internal  |<-     H(0x01 || l || h)    ->|
+          |                          |0|0|0...........................01|
+```
 
-- Leaf node:
+### Extender
 
- - First 224 bits: hash of the value
+The hash of an extender is the first 28bytes of its child's hash,
+followed by 224bits of its segment encoding (see below).
 
- - Next 32 bits: from 2^32 - 32  to 2^32 - 1 inclusive. If 2^32 - 32, the value is
-   looked up in an external hash-table. Otherwise, if 2^32 - 32 + l, with l > 0,
-   then l is the length in byte of the value which is read directly in the
-   previous cell. This is helpful to avoid having to hit the  key-value table for
-   small values, but it does create some duplication. To be benchmarked...
+```
+extender  |<------------------ hash of its child ---------------------->|
+          | The first 224bits of H_child |000...1|<- segment bits --->|1|
+```
 
-- Bud node:
+#### Segment encoding
 
- - First 224 bits: the index of the child
- - Last 32 bits: 2^32 - 34
+*Segment encoding* is 224bit length data.  It is:
 
-  It could seem at first that we might not need to store bud nodes at all, but they are
- helpful when creating snapshots, to preserve the property that a non-indexed
- internal node never points to two indexed children.
+* ended by 1bit of one,
+* prepended by bits of segments, top comes the first and bottom comes the last, 0 is for left and 1 for right,
+* prepended 1bit of one,
+* then prepended as many bits of zeros to make the entire length become 224bits:
+
+```
+          |000...1|<- segment bits --->|1|
+```
+
+From the definition of the segment encoding, the maximum length of segments is 224-2 = 222.
+
+## Node storage format
+
+All nodes are stored in an array with 256 bit (32 bytes) *cells*. The constant size makes it easy for nodes to refer to each other using an index in the array.
+
+This leads to a bit of awkwardness (222 bit hashes, array size limited to 2^32 - 256) but the potential benefit is that two nodes can fit in a cache line in 64 bit architectures.  If it turns out this doesn't make a noticeable difference, it's straightforward to increase the size of cells to 320 bits, or introduce variable size cells, and remove much of the awkwardness.
+
+### Integer encoding
+
+Integers are embedded in cells using little endian.
+
+### Index part
+
+The last 32bits of a node cell are called the index part of the node, which often refers to a node linked from the node.  The possible index values are from 0 to 2^32 - 1 - 256.
+
+### Tags
+
+The index part value more than 2^32 - 256 to 2^32 - 1 are used for *tags*:
+
+* 2^32 -1 to 2^32-32 : small leaves, whose contents are stored in the previous cell
+* 2^32 -34 : bud
+* 2^32 -33 : large leaves, whose contents are stored in an external KVS
+* 2^32 -35 : large leaves in Plebeia.  Their contents are stored in Plebeia cells.
+* Others from 2^32 -256 : reserved
+
+### Layout table
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| (also refers to the previous cell)
+extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>|
+leaf (S)  |<- first 224 of hash ------------>| |<- -1 to -32 ------------------------->| (use the previous cell)
+leaf (K)  |<- first 224 of hash ------------>| |<- -33 ------------------------------->| (use the KVS)
+leaf (P)  |<- first 224 of hash ------------>| |<- -35 ------------------------------->| (use the previous cell and some others)
+bud       |<- 192 0's ->|<-   child index  ->| |<- -34 ------------------------------->|
+empty bud |<- 1111111111111111111111111111 ->| |<- -34 ------------------------------->|
+reserved  |                                  | |<- -256 to -36 ----------------------->|
+```
+
+This layout restricts the maximum index number to 2^32-257.  Which is about 4G cells, 128GB file size.
+
+### Internal
+
+* The first 222bits are the prefix of the node's hash.
+* appended by 1bit `D`, which denotes which child's index is referred in the index part. 0: left, 1: right.
+* appended by 1bit of zero
+* followed by 32bits of the index of the one of the children specified by `D`
+
+The other child which is not referred in the index part of the internal node storage always stored
+in the previous cell of the internal node.
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->|
+```
+
+### Extender
+
+* The first 224bits are the segment encoding of the extender.
+* The index part is the index of the child.
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>|
+```
+
+### Leaf
+
+* The first 224bits are the prefix of the hash of the leaf.
+
+#### Small leaf
+
+The tag of a small leaf is between 2^32-32 to 2^32-1 inclusive.
+It denotes the length of the value in bytes, which should be stored in the previous cell of the leaf.
+
+The value stored from the head of the previous cell.
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+leaf      |<- first 224 of hash ------------>| |<- -32 to -1 ------------------------->|  (may use the previous cell)
+
+Previous cell:
+          |< ----   256 bits --------------------------------------------------------->|
+----------------------------------------------------------------------------------------
+data      |<- value contents ------------------------->|                               |
+```
+
+#### Large leaf in KVS
+
+The tag is 2^32-33.  The value is stored in an external KVS.
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+leaf (K)  |<- first 224 of hash ------------>| |<- -33 ------------------------------->|
+```
+
+The key used in the KVS is the first 224bits of the hash.  Plebeia assumes there is no hash collision.
+
+#### Large leaf in Plebeia
+
+The tag is 2^32-35.
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+leaf (P)  |<- first 224 of hash ------------>| |<- -35 ------------------------------->|
+```
+
+The contents of the value is stored in cells of the same storage.  They are stored as
+a linked list of *cell chunks*.  A cell chunk is a contiguous cells with the following
+format:
+
+##### Cell chunk
+
+(I just use the word 'chunk' since 'block' means different thing in the blockchain technology.)
+
+A cell chunk is a contiguous cells.  There is a *footer fields* in the last bytes of each cell chunk:
+
+* The last 4 bytes is the *cdr index* which points to the last cell of the next cell chunk
+  in the chunk list.
+  If the cdr index is 0, the cell chunk is the last chunk in the list.
+* The 2 bytes prior to the cdr index is the *content length* in uint16.  It is the number of bytes the cell
+  chunk carries for the value contents.
+* The data for the value in a cell chunk is stored from the head of the first cell of the cell chunk.
+  Number of the cells in the cell chunk is computable from the expression `(content_length + 6 + 31) / 32`. 
+
+Cell chunk layout:
+
+```
+| cell #1 | cell #2 | .. | the last cell in the chunk (#n)                  | 
+|         |         | .. |                            | footer fields       |
+|         |         |    |                            |<-16bits->|<-32bits->|
+------------------------------------------------------------------------------
+|<- contents (size bytes) ------------------->|       |size      |cdr index |
+```
+
+The contents of a value are stored from the last cell chunk in the list whose cdr index is 0.
+The head of cell chunk list carries the last part of the contents.
+
+### Bud
+
+The last 32bits is fixed to 0.
+
+#### Non-empty bud
+
+The index of the child node is stored from 193rd bits, following 192bits of zeros:
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+bud       |<- 192 0's ->|<-   child index  ->| |<- -34 ------------------------------->|
+```
+
+#### Empty bud
+
+224bits of ones are prepended in front of the 32bits of 2^32-34
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+empty bud |<- 1111111111111111111111111111 ->| |<- -34 ------------------------------->|
+```
+
+#### Reserved
+
+The other tags down to 2^32-256 are reserved for future extension.
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+empty bud |<- 1111111111111111111111111111 ->| |<- Unused tag down to -256 ----------->|
+```
