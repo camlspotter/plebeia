@@ -204,10 +204,6 @@ type modified_rule =
       indexing_rule *
       hashed_is_transitive
 
-(* 'iXXX : indexing
-   'hXXX : hashed
-   'eXXX : extender
-*)
 type trail =
   | Top
   | Left of (* we took the left branch of an internal node *)

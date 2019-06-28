@@ -323,7 +323,7 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
       alteration nopt >>= fun n -> 
       let c = attach trail n context in
       (* XXX alter cannot dive into more than one bud, therefore
-         going up should be much simpler *)
+         go_ups should be much simpler *)
       (* go back along the segments to the "original" position *)
       let rec go_ups (Cursor (trail, _node, _context) as c ) ss = 
         match trail, ss with
@@ -365,7 +365,7 @@ let create_subtree cur segment =
       | Some _ -> Error "a node already presents for this path")
 
 let subtree_or_create cur segment =
-  (* XXX inefficient *)
+  (* XXX inefficient.  create_subtree should have an option not to go back to the original position *)
   let cur = 
     match create_subtree cur segment with
     | Ok cur -> cur
@@ -384,7 +384,10 @@ and dir =
 
 type position = where_from list * cursor
   
-(* XXX must forget already traversed nodes, if they are on disk *)
+(* Traversal step.  By calling this function repeatedly
+   against the result of the function, we can traverse all the nodes.
+   Note that this loads all the nodes in the memory in the end.
+*)
 let traverse (log, Cursor (trail, n, context)) = 
   let v = match n with
     | Disk (i, ewit) -> load_node context i ewit

@@ -55,7 +55,11 @@ let get_bytes t i n =
   let i = Index.to_int i + 1 (* header *) in 
   Cstruct.of_bigarray ~off:(i*32) ~len:n t.array
 
-(* 2^32 - 256 .. 2^32 - 1 are used for tags *)
+(* 2^32 - 256 .. 2^32 - 1 are used for tags 
+   
+   Max index: 4G = 4_294_967_040
+   The maximum data size is about 128GB
+*)
 let max_index = Uint32.(max_int - of_int 256)
 
 let bytes_per_cell = 32L
@@ -93,7 +97,13 @@ let make ?(pos=0L) ?(shared=false) ?kvs ?length fn =
   let mapped_length = 
     match length with 
     | None -> resize_step 
-    | Some i -> Uint32.of_int i  (* XXX overflow *)
+    | Some i ->
+        match Sys.int_size with
+        | 31 | 32 -> Uint32.of_int i
+        | 63 ->
+            if i > Uint32.(to_int max_int) then Utils.failwithf "Context.make: too large: %d@." i
+            else Uint32.of_int i
+        | _ -> assert false
   in
   let array = make_array fd ~pos ~shared mapped_length in
   Header.write array Uint32.zero;

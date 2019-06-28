@@ -4,7 +4,6 @@ open Node
 let of_leaf v =
   extend_to_t @@ hash_list [ "\000"; Value.to_string v]
 
-(* XXX correct? *)
 let of_empty_bud = hash56_of_string @@ String.make 56 '\000'
 
 (* the hash of a bud node is the hash of its child *)

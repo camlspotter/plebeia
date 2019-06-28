@@ -12,9 +12,9 @@ type hashed_is_transitive =
 
 type indexing_rule =
   | Indexed of Index.t
-  | Left_Not_Indexed (* Right may not be indexed either *)
-  | Right_Not_Indexed (* Left may not be indexed either *)
-  | Not_Indexed
+  | Left_Not_Indexed (* For Internal: Right may not be indexed either *)
+  | Right_Not_Indexed (* For Internal: Left may not be indexed either *)
+  | Not_Indexed (* For non Internals *) 
   (** This rule expresses the following invariant : if a node is indexed, then
       its children are necessarily indexed. Less trivially, if an internal node is not
       indexed then at least one of its children is not yet indexed. The reason
@@ -94,6 +94,7 @@ val _Internal : node * node
                * indexing_rule
                * hashed_is_transitive
                -> view
+
 val _Bud : node option
         * indexing_rule
         * hashed_is_transitive

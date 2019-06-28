@@ -62,4 +62,4 @@ let encode seg =
         if byte_pos' > 28 then assert false; (* segment is too long *)
         fill_bytes byte_pos' seg
   in
-  fill_bytes byte_pos (List.init bit_pos (fun _ -> Left) @ Right :: seg @ [ Right ]) (* XXX <= inefficient! *)
+  fill_bytes byte_pos (List.init bit_pos (fun _ -> Left) @ Right :: seg @ [ Right ]) (* XXX inefficient! *)

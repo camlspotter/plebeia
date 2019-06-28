@@ -3,7 +3,6 @@
    All the data should be in memory.
    Very simple append only format on disk.
 
-
    TODO: each add/remove accesses disk.  We can make the IO buffered.
 *)
 open Types
@@ -30,8 +29,7 @@ let read_commit fd =
   let buf = Bytes.create 60 in
   let r = read fd buf 0 60 in
   if r = 0 then None (* EOF *)
-  else if r <> 60 then failwith (string_of_int r) (* XXX *)
-  (* XXX garbage may exist, if write_commit fails. we have to ignore them *)
+  else if r <> 60 then Utils.failwithf "Roots.read_commit: garbage of %d bytes found" r
   else begin
     Format.eprintf "%S@." (Bytes.to_string buf);
     Some (Hash.hash56_of_string @@ Bytes.sub_string buf 0 56,
@@ -48,7 +46,7 @@ let write_commit fd hash index =
   Utils.Cstruct.set_uint32 cstr 0 index;
   Cstruct.blit_to_bytes cstr 0 buf 56 4;
   let w = single_write fd buf 0 60 in
-  if w <> 60 then failwith (string_of_int w) (* XXX *)
+  if w <> 60 then Utils.failwithf "Roots.write_commit: failed (%d bytes written)" w
 
 let open_ path =
   let open Unix in
@@ -61,20 +59,15 @@ let open_ path =
         Hashtbl.remove tbl h;
         loop ()
     | Some (h,i) -> 
-        Hashtbl.replace tbl h i; (* XXX overwrite should be warned *)
+        Hashtbl.replace tbl h i;
         loop ()
-    | exception (Failure _) ->
-        (* XXX garbate found, overwrite from here. 
-           XXX we have to rewind to the point of the last valid read
-        *)
-        { tbl; fd }
   in
   loop ()
 
 let open_ path = if not @@ exists path then create path else open_ path
   
 let add { tbl; fd } hash index =
-  Hashtbl.replace tbl hash index; (* XXX overwrite should be warned *)
+  Hashtbl.replace tbl hash index;
   write_commit fd hash index;
   Format.eprintf "Added root %S at %Ld@." (Hash.to_string hash) (Types.Index.to_int64 index)
 

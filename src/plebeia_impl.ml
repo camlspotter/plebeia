@@ -39,7 +39,7 @@ let commit (Cursor (trail, _, _) as c) =
   | Top -> 
       let c, i, h = commit c in
       Ok (c, i, h)
-  | _ -> failwith "commit: cursor must point to a root" (* XXX *)
+  | _ -> failwith "commit: cursor must point to the root"
 
 let gc ~src:_ _ ~dest:_ = failwith "not implemented"
 
