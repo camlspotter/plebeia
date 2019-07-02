@@ -17,6 +17,7 @@ let write_string s buf off len =
   C.blit_from_string s 0 buf off len
 
 let make_buf context i = Context.get_cell context i
+let make_buf2 context i = Context.get_bytes context i 64
 
 (* get the last 32 bits *)
 let get_index buf : Index.t = Index.of_uint32 @@ C.get_uint32 buf 28
@@ -131,9 +132,16 @@ let rec parse_cell context i =
       end
 
   | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
-      let l = 33 + Int32.to_int x in (* 1 to 32 *)
+      let l = - Int32.to_int x in (* 1 to 32 *)
       let h = get_hash buf in
       let buf = make_buf context (Index.pred i) in
+      let v = Value.of_string @@ C.copy buf 0 l in
+      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
+
+  | x when -64l <= x && x <= -33l -> (* leaf whose value is in the 2 previous cells *)
+      let l = - Int32.to_int x in (* 33 to 64 *)
+      let h = get_hash buf in
+      let buf = make_buf2 context (Index.pred @@ Index.pred i) in
       let v = Value.of_string @@ C.copy buf 0 l in
       _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
 
@@ -194,6 +202,13 @@ let write_small_leaf context v =
   let buf = make_buf context i in
   write_string (Value.to_string v) buf 0 len
 
+let write_medium_leaf context v =
+  let len = Value.length v in
+  assert (33 <= len && len <= 64);
+  let i = Context.new_indices context 2 in
+  let buf = make_buf2 context i in
+  write_string (Value.to_string v) buf 0 len
+
 let write_large_leaf_to_kvs kvs h v =
   let len = Value.length v in
   assert (len > 32);
@@ -252,15 +267,14 @@ let write_bud context n h =
   _Bud (Some n, Indexed i, Hashed h), i, h
 
 let write_leaf context v h =
-  (* leaf      |<- first 224 of hash ------------>| |<- 2^32 - 32 to 2^32 - 1 ------------->|  (may use the previous cell) *)
-  (* contents are already written *)
+  (* contents are ALREADY written *)
   let i = Context.new_index context in
   let len = Value.length v in
-  if 1 <= len && len <= 32 then begin
+  if 1 <= len && len <= 64 then begin
     let buf = make_buf context i in
     let h = Hash.shorten_to_hash28 h in
     write_string (Hash.to_string h) buf 0 28;
-    set_index buf (Uint32.of_int (len - 33)) (* 1 => -32  32 -> -1 *)
+    set_index buf (Uint32.of_int (-len)) (* 1 => -1  64 -> -64 *)
   end else begin
     let h = Hash.shorten_to_hash28 h in
     let k = 
@@ -315,6 +329,9 @@ let commit_node context node =
         let len = Value.length value in
         if 1 <= len && len <= 32 then begin
           write_small_leaf context value;
+          write_leaf context value h
+        end else if 33 <= len && len <= 64 then begin
+          write_medium_leaf context value;
           write_leaf context value h
         end else begin
           match Context.kvs context with
