@@ -198,6 +198,9 @@ It denotes the length of the value in bytes, which should be stored in the two p
 
 The value stored from the head of the cell at the position -2 to the previous cell.
 
+The medium leaves are introduced to store several public keys whose sizes are 33 and 34 bytes including
+tags (of 1 byte) which do not fit with the small leaves.
+
 #### Large leaf in KVS
 
 The tag is 2^32-254.  The value is stored in an external KVS.
