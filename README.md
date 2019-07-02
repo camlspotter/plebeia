@@ -111,11 +111,12 @@ The index part value more than 2^32 - 256 to 2^32 - 1 are used for *tags*:
 internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| (also refers to the previous cell)
 extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>|
 leaf (S)  |<- first 224 of hash ------------>| |<- -1 to -32 ------------------------->| (use the previous cell)
-leaf (K)  |<- first 224 of hash ------------>| |<- -33 ------------------------------->| (use the KVS)
-leaf (P)  |<- first 224 of hash ------------>| |<- -35 ------------------------------->| (use the previous cell and some others)
-bud       |<- 192 0's ->|<-   child index  ->| |<- -34 ------------------------------->|
-empty bud |<- 1111111111111111111111111111 ->| |<- -34 ------------------------------->|
-reserved  |                                  | |<- -256 to -36 ----------------------->|
+leaf (M)  |<- first 224 of hash ------------>| |<- -33 to -64 ------------------------>| (use the two previous cells)
+leaf (K)  |<- first 224 of hash ------------>| |<- -254 ------------------------------>| (use the KVS)
+leaf (P)  |<- first 224 of hash ------------>| |<- -255 ------------------------------>| (use the previous cell and some others)
+bud       |<- 192 0's ->|<-   child index  ->| |<- -256 ------------------------------>|
+empty bud |<- 1111111111111111111111111111 ->| |<- -256 ------------------------------>|
+reserved  |                                  | |<- Others between -256 and -1--------->|
 ```
 
 This layout restricts the maximum index number to 2^32-257.  Which is about 4G cells, 128GB file size.
@@ -161,7 +162,7 @@ The value stored from the head of the previous cell.
 ```
           |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
 ----------------------------------------------------------------------------------------
-leaf      |<- first 224 of hash ------------>| |<- -32 to -1 ------------------------->|  (may use the previous cell)
+leaf      |<- first 224 of hash ------------>| |<- -32 to -1 ------------------------->|
 
 Previous cell:
           |< ----   256 bits --------------------------------------------------------->|
@@ -169,26 +170,54 @@ Previous cell:
 data      |<- value contents ------------------------->|                               |
 ```
 
-#### Large leaf in KVS
+#### Medium leaf
 
-The tag is 2^32-33.  The value is stored in an external KVS.
+The tag of a small leaf is between 2^32-64 to 2^32-33 inclusive.
+It denotes the length of the value in bytes, which should be stored in the previous cell of the leaf.
+
+The value stored from the head of the previous cell.
 
 ```
           |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
 ----------------------------------------------------------------------------------------
-leaf (K)  |<- first 224 of hash ------------>| |<- -33 ------------------------------->|
+leaf      |<- first 224 of hash ------------>| |<- -64 to -33 ------------------------>|
+
+Cell at -2:
+          |< ----   256 bits --------------------------------------------------------->|
+----------------------------------------------------------------------------------------
+data      |<- value contents --------------------------------------------------------->|
+
+Previous cell (cell at -1):
+          |< ----   256 bits --------------------------------------------------------->|
+----------------------------------------------------------------------------------------
+data      |<- value contents ------------------------->|                               |
+```
+
+The tag of a medium leaf is between 2^32-64 to 2^32-33 inclusive.
+It denotes the length of the value in bytes, which should be stored in the two previous cells of the leaf.
+
+The value stored from the head of the cell at the position -2 to the previous cell.
+
+#### Large leaf in KVS
+
+The tag is 2^32-254.  The value is stored in an external KVS.
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+leaf (K)  |<- first 224 of hash ------------>| |<- -254 ------------------------------>|
 ```
 
 The key used in the KVS is the first 224bits of the hash.  Plebeia assumes there is no hash collision.
 
 #### Large leaf in Plebeia
 
-The tag is 2^32-35.
+The tag is 2^32-255.
 
 ```
           |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
 ----------------------------------------------------------------------------------------
-leaf (P)  |<- first 224 of hash ------------>| |<- -35 ------------------------------->|
+leaf (P)  |<- first 224 of hash ------------>| |<- -255 ------------------------------>|
 ```
 
 The contents of the value is stored in cells of the same storage.  They are stored as
@@ -208,6 +237,7 @@ A cell chunk is a contiguous cells.  There is a *footer fields* in the last byte
   chunk carries for the value contents.
 * The data for the value in a cell chunk is stored from the head of the first cell of the cell chunk.
   Number of the cells in the cell chunk is computable from the expression `(content_length + 6 + 31) / 32`. 
+* A cell chunk can carry up to 65536 bytes, which consist of 2049 cells.
 
 Cell chunk layout:
 
@@ -224,7 +254,7 @@ The head of cell chunk list carries the last part of the contents.
 
 ### Bud
 
-The last 32bits is fixed to 0.
+The last 32bits is fixed to -256.
 
 #### Non-empty bud
 
@@ -233,7 +263,7 @@ The index of the child node is stored from 193rd bits, following 192bits of zero
 ```
           |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
 ----------------------------------------------------------------------------------------
-bud       |<- 192 0's ->|<-   child index  ->| |<- -34 ------------------------------->|
+bud       |<- 192 0's ->|<-   child index  ->| |<- -256 ------------------------------>|
 ```
 
 #### Empty bud
@@ -243,15 +273,15 @@ bud       |<- 192 0's ->|<-   child index  ->| |<- -34 -------------------------
 ```
           |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
 ----------------------------------------------------------------------------------------
-empty bud |<- 1111111111111111111111111111 ->| |<- -34 ------------------------------->|
+empty bud |<- 1111111111111111111111111111 ->| |<- -256 ------------------------------>|
 ```
 
 #### Reserved
 
-The other tags down to 2^32-256 are reserved for future extension.
+The other tags between 2^32-256 and 2^32-1 are reserved for future extension.
 
 ```
           |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
 ----------------------------------------------------------------------------------------
-empty bud |<- 1111111111111111111111111111 ->| |<- Unused tag down to -256 ----------->|
+empty bud |<- 1111111111111111111111111111 ->| |<- Unused tag between -1 and -256 ---->|
 ```

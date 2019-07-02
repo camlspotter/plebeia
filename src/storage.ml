@@ -106,7 +106,7 @@ let rec parse_cell context i =
   let tag = get_index buf in
   let tag_int32 = Uint32.to_int32 tag in (* easier to match *)
   match tag_int32 with
-  | -34l -> (* bud *)
+  | -256l -> (* bud *)
       begin match C.get_char buf 0 with
         | '\255' -> 
             _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud)
@@ -120,7 +120,7 @@ let rec parse_cell context i =
             end
       end
 
-  | -33l -> (* leaf whose value is in the external KVS *)
+  | -254l -> (* leaf whose value is in the external KVS *)
       begin match Context.kvs context with
         | None -> assert false (* no external KVS created *)
         | Some kvs ->
@@ -137,13 +137,13 @@ let rec parse_cell context i =
       let v = Value.of_string @@ C.copy buf 0 l in
       _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
 
-  | -35l -> (* leaf whose value is in Plebeia *)
+  | -255l -> (* leaf whose value is in Plebeia *)
       let h = get_hash buf in
       let (bufs, _size) = Chunk.get_chunks context @@ Index.pred i in
       let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
       _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
 
-  | x when -256l <= x && x <= -36l -> assert false
+  | x when -253l <= x && x <= -65l -> assert false
 
   | _ -> 
       let s_224 = C.copy buf 0 28 in
@@ -234,21 +234,21 @@ let write_internal context nl nr h =
 
 let write_empty_bud context =
   (* XXX No point to store the empty bud... *)
-  (* empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 34 ------------------------->| *)
+  (* empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 256 ------------------------>| *)
   let i = Context.new_index context in
   let buf = make_buf context i in
   write_string bud_first_28 buf 0 28;
-  set_index buf (Uint32.of_int32 (-34l));
+  set_index buf (Uint32.of_int32 (-256l));
   _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud), i, NodeHash.of_empty_bud
 
 
 let write_bud context n h = 
-  (* bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 34 ------------------------->| *)
+  (* bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 256 ------------------------>| *)
   let i = Context.new_index context in
   let buf = make_buf context i in
   write_string zero_24 buf 0 24;
   C.set_uint32 buf 24 @@ index n;
-  set_index buf (Uint32.of_int32 (-34l));
+  set_index buf (Uint32.of_int32 (-256l));
   _Bud (Some n, Indexed i, Hashed h), i, h
 
 let write_leaf context v h =
@@ -267,8 +267,8 @@ let write_leaf context v h =
       match Context.kvs context with
       | Some _kvs ->
           (* kvs should be filled out of this function *)
-          -33l
-      | None -> -35l
+          -254l
+      | None -> -255l
     in
     let buf = make_buf context i in
     let h = Hash.to_string h in
