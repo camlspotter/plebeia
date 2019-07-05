@@ -79,9 +79,9 @@ let make_array fd ~pos ?(shared=false) mapped_length =
 let resize required t =
   let open Uint32 in
   let new_mapped_length = 
-    ((required - t.mapped_length) / resize_step + Uint32.one) * resize_step 
+    ((required - t.mapped_length) / resize_step + Uint32.one) * resize_step  + t.mapped_length
   in
-  Format.eprintf "Storage: resizing to %Ld (required %Ld)@." (Uint32.to_int64 new_mapped_length) (Uint32.to_int64 required);
+  Format.eprintf "Storage: resizing to %Ld@." (Uint32.to_int64 new_mapped_length);
   let array = make_array t.fd ~pos:t.pos ~shared:t.shared new_mapped_length in
   t.array <- array;
   t.mapped_length <- new_mapped_length
