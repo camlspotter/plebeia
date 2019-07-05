@@ -273,6 +273,7 @@ let error_access = function
       Error "Diverged in the middle of an Extender"
   | Reached (_, Bud _) -> Error "Reached to a Bud"
   | Reached (_, Leaf _) -> Error "Reached to a Leaf"
+
   | Reached (_, Internal _) -> Error "Reached to an Internal"
   | Reached (_, Extender _) -> Error "Reached to an Extender"
   
@@ -344,6 +345,12 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
         | Top, _ -> assert false
       in
       go_ups c segment
+  | res -> error_access res
+
+let update cur segment value =
+  access_gen cur segment >>= function
+  | Reached (Cursor (trail, _, context), Leaf _) -> 
+      parent (attach trail (View (_Leaf (value, Not_Indexed, Not_Hashed))) context)
   | res -> error_access res
 
 let upsert cur segment value =

@@ -89,6 +89,9 @@ module type S = sig
     val upsert: t -> Segment.t -> Value.t -> (t, error) result
     (** Upserts. This can still fail if the segment leads to a subtree. *)
     
+    val update: t -> Segment.t -> Value.t -> (t, error) result
+    (** Update. A value must be bound at the segment. *)
+
     val delete: t -> Segment.t -> (t, error) result
     (** Delete a leaf or subtree. *)
     
