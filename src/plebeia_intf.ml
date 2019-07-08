@@ -10,7 +10,7 @@ module type S = sig
     (** A context represents the storage of a collection of trees sharing
         nodes on disk. *)
   end
-  
+
   module Hash : sig
     type t
     (** Root hash of a tree. *)
@@ -21,6 +21,12 @@ module type S = sig
   module Segment : sig
     type side = Left | Right
     type t = side list
+
+    val to_string : t -> string 
+    (** LLRRLL *)
+
+    val of_string : string -> t option
+    (** LLRRLL *)
   end
 
   (** Human readable directory names *)
@@ -98,6 +104,12 @@ module type S = sig
     val snapshot: t -> Segment.t -> Segment.t -> (t, error) result
     (** Snapshots a subtree at segment and place a soft link to it at
         another segment location. *)
+  end
+
+  module Stat : sig
+    type t
+    val create : unit -> t
+    val pp : Format.formatter -> t -> unit
   end
 
   val commit: Cursor.t -> (Cursor.t * Index.t * Hash.t, error) result

@@ -245,6 +245,7 @@ let write_internal context nl nr h =
   (* next 32bits *)
   C.set_uint32 buf 28 (if refer_to_left then il else ir);
 
+  Stat.incr_written_internals (Context.stat context);
   _Internal (nl, nr, Indexed i, Hashed h), i, h
 
 let write_empty_bud context =
@@ -254,6 +255,7 @@ let write_empty_bud context =
   let buf = make_buf context i in
   write_string bud_first_28 buf 0 28;
   set_index buf (Uint32.of_int32 (-256l));
+  Stat.incr_written_buds (Context.stat context);
   _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud), i, NodeHash.of_empty_bud
 
 
@@ -264,6 +266,7 @@ let write_bud context n h =
   write_string zero_24 buf 0 24;
   C.set_uint32 buf 24 @@ index n;
   set_index buf (Uint32.of_int32 (-256l));
+  Stat.incr_written_buds (Context.stat context);
   _Bud (Some n, Indexed i, Hashed h), i, h
 
 let write_leaf context v h =
@@ -289,6 +292,8 @@ let write_leaf context v h =
     write_string h buf 0 28;
     set_index buf (Uint32.of_int32 k)
   end;
+  Stat.incr_written_leaves (Context.stat context);
+  Stat.incr_written_leaf_sizes (Context.stat context) len;
   _Leaf (v, Indexed i, Hashed h), i, h
 
 let write_extender context seg n h =
@@ -297,12 +302,14 @@ let write_extender context seg n h =
   let buf = make_buf context i in
   write_string (Segment_encoding.encode seg) buf 0 28;
   set_index buf @@ index n;
+  Stat.incr_written_extenders (Context.stat context);
   _Extender (seg, n, Indexed i, Hashed h), i, h
 
 (* XXX Operations are NOT atomic at all *)
 let commit_node context node =
   let rec commit_aux : node -> (node * Index.t * Hash.t) = function
     | Disk (index, wit) ->
+        (* Need to get the hash from the disk *)
         let v, i, h = commit_aux' (load_node context index wit) in
         assert (index = i);
         View v, i, h
@@ -406,6 +413,7 @@ let commit_node context node =
 
 let load_node (context : Context.t) (index : Index.t) (ewit:extender_witness) : view = 
   let v = parse_cell context index in
+  Stat.incr_loaded_nodes (Context.stat context);
   match ewit, v with
   | Is_Extender, Extender _ -> v
   | Is_Extender, _ -> assert false (* better report *)

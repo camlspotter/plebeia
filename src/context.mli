@@ -38,6 +38,8 @@ val open_ :
 val kvs : t -> KVS.t option
 (** External KVS. *)
 
+val stat : t -> Stat.t
+
 val close : t -> unit
 
 val new_index : t -> Stdint.Uint32.t

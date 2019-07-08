@@ -20,7 +20,8 @@ module Utils = Utils
 module Error = Error
 module Key = Key
 module Types = Types
-
+module Stat = Stat
+  
 include Node
 
 let to_disk context n =

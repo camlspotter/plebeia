@@ -30,9 +30,14 @@ type t = {
   
   kvs : KVS.t option ;
   (* External KVS.  If None, all the values are written into the Merkle tree. *)
+  
+  stat : Stat.t ;
+  (* Statistics *)
 }
 
 let kvs t = t.kvs
+
+let stat t = t.stat
               
 module Header = struct
   (* Header is the first cell, which carries the current length *)
@@ -113,7 +118,8 @@ let make ?(pos=0L) ?(shared=false) ?kvs ?length fn =
     fd ; 
     pos ;
     shared ;
-    kvs
+    kvs ;
+    stat = Stat.create ()
   }
 
 let open_ ?(pos=0L) ?(shared=false) ?kvs fn =
@@ -134,7 +140,8 @@ let open_ ?(pos=0L) ?(shared=false) ?kvs fn =
       fd = fd ;
       pos ; 
       shared ;
-      kvs
+      kvs ;
+      stat = Stat.create ()
     }
   end
   
