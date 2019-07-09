@@ -445,3 +445,7 @@ let traverse (log, Cursor (trail, n, context)) =
       Some (From_below d :: log, c)
 
 let snapshot _ _ _ = failwith "not implemented"
+
+let stat (Cursor (_,_,context)) = Context.stat context
+
+  

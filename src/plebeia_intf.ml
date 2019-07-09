@@ -62,6 +62,12 @@ module type S = sig
   (** Copies from the src context trees rooted in the hash list
       into a new context. Used for garbage collection. *)
   
+  module Stat : sig
+    type t
+    val create : unit -> t
+    val pp : Format.formatter -> t -> unit
+  end
+
   module Cursor : sig
     type t
     (** Cursor in a tree to efficiently search and edit sub-trees. *)
@@ -104,12 +110,8 @@ module type S = sig
     val snapshot: t -> Segment.t -> Segment.t -> (t, error) result
     (** Snapshots a subtree at segment and place a soft link to it at
         another segment location. *)
-  end
-
-  module Stat : sig
-    type t
-    val create : unit -> t
-    val pp : Format.formatter -> t -> unit
+        
+    val stat : t -> Stat.t
   end
 
   val commit: Cursor.t -> (Cursor.t * Index.t * Hash.t, error) result
@@ -148,6 +150,11 @@ module type S = sig
     val remove : t -> Hash.t -> unit
     (** Remove a root.  If it does not exist, do nothing *)
   end
+
+  val commit' : Roots.t -> Cursor.t -> (Cursor.t * Index.t * Hash.t, error) result
+  (** Same as [commit] but also register the hash to the [Roots.t] *)
+
+  val checkout : Roots.t -> Context.t -> Hash.t -> Cursor.t option
 
   (** Error/Result/Either monad *)
   module Error : module type of Error

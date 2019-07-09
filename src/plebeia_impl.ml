@@ -24,6 +24,8 @@ module Stat = Stat
   
 include Node
 
+open Error
+
 let to_disk context n =
   let n, i, h = Storage.commit_node context n in
   match n with
@@ -48,3 +50,17 @@ let hash = NodeHash.hash
 
 let open_ = Context.open_
 let close = Context.close
+
+let commit' roots c =
+  commit c >>= fun (_cur, i, h as res) ->
+  Roots.add roots h i;
+  Ok res
+  
+let checkout roots context hash =
+  match Roots.find roots hash with
+  | None -> None
+  | Some index ->
+      Some (_Cursor (_Top, 
+                     Disk (index, Not_Extender),
+                     context))
+

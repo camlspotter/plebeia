@@ -116,3 +116,5 @@ module NotHashed : sig
   val bud : node option -> node
   val internal : node -> node -> indexing_rule -> node
 end
+
+val stat : t -> Stat.t
