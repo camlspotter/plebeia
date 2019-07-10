@@ -295,7 +295,7 @@ let delete cur seg =
   access_gen cur seg >>= function
   | Reached (Cursor (trail, _, context), (Bud _ | Leaf _)) -> 
       remove_up trail context 
-      >>= parent  (* XXX not good... *)
+      >>= parent
   | res -> error_access res
 
 let alter (Cursor (trail, _, context) as cur) segment alteration =
@@ -380,6 +380,34 @@ let subtree_or_create cur segment =
   in
   subtree cur segment
 
+let snapshot cur seg1 seg2 =
+  access_gen cur seg1 >>= function
+  | Reached (_cur1, (Bud _ as view)) ->
+      alter cur seg2 (function
+          | None -> Ok (View view)
+          | Some _ -> Error "a node already presents for this path")
+  | res -> error_access res
+
+
+(** Multi Bud level interface *)
+let dive ~float cur segs f =
+  let rec ups cur = function
+    | [] -> Ok cur
+    | _seg::segs -> 
+        parent cur >>= fun cur -> ups cur segs
+  in
+  let rec aux hist cur = function
+    | [] -> assert false
+    | [seg] -> 
+        f cur seg >>= fun (cur, v) ->
+        if float then ups cur hist >>| fun cur -> (cur, v)
+        else Ok (cur, v)
+    | seg::segs ->
+        subtree cur seg >>= fun cur ->
+        aux (seg::hist) cur segs
+  in
+  aux [] cur segs
+  
 type where_from =
   | From_above of dir
   | From_below of dir
@@ -444,13 +472,6 @@ let traverse (log, Cursor (trail, n, context)) =
       let c = from_Ok @@ go_up c in
       Some (From_below d :: log, c)
 
-let snapshot cur seg1 seg2 =
-  access_gen cur seg1 >>= function
-  | Reached (_cur1, (Bud _ as view)) ->
-      alter cur seg2 (function
-          | None -> Ok (View view)
-          | Some _ -> Error "a node already presents for this path")
-  | res -> error_access res
   
   
 

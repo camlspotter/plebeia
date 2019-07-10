@@ -35,7 +35,7 @@ val go_top : t -> (t, error) result
 (** Move up to the top *)
 
 val parent : t -> (t, error) result
-(** Moves the cursor back to the parent tree. Think "cd .." *)
+(** Moves the cursor back to the bud above. Think "cd .." *)
 
 val get : t -> Segment.t -> (Value.t, error) result
 (** Gets a value if present in the current tree at the given
@@ -78,6 +78,25 @@ val go_side : Segment.side -> t -> (t, error) result
 val go_up : t -> (t, error) result
 (** Go up one level *)
 
+val dive : 
+  float: bool 
+  -> t
+  -> Segment.t list 
+  -> (t -> Segment.t -> (t * 'a, error) result) 
+  -> (t * 'a, error) result
+(** Multi Bud level interface. [dive float f segs] performs [f] against
+    the node pointed by the multi segments.  
+                                             
+    If [float] is [false],  the final cursor is the one returned by [f],
+    which should be deep inside of the tree pointed by the initial cursor.
+    
+    If [float] is [true], the cursor is moved back to the original poistion.
+    In this case, [dive] assumes [f] does not move the cursor position.
+    Note that there is no correctness check of this property of [f].
+    
+    XXX not tested.
+*)
+  
 type where_from =
   | From_above of dir
   | From_below of dir
