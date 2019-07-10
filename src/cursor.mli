@@ -60,7 +60,9 @@ val snapshot: t -> Segment.t -> Segment.t -> (t, error) result
 (** Snapshots a subtree at segment and place a soft link to it at
     another segment location. 
 
-    Not implemented.
+    When a snapshot is created, a subtree is pointed by more than one nodes.
+    
+    XXX Not tested.
 *)
 
 val go_below_bud : t -> (t option, error) result

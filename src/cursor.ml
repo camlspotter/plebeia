@@ -444,7 +444,15 @@ let traverse (log, Cursor (trail, n, context)) =
       let c = from_Ok @@ go_up c in
       Some (From_below d :: log, c)
 
-let snapshot _ _ _ = failwith "not implemented"
+let snapshot cur seg1 seg2 =
+  access_gen cur seg1 >>= function
+  | Reached (_cur1, (Bud _ as view)) ->
+      alter cur seg2 (function
+          | None -> Ok (View view)
+          | Some _ -> Error "a node already presents for this path")
+  | res -> error_access res
+  
+  
 
 let stat (Cursor (_,_,context)) = Context.stat context
 
