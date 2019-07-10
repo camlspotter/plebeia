@@ -59,7 +59,7 @@ let commit' roots c =
 let checkout roots context hash =
   match Roots.find roots hash with
   | None -> None
-  | Some index ->
+  | Some (index, _parent) ->
       Some (_Cursor (_Top, 
                      Disk (index, Not_Extender),
                      context))

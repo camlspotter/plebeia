@@ -14,6 +14,13 @@ module type S = sig
   module Hash : sig
     type t
     (** Root hash of a tree. *)
+
+    type hash28
+      
+    val to_string : t -> string
+    val hash56_of_string : string -> t
+    val hash28_of_string : string -> hash28
+    val extend_to_t : hash28 -> t
   end
 
   (** A segment represents a path from the root of a tree to a leaf or
@@ -141,10 +148,10 @@ module type S = sig
     val close : t -> unit
     (** Close the root storage *)
       
-    val add : t -> Hash.t -> Types.Index.t -> unit
+    val add : t -> ?parent:Hash.t -> Hash.t -> Types.Index.t -> unit
     (** Add a root *)
     
-    val find : t -> Hash.t -> Types.Index.t option
+    val find : t -> Hash.t -> (Types.Index.t * Hash.t option) option
     (** Find a root of the given hash *)
     
     val remove : t -> Hash.t -> unit
