@@ -1,6 +1,5 @@
 (** Cursor (zipper) based tree operations *)
 
-open Utils
 open Error
 open Node
 
@@ -44,6 +43,10 @@ end = struct
   let internal n1 n2 i = 
     View (_Internal (n1, n2, i, Not_Hashed))
 end
+
+let view_cursor (Cursor (trail, n, context)) =
+  let v = view context n in
+  (_Cursor (trail, View (view context n), context), v)
 
 let go_below_bud (Cursor (trail, n, context)) =
   (* This function expects a cursor positionned on a bud and moves it one step below. *)
@@ -134,14 +137,18 @@ let rec go_top (Cursor (trail, _, _) as c) =
   | Top -> Ok c
   | _ -> go_up c >>= go_top
 
-let parent c =
-  let rec aux c =
-    match c with
-    | Cursor (_, Disk _, _) -> assert false (* impossible *)
-    | Cursor (_, View (Bud _), _) -> Ok c (* already at the top of subtree *)
-    | _ -> go_up c >>= fun c -> aux c
-  in
-  aux c
+let rec go_up_to_a_bud c = 
+  let c, v = view_cursor c in
+  match v with
+  | Bud _ -> Ok c (* already at a bud *)
+  | _ -> go_up c >>= go_up_to_a_bud
+(* XXX We can check trail instead of view *)
+
+let parent c = 
+  let c, v = view_cursor c in
+  match v with
+  | Bud _ -> go_up c >>= go_up_to_a_bud
+  | _ -> Error "parent: cursor must be at a bud"
 
 let unify_extenders prev_trail node context = match node with
   | Disk (_, Is_Extender) -> Error "unify_exenders: Disk is not allowed"
@@ -201,6 +208,8 @@ let diverge (Cursor (trail, extender, _context)) (common_prefix, remaining_exten
       end
   | _ -> Error "diverge: not an Extender"
 
+type view = Node.view
+  
 (* Follow the segment from the cursor. If the segment terminates 
   or diverges in the middle of an extender, it returns the common prefix
   information. 
@@ -295,7 +304,7 @@ let delete cur seg =
   access_gen cur seg >>= function
   | Reached (Cursor (trail, _, context), (Bud _ | Leaf _)) -> 
       remove_up trail context 
-      >>= parent
+      >>= go_up_to_a_bud
   | res -> error_access res
 
 let alter (Cursor (trail, _, context) as cur) segment alteration =
@@ -350,7 +359,7 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
 let update cur segment value =
   access_gen cur segment >>= function
   | Reached (Cursor (trail, _, context), Leaf _) -> 
-      parent (attach trail (View (_Leaf (value, Not_Indexed, Not_Hashed))) context)
+      go_up_to_a_bud (attach trail (View (_Leaf (value, Not_Indexed, Not_Hashed))) context)
   | res -> error_access res
 
 let upsert cur segment value =
@@ -380,100 +389,6 @@ let subtree_or_create cur segment =
   in
   subtree cur segment
 
-let snapshot cur seg1 seg2 =
-  access_gen cur seg1 >>= function
-  | Reached (_cur1, (Bud _ as view)) ->
-      alter cur seg2 (function
-          | None -> Ok (View view)
-          | Some _ -> Error "a node already presents for this path")
-  | res -> error_access res
-
-
-(** Multi Bud level interface *)
-let dive ~float cur segs f =
-  let rec ups cur = function
-    | [] -> Ok cur
-    | _seg::segs -> 
-        parent cur >>= fun cur -> ups cur segs
-  in
-  let rec aux hist cur = function
-    | [] -> assert false
-    | [seg] -> 
-        f cur seg >>= fun (cur, v) ->
-        if float then ups cur hist >>| fun cur -> (cur, v)
-        else Ok (cur, v)
-    | seg::segs ->
-        subtree cur seg >>= fun cur ->
-        aux (seg::hist) cur segs
-  in
-  aux [] cur segs
-  
-type where_from =
-  | From_above of dir
-  | From_below of dir
-
-and dir =
-  | Left
-  | Right
-  | Center
-
-type position = where_from list * cursor
-  
-(* Traversal step.  By calling this function repeatedly
-   against the result of the function, we can traverse all the nodes.
-   Note that this loads all the nodes in the memory in the end.
-*)
-let traverse (log, Cursor (trail, n, context)) = 
-  let v = match n with
-    | Disk (i, ewit) -> load_node context i ewit
-    | View v -> v
-  in
-  let c = _Cursor (trail, View v, context) in
-  match v, log with
-  | _, From_below _ :: From_below _ :: _ -> assert false
-
-  | Leaf _, From_below _ :: _ -> assert false
-  | Leaf _, [] -> None
-  | Leaf _, From_above d :: log -> 
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-
-  | Bud (None, _, _), From_below _ :: _ -> assert false
-  | Bud (None, _, _), [] -> None
-  | Bud (None, _, _), From_above d :: log -> 
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-
-  | Bud (Some _, _, _), From_below _ :: [] -> None
-  | Bud (Some _, _, _), From_below _ :: From_above d :: log ->
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-  | Bud (Some _, _, _), (From_above _ :: _ | []) ->
-      let c = from_Some @@ from_Ok @@ go_below_bud c in
-      Some (From_above Center :: log, c)
-
-  | Internal _, From_below Center :: _ -> assert false
-  | Internal _, (From_above _ :: _ | []) ->
-      let c = from_Ok @@ go_side Segment.Left c in
-      Some (From_above Left :: log, c)
-  | Internal _, From_below Left :: log ->
-      let c = from_Ok @@ go_side Segment.Right c in
-      Some (From_above Right :: log, c)
-  | Internal _, From_below Right :: [] -> None
-  | Internal _, From_below Right :: From_above d :: log ->
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-
-  | Extender (_seg, _, _, _), (From_above _ :: _ | []) ->
-      let c = from_Ok @@ go_down_extender c in
-      Some (From_above Center :: log, c)
-  | Extender (_, _, _, _), From_below _ :: [] -> None
-  | Extender (_seg, _, _, _), From_below _ :: From_above d :: log ->
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-
-  
-  
 
 let stat (Cursor (_,_,context)) = Context.stat context
 

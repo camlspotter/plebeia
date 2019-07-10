@@ -2,6 +2,7 @@ open Plebeia.Plebeia_impl
 open Error
 open Test_utils
 open Cursor
+open Deep
 
 module RS = Random.State
 

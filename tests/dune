@@ -1,5 +1,5 @@
 (executables
- (names segment_encoding test_api storage chunk test_roots test_key test_subtree)
+ (names segment_encoding test_api storage chunk test_roots test_key test_subtree test_copy)
  (libraries plebeia))
 
 (alias
@@ -38,6 +38,11 @@
  (action (run ./test_subtree.exe)))
   
 (alias
+ (name test_copy)
+ (deps test_copy.exe)
+ (action (run ./test_copy.exe)))
+  
+(alias
  (name runtest)
  (deps (alias test_segment_encoding)
        (alias test_api)
@@ -46,4 +51,5 @@
        (alias test_roots)
        (alias test_key)
        (alias test_subtree)
+       (alias test_copy)
        ))

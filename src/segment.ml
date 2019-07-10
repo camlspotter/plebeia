@@ -1,11 +1,17 @@
 type side = Left | Right
+
 let dummy_side = Left
+
 type segment = side list (* FIXME: use bit arithmetic *)
+
 type t = segment
+
 let is_empty x = x = []
+
 let cut = function
   | [] -> None
   | h::t -> Some (h,t)
+
 let empty = []
 
 let concat = (@)

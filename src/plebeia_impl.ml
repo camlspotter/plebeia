@@ -13,6 +13,7 @@ module Context = Context
 module NodeHash = NodeHash
 module Storage = Storage
 module Cursor = Cursor
+module Deep = Deep
 module Roots = Roots
 module KVS = KVS
 module Segment_encoding = Segment_encoding

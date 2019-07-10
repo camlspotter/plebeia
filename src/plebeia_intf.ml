@@ -92,8 +92,26 @@ module type S = sig
     val subtree_or_create : t -> Segment.t -> (t, error) result
     (** Same as subtree but create a subtree if not exists *)
     
-    val parent : t -> (t, error) result
-    (** Moves the cursor back to the parent tree. Think "cd .." *)
+    type view 
+
+    (** Result of access_gen *)
+    type access_result =
+      | Empty_bud (* The bud is empty *)
+      | Collide of t * view (* The segment was blocked by an existing leaf or bud *)
+      | Middle_of_extender of t * Segment.t * Segment.t * Segment.t (* The segment ends or deeprges at the middle of an Extender with the common prefix, the remaining extender, and the rest of segment *)
+      | Reached of t * view (* just reached to a node *)
+    
+    val error_access : access_result -> ('a, error) result
+    (** Make an access result into an error *)
+    
+    val access_gen : t -> Segment.t -> (access_result, error) result
+    (** Follow a segment *)
+
+    val go_up_to_a_bud : t -> (t, error) result
+    (** Moves the cursor back to the bud above.  
+        Note that this is not like "cd ../".  If the cursor is already 
+        at a bud, it does not move it.
+    *)
 
     val go_top : t -> (t, error) result
         
@@ -114,13 +132,54 @@ module type S = sig
     val delete: t -> Segment.t -> (t, error) result
     (** Delete a leaf or subtree. *)
     
+(*
     val snapshot: t -> Segment.t -> Segment.t -> (t, error) result
     (** Snapshots a subtree at segment and place a soft link to it at
-        another segment location. *)
+        another segment location. 
+    
+        Not implemented
+    *)
+*)
         
     val stat : t -> Stat.t
   end
 
+  module Deep : sig
+    val deep : 
+      go_up: bool (* recover the original cursor position or not *)
+      -> create_subtrees: bool (* create_subtree if necessary *)
+      -> Cursor.t
+      -> Segment.t list 
+      -> (Cursor.t -> Segment.t -> (Cursor.t * 'a, error) result) 
+      -> (Cursor.t * 'a, error) result
+    (** Multi Bud level interface. [deep] performs [f] against the node 
+        pointed by the multi segments.
+    *)
+
+    val deep_ro : 
+      Cursor.t
+      -> Segment.t list 
+      -> (Cursor.t -> Segment.t -> ('a, error) result) 
+      -> ('a, error) result
+    (** Simplified version of [deep] for read only operations *)
+    
+    val deep_get : Cursor.t -> Segment.t list -> (Value.t, error) result
+
+    val deep_upsert : Cursor.t -> Segment.t list -> Value.t -> (Cursor.t, error) result
+    
+    val deep_delete : Cursor.t -> Segment.t list -> (Cursor.t, error) result
+
+    val deep_create_subtree : Cursor.t -> Segment.t list -> (Cursor.t, error) result
+
+    val copy : 
+      create_subtrees: bool 
+      -> Cursor.t -> Segment.t list -> Segment.t list -> (Cursor.t, error) result
+    (** Subtree copy by making two nodes point to the same subtree. 
+        
+        Copy attempts which introduce loops are rejected. 
+    *)
+  end
+    
   val commit: Cursor.t -> (Cursor.t * Index.t * Hash.t, error) result
   (** Commits the change made in a cursor to disk. 
       The cursor must point to a root. 
