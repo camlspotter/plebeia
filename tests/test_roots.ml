@@ -26,7 +26,7 @@ let () = test_with_roots @@ fun fn ->
   let t = open_ fn in
   begin match find t h with
     | None -> assert false
-    | Some i' when i <> i' -> 
+    | Some (i', _) when i <> i' -> 
         Format.eprintf "%Ld %Ld@." (Index.to_int64 i) (Index.to_int64 i');
         assert false
     | _ -> ()
