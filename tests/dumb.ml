@@ -1,4 +1,4 @@
-module P =Plebeia.Plebeia_impl
+module P =Plebeia.Impl
 open P.Error (* for >>= *)
   
 (* unoptimized tree *)

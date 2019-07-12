@@ -1,4 +1,4 @@
-open Plebeia.Plebeia_impl
+open Plebeia.Impl
 open Error
 open Test_utils
 open Cursor
@@ -6,7 +6,7 @@ open Deep
 
 module RS = Random.State
 
-module Debug = Plebeia.Debug
+module Debug = Debug
 
 module Dumb = Dumb
 

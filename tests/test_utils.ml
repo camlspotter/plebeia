@@ -1,5 +1,4 @@
-open Plebeia
-open Plebeia.Plebeia_impl
+open Plebeia.Impl
 
 include Utils
     

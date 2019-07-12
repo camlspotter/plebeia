@@ -1,8 +1,6 @@
 open Utils
-open Plebeia_impl
-    
-(* What follows is just for debugging purposes, to be removed. *)
-
+open Node
+open Types
 open Error
 
 let rec string_of_node : node -> int -> string = fun node indent ->

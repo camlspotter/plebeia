@@ -1,5 +1,5 @@
 (* node storage test *)
-open Plebeia.Plebeia_impl
+open Plebeia.Impl
 open Test_utils
     
 module RS = Random.State

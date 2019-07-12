@@ -1,5 +1,4 @@
-open Plebeia
-open Plebeia_impl
+open Plebeia.Impl
 open Roots
 open Test_utils
 open Stdint

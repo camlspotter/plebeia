@@ -1,4 +1,4 @@
-open Plebeia.Plebeia_impl.Key
+open Plebeia.Impl.Key
 
 module RS = Random.State
 

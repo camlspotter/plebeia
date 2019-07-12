@@ -1,11 +1,8 @@
 (* node storage test *)
-open Plebeia
-open Plebeia.Plebeia_impl
+open Plebeia.Impl
 open Test_utils
 open Debug
     
-module Debug = Plebeia.Debug
-
 module RS = Random.State
 
 let parse_test context n =
