@@ -272,6 +272,9 @@ let write_leaf context v h =
   end;
   Stat.incr_written_leaves (Context.stat context);
   Stat.incr_written_leaf_sizes (Context.stat context) len;
+  if len = 33 || len = 34 then begin
+    Stat.incr_written_33_34 (Context.stat context) v
+  end;
   _Leaf (v, Indexed i, Hashed h), i, h
 
 let write_extender context seg n h =
