@@ -26,7 +26,7 @@ module NotHashed : sig
   val leaf : Value.t -> node
   val extend : Segment.segment -> node -> node
   val bud : node option -> node
-  val internal : node -> node -> indexing_rule -> node
+  val internal : node -> node -> indexed -> node
 end = struct
   let leaf v = View (_Leaf (v, Not_Indexed, Not_Hashed))
 
@@ -52,32 +52,32 @@ let go_below_bud (Cursor (trail, n, context)) =
   (* This function expects a cursor positionned on a bud and moves it one step below. *)
   match view context n with
   | Bud (None,  _, _) -> Ok None
-  | Bud (Some below, indexing_rule, hashed_is_transitive) ->
+  | Bud (Some below, indexed, hashed_is_transitive) ->
       Ok (Some (_Cursor (
-          _Budded (trail, Unmodified (indexing_rule, hashed_is_transitive)), below,  context)))
+          _Budded (trail, Unmodified (indexed, hashed_is_transitive)), below,  context)))
   | _ -> Error "Attempted to navigate below a bud, but got a different kind of node."
 
 let go_side side (Cursor (trail, n, context)) =
   (* Move the cursor down left or down right in the tree, assuming we are on an internal node. *)
   match view context n with
-  | Internal (l, r, indexing_rule, hashed_is_transitive) ->
+  | Internal (l, r, indexed, hashed_is_transitive) ->
       Ok (match side with
           | Segment.Right ->
               _Cursor (_Right (l, trail,
-                             Unmodified (indexing_rule, hashed_is_transitive)),
+                             Unmodified (indexed, hashed_is_transitive)),
                        r, context)
           | Segment.Left ->
               _Cursor (_Left (trail, r,
-                            Unmodified (indexing_rule, hashed_is_transitive)),
+                            Unmodified (indexed, hashed_is_transitive)),
                        l, context))
   | _ -> Error "Attempted to navigate right or left of a non internal node"
 
 let go_down_extender (Cursor (trail, n, context)) =
   (* Move the cursor down the extender it points to. *)
   match view context n with
-  | Extender (segment, below, indexing_rule, hashed_is_transitive) ->
+  | Extender (segment, below, indexed, hashed_is_transitive) ->
       Ok (_Cursor (_Extended (trail, segment,
-                            Unmodified (indexing_rule, hashed_is_transitive)),
+                            Unmodified (indexed, hashed_is_transitive)),
                    below, context))
   | _ -> Error "Attempted to go down an extender but did not find an extender"
 
@@ -88,27 +88,27 @@ let go_down_extender (Cursor (trail, n, context)) =
 let go_up (Cursor (trail, node, context))  = match trail with
   | Top -> Error "cannot go above top"
   | Left (prev_trail, right,
-          Unmodified (indexing_rule, hashed_is_transitive)) ->
+          Unmodified (indexed, hashed_is_transitive)) ->
       let new_node =
-        View (_Internal (node, right, indexing_rule, hashed_is_transitive))
+        View (_Internal (node, right, indexed, hashed_is_transitive))
       in Ok (_Cursor (prev_trail, new_node, context))
 
   | Right (left, prev_trail,
-           Unmodified (indexing_rule, hashed_is_transitive)) ->
+           Unmodified (indexed, hashed_is_transitive)) ->
       let new_node =
-        View (_Internal (left, node, indexing_rule, hashed_is_transitive))
+        View (_Internal (left, node, indexed, hashed_is_transitive))
       in Ok (_Cursor (prev_trail, new_node, context))
 
   | Budded (prev_trail,
-            Unmodified (indexing_rule, hashed_is_transitive)) ->
+            Unmodified (indexed, hashed_is_transitive)) ->
       let new_node =
-        View (_Bud (Some node, indexing_rule, hashed_is_transitive))
+        View (_Bud (Some node, indexed, hashed_is_transitive))
       in Ok (_Cursor (prev_trail, new_node, context))
 
   | Extended (prev_trail, segment,
-              Unmodified (indexing_rule, hashed_is_transitive)) ->
+              Unmodified (indexed, hashed_is_transitive)) ->
     let new_node =
-      View (_Extender (segment, node, indexing_rule, hashed_is_transitive))
+      View (_Extender (segment, node, indexed, hashed_is_transitive))
     in Ok (_Cursor (prev_trail, new_node, context))
 
   (* Modified cases. *)
@@ -232,7 +232,7 @@ let access_gen cur seg =
           match v with
           | Leaf _ | Bud _ ->  Ok (Collide (cur, v))
           | Internal (l, r,
-                      internal_node_indexing_rule,
+                      internal_node_indexed,
                       hashed_is_transitive) -> begin
               match dir with
               | Left ->
@@ -240,7 +240,7 @@ let access_gen cur seg =
                   _Left (
                     trail, r,
                     Unmodified (
-                      internal_node_indexing_rule,
+                      internal_node_indexed,
                       hashed_is_transitive)) in
                 aux (_Cursor (new_trail, l, context)) segment_rest
               | Right ->
@@ -248,12 +248,12 @@ let access_gen cur seg =
                   _Right (
                     l, trail,
                     Unmodified (
-                      internal_node_indexing_rule, 
+                      internal_node_indexed, 
                       hashed_is_transitive)) in
                 aux (_Cursor (new_trail, r, context)) segment_rest
             end
           | Extender (extender, node_below,
-                      indexing_rule,
+                      indexed,
                       hashed_is_transitive) ->
             let (shared, remaining_extender, remaining_segment) =
               Segment.common_prefix extender segment in
@@ -261,7 +261,7 @@ let access_gen cur seg =
               let new_trail =
                 _Extended (trail, extender,
                          Unmodified (
-                           indexing_rule,
+                           indexed,
                            hashed_is_transitive)) in
               aux (_Cursor (new_trail, node_below, context)) remaining_segment
             else

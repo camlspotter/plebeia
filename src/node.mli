@@ -4,13 +4,13 @@ open Types
    to prevent invalid values formed 
 *)
 
-type hashed_is_transitive =
+type hashed =
   | Hashed of Hash.t
   | Not_Hashed
   (** Type used to prove that if a node is hashed then so are its children.
       The type also provides the hash as a witness.*)
 
-type indexing_rule =
+type indexed =
   | Indexed of Index.t
   | Left_Not_Indexed (* For Internal: Right may not be indexed either *)
   | Right_Not_Indexed (* For Internal: Left may not be indexed either *)
@@ -44,28 +44,28 @@ type node =
 
 and view = private
   | Internal of node * node
-               * indexing_rule
-               * hashed_is_transitive
+               * indexed
+               * hashed
   (* An internal node, left and right children and an internal path segment
      to represent part of the path followed by the key in the tree. 
   
-     indexing_rule carries the index if the node is indexed.  Otherwise,
+     indexed carries the index if the node is indexed.  Otherwise,
      it carries XXX
      
-     hashed_is_transitive carries the hash of the node if already computed.
+     hashed carries the hash of the node if already computed.
   *)
 
   | Bud of node option
-          * indexing_rule
-          * hashed_is_transitive
+          * indexed
+          * hashed
   (* Buds represent the end of a segment and the beginning of a new tree. They
      are used whenever there is a natural hierarchical separation in the key
      or, in general, when one wants to be able to grab sub-trees. For instance
      the big_map storage of a contract in Tezos would start from a bud. *)
 
   | Leaf of Value.t
-          * indexing_rule
-          * hashed_is_transitive
+          * indexed
+          * hashed
   (* Leaf of a tree, the end of a path, contains or points to a value.
      The current implementation is a bit hackish and leaves are written
      on *two* cells, not one. This is important to keep in mind when
@@ -74,8 +74,8 @@ and view = private
 
   | Extender of Segment.t
                 * node
-                * indexing_rule
-                * hashed_is_transitive
+                * indexed
+                * hashed
   (* Extender node, contains a path to the next node. Represents implicitely
      a collection of internal nodes where one child is Null. *)
 
@@ -87,32 +87,32 @@ val hash_of_view : view -> Hash.t option
 (** Constructors with invariant checks *)
 
 val _Internal : node * node
-               * indexing_rule
-               * hashed_is_transitive
+               * indexed
+               * hashed
                -> view
 
 val _Bud : node option
-        * indexing_rule
-        * hashed_is_transitive
+        * indexed
+        * hashed
         -> view
 
 val _Leaf : Value.t
-        * indexing_rule
-        * hashed_is_transitive
+        * indexed
+        * hashed
         -> view
 
 val _Extender : Segment.t
                * node
-               * indexing_rule
-               * hashed_is_transitive
+               * indexed
+               * hashed
                -> view
 
-type modified_rule =
+type modified =
   | Modified_Left
   | Modified_Right
   | Unmodified of
-      indexing_rule *
-      hashed_is_transitive
+      indexed *
+      hashed
 
 (** A trail represents the content of the memory stack when recursively exploring a tree.
    Constructing these trails from closure would be easier, but it would make it harder
@@ -124,42 +124,42 @@ type trail = private
   | Left of (* we took the left branch of an internal node *)
       trail
       * node (* the right node *)
-      * modified_rule
+      * modified
 
   | Right of (* we took the right branch of an internal node *)
       node (* the left node *)
       * trail
-      * modified_rule
+      * modified
 
   | Budded of
       trail
-      * modified_rule
+      * modified
 
   | Extended of
       trail
       * Segment.t
-      * modified_rule
+      * modified
 
 (** Constructors with invariant checks *)
 
 val _Top : trail
 val _Left : trail
     * node
-    * modified_rule
+    * modified
     -> trail
 val _Right : 
     node
     * trail
-    * modified_rule
+    * modified
     -> trail
 val _Budded :
     trail
-    * modified_rule
+    * modified
     -> trail
 val _Extended :
     trail
     * Segment.t
-    * modified_rule
+    * modified
     -> trail
 
 val load_node_ref : (Context.t -> Index.t -> extender_witness -> view) ref

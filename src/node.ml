@@ -1,13 +1,13 @@
 open Types
 open Error
 
-type hashed_is_transitive =
+type hashed =
   | Hashed of Hash.t
   | Not_Hashed
   (** Type used to prove that if a node is hashed then so are its children.
       The type also provides the hash as a witness.*)
 
-type indexing_rule =
+type indexed =
   | Indexed of Index.t
   | Left_Not_Indexed (* Right may not be indexed either *)
   | Right_Not_Indexed (* Left may not be indexed either *)
@@ -37,23 +37,23 @@ type node =
 
 and view =
   | Internal of node * node
-               * indexing_rule
-               * hashed_is_transitive
+               * indexed
+               * hashed
 
   (* An internal node , left and right children and an internal path segment
      to represent part of the path followed by the key in the tree. *)
 
   | Bud of node option
-          * indexing_rule
-          * hashed_is_transitive
+          * indexed
+          * hashed
   (* Buds represent the end of a segment and the beginning of a new tree. They
      are used whenever there is a natural hierarchical separation in the key
      or, in general, when one wants to be able to grab sub-trees. For instance
      the big_map storage of a contract in Tezos would start from a bud. *)
 
   | Leaf of Value.t
-          * indexing_rule
-          * hashed_is_transitive
+          * indexed
+          * hashed
   (* Leaf of a tree, the end of a path, contains or points to a value.
      The current implementation is a bit hackish and leaves are written
      on *two* cells, not one. This is important to keep in mind when
@@ -62,8 +62,8 @@ and view =
 
   | Extender of Segment.t
                 * node
-                * indexing_rule
-                * hashed_is_transitive
+                * indexed
+                * hashed
   (* Extender node, contains a path to the next node. Represents implicitely
      a collection of internal nodes where one child is Null. *)
 
@@ -104,14 +104,14 @@ let index = function
   | View (Extender (_, _, Indexed i, _)) -> Some i
   | View (Bud _ | Leaf _ | Internal _ | Extender _) -> None
 
-let view_indexing_rule_invariant : view -> (unit, error) result = function
+let view_indexed_invariant : view -> (unit, error) result = function
   | Bud (None, Indexed _, _) -> Ok ()
   | Bud (Some n, Indexed _, _) when indexed n -> Ok ()
-  | Bud (_, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Bud: invalid indexing_rule"
+  | Bud (_, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Bud: invalid indexed"
   | Bud (_, Not_Indexed, _) -> Ok ()
   | Leaf (_, Indexed _, _) -> Ok ()
   | Leaf (_, Not_Indexed, _) -> Ok ()
-  | Leaf (_, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Leaf: invalid indexing_rule"
+  | Leaf (_, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Leaf: invalid indexed"
   | Internal (l, r, Indexed i, _) ->
       begin match index l, index r with
         | None, _ -> Error "Internal: invalid Indexed"
@@ -122,10 +122,10 @@ let view_indexing_rule_invariant : view -> (unit, error) result = function
       end
   | Internal (l, _r, Left_Not_Indexed, _) when not @@ indexed l -> Ok ()
   | Internal (_l, r, Right_Not_Indexed, _) when not @@ indexed r -> Ok ()
-  | Internal (_l, _r, Not_Indexed, _) -> Error "Internal: invalid indexing_rule"
+  | Internal (_l, _r, Not_Indexed, _) -> Error "Internal: invalid indexed"
   | Extender (_, n, Indexed _, _) when indexed n -> Ok ()
   | Extender (_, _, Not_Indexed, _) -> Ok ()
-  | Extender (_, _, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Bud: invalid indexing_rule"
+  | Extender (_, _, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Bud: invalid indexed"
   | Bud (_, Indexed _, _)  
   | Extender (_, _, Indexed _, _)  -> Error "Invalid Indexed"
   | Internal (_, _, Left_Not_Indexed, _) -> Error "Internal: invalid Left_Not_Indexed"
@@ -152,7 +152,7 @@ let hash_of_view = function
   | (Extender (_, _, _, Hashed h)) -> Some h
   | (Extender (_, _, _, Not_Hashed)) -> None
 
-let view_hashed_is_transitive_invariant : view -> (unit, error) result = function
+let view_hashed_invariant : view -> (unit, error) result = function
   | Leaf _ -> Ok ()
   | Bud (None, _, _) -> Ok ()
   | Bud (_, _, Not_Hashed) -> Ok ()
@@ -172,8 +172,8 @@ let view_index_and_hash_invariant : view -> (unit, error) result = function
 
 let view_invariant : view -> (unit, error) result = fun v ->
   view_shape_invariant v >>= fun () ->
-  view_indexing_rule_invariant v >>= fun () ->
-  view_hashed_is_transitive_invariant v >>= fun () ->
+  view_indexed_invariant v >>= fun () ->
+  view_hashed_invariant v >>= fun () ->
   view_index_and_hash_invariant v
 
 let check_view v = 
@@ -193,33 +193,33 @@ let _Leaf (v, ir, hit) =
 let _Extender (p, n, ir, hit) =
   check_view @@ Extender (p, n, ir, hit)
 
-type modified_rule =
+type modified =
   | Modified_Left
   | Modified_Right
   | Unmodified of
-      indexing_rule *
-      hashed_is_transitive
+      indexed *
+      hashed
 
 type trail =
   | Top
   | Left of (* we took the left branch of an internal node *)
       trail
       * node
-      * modified_rule
+      * modified
 
   | Right of (* we took the right branch of an internal node *)
       node
       * trail
-      * modified_rule
+      * modified
 
   | Budded of
       trail
-      * modified_rule
+      * modified
 
   | Extended of
       trail
       * Segment.t
-      * modified_rule
+      * modified
   (* not the use of the "extender" and "not extender" type to enforce
      that two extenders cannot follow each other *)
 
@@ -228,7 +228,7 @@ let trail_shape_invariant = function
   | Extended (_, seg, _) when Segment.is_empty seg -> Error "Extended: invalid empty segment"
   | _ -> Ok ()
 
-let trail_modified_rule_invariant = function
+let trail_modified_invariant = function
   | Top -> Ok ()
   | Left (_, n, Unmodified (ir, hit)) -> 
       begin match ir with
@@ -265,14 +265,14 @@ let trail_modified_rule_invariant = function
   | Budded (_, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexing_rule"
+        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
       end
   | Budded (_, Modified_Left) -> Ok () 
   | Budded (_, Modified_Right) -> Error "Budded: invalid Modified_Right"
   | Extended (_, _, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexing_rule"
+        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexed"
       end
   | Extended (_, _, Modified_Left) -> Ok () 
   | Extended (_, _, Modified_Right) -> Error "Budded: invalid Modified_Right"
@@ -287,7 +287,7 @@ let trail_index_and_hash_invariant = function
 
 let trail_invariant t = 
   trail_shape_invariant t >>= fun () ->
-  trail_modified_rule_invariant t >>= fun () ->
+  trail_modified_invariant t >>= fun () ->
   trail_index_and_hash_invariant t
 
 let check_trail t = 
@@ -376,7 +376,7 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Indexed _ when indexed n -> Ok ()
         | Indexed _ -> Error "Budded: invalid Indexed"
         | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexing_rule"
+        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
       end
   | Budded (_, Modified_Left) -> Ok () 
   | Budded (_, Modified_Right) -> Error "Budded: invalid Modified_Right"
@@ -385,7 +385,7 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Indexed _ when indexed n -> Ok ()
         | Indexed _ -> Error "Extended: invalid Indexed"
         | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexing_rule"
+        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexed"
       end >>= fun () ->
       begin match hit with
         | Hashed _ when hashed n -> Ok ()

@@ -101,7 +101,7 @@ module NotHashed : sig
   val leaf : Value.t -> node
   val extend : Segment.t -> node -> node
   val bud : node option -> node
-  val internal : node -> node -> indexing_rule -> node
+  val internal : node -> node -> indexed -> node
 end
 
 val stat : t -> Stat.t
