@@ -1,5 +1,4 @@
 open Stdint
-open Utils
 open Types
 open Node
 
@@ -121,16 +120,6 @@ let rec parse_cell context i =
             end
       end
 
-  | -254l -> (* leaf whose value is in the external KVS *)
-      begin match Context.kvs context with
-        | None -> assert false (* no external KVS created *)
-        | Some kvs ->
-            let h = get_hash buf in
-            match KVS.get_opt kvs h with
-            | None -> raise (LoadFailure (Printf.sprintf "Hash %s is not found in KVS" @@ to_hex @@ Hash.to_string h))
-            | Some v -> _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
-      end
-
   | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
       let l = - Int32.to_int x in (* 1 to 32 *)
       let h = get_hash buf in
@@ -209,11 +198,6 @@ let write_medium_leaf context v =
   let buf = make_buf2 context i in
   write_string (Value.to_string v) buf 0 len
 
-let write_large_leaf_to_kvs kvs h v =
-  let len = Value.length v in
-  assert (len > 32);
-  KVS.insert kvs h v
-
 let write_large_leaf_to_plebeia context v =
   ignore @@ Chunk.write_to_chunks context 1000 (Value.to_string v)
 
@@ -280,13 +264,7 @@ let write_leaf context v h =
     set_index buf (Uint32.of_int (-len)) (* 1 => -1  64 -> -64 *)
   end else begin
     let h = Hash.shorten_to_hash28 h in
-    let k = 
-      match Context.kvs context with
-      | Some _kvs ->
-          (* kvs should be filled out of this function *)
-          -254l
-      | None -> -255l
-    in
+    let k = -255l in
     let buf = make_buf context i in
     let h = Hash.to_string h in
     write_string h buf 0 28;
@@ -341,14 +319,8 @@ let commit_node context node =
           write_medium_leaf context value;
           write_leaf context value h
         end else begin
-          match Context.kvs context with
-          | Some kvs -> 
-              let h28 = Hash.shorten_to_hash28 h in
-              write_large_leaf_to_kvs kvs h28 value;
-              write_leaf context value h
-          | None ->
-              write_large_leaf_to_plebeia context value;
-              write_leaf context value h
+          write_large_leaf_to_plebeia context value;
+          write_leaf context value h
         end
         
     | Bud (Some underneath, Not_Indexed, h) ->

@@ -98,9 +98,9 @@ The last 32bits of a node cell are called the index part of the node, which ofte
 The index part value more than 2^32 - 256 to 2^32 - 1 are used for *tags*:
 
 * 2^32 -1 to 2^32-32 : small leaves, whose contents are stored in the previous cell
-* 2^32 -34 : bud
-* 2^32 -33 : large leaves, whose contents are stored in an external KVS
-* 2^32 -35 : large leaves in Plebeia.  Their contents are stored in Plebeia cells.
+* 2^32 -33 to 2^32-64 : medium leaves, whose contents are stored in the 2 previous cells
+* 2^32 -256 : bud
+* 2^32 -255 : large leaves in Plebeia.  Their contents are stored in Plebeia cells.
 * Others from 2^32 -256 : reserved
 
 ### Layout table
@@ -112,7 +112,6 @@ internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child
 extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>|
 leaf (S)  |<- first 224 of hash ------------>| |<- -1 to -32 ------------------------->| (use the previous cell)
 leaf (M)  |<- first 224 of hash ------------>| |<- -33 to -64 ------------------------>| (use the two previous cells)
-leaf (K)  |<- first 224 of hash ------------>| |<- -254 ------------------------------>| (use the KVS)
 leaf (P)  |<- first 224 of hash ------------>| |<- -255 ------------------------------>| (use the previous cell and some others)
 bud       |<- 192 0's ->|<-   child index  ->| |<- -256 ------------------------------>|
 empty bud |<- 1111111111111111111111111111 ->| |<- -256 ------------------------------>|
@@ -200,18 +199,6 @@ The value stored from the head of the cell at the position -2 to the previous ce
 
 The medium leaves are introduced to store several public keys whose sizes are 33 and 34 bytes including
 tags (of 1 byte) which do not fit with the small leaves.
-
-#### Large leaf in KVS
-
-The tag is 2^32-254.  The value is stored in an external KVS.
-
-```
-          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
-----------------------------------------------------------------------------------------
-leaf (K)  |<- first 224 of hash ------------>| |<- -254 ------------------------------>|
-```
-
-The key used in the KVS is the first 224bits of the hash.  Plebeia assumes there is no hash collision.
 
 #### Large leaf in Plebeia
 

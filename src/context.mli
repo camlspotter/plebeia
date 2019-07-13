@@ -9,7 +9,6 @@ type t
 val make : 
   ?pos:int64 
   -> ?shared:bool 
-  -> ?kvs:KVS.t 
   -> ?length:int 
   -> string (* path *)
   -> t
@@ -18,25 +17,19 @@ val make :
 
     pos: the start position in the file
     shared: if false, read only.
-    kvs: external KVS store.  If None, all the values are stored in the context.
     length: initial size of the file in bytes
 *) 
 
 val open_ : 
   ?pos:int64 
   -> ?shared:bool 
-  -> ?kvs:KVS.t 
   -> string (* path *)
   -> t
 (** Open an existing context storage.
 
     pos: the start position in the file
     shared: if false, read only.
-    kvs: external KVS store.  If None, all the values are stored in the context.
 *)
-
-val kvs : t -> KVS.t option
-(** External KVS. *)
 
 val stat : t -> Stat.t
 

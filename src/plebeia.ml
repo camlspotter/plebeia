@@ -19,7 +19,6 @@ module Impl = struct
   module Cursor           = Cursor
   module Deep             = Deep
   module Roots            = Roots
-  module KVS              = KVS
   module Segment_encoding = Segment_encoding
   module Utils            = Utils
   module Error            = Error

@@ -28,14 +28,9 @@ type t = {
   shared : bool ;
   (* Write to the file or not *)
   
-  kvs : KVS.t option ;
-  (* External KVS.  If None, all the values are written into the Merkle tree. *)
-  
   stat : Stat.t ;
   (* Statistics *)
 }
-
-let kvs t = t.kvs
 
 let stat t = t.stat
               
@@ -97,7 +92,7 @@ let may_resize =
       resize required t
     else ()
   
-let make ?(pos=0L) ?(shared=false) ?kvs ?length fn =
+let make ?(pos=0L) ?(shared=false) ?length fn =
   let fd = Unix.openfile fn [O_CREAT; O_TRUNC; O_RDWR] 0o644 in
   let mapped_length = 
     match length with 
@@ -118,11 +113,10 @@ let make ?(pos=0L) ?(shared=false) ?kvs ?length fn =
     fd ; 
     pos ;
     shared ;
-    kvs ;
     stat = Stat.create ()
   }
 
-let open_ ?(pos=0L) ?(shared=false) ?kvs fn =
+let open_ ?(pos=0L) ?(shared=false) fn =
   if not @@ Sys.file_exists fn then make ~pos ~shared fn 
   else begin
     let fd = Unix.openfile fn [O_RDWR] 0o644 in
@@ -140,7 +134,6 @@ let open_ ?(pos=0L) ?(shared=false) ?kvs fn =
       fd = fd ;
       pos ; 
       shared ;
-      kvs ;
       stat = Stat.create ()
     }
   end
@@ -166,9 +159,6 @@ let new_indices c n =
   may_resize i' c;
   i
 
-let close { fd ; array ; current_length ; kvs ; _ } =
+let close { fd ; array ; current_length ; _ } =
   Header.write array current_length ;
-  Unix.close fd;
-  match kvs with
-  | Some kvs -> KVS.close kvs
-  | None -> ()
+  Unix.close fd
