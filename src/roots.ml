@@ -17,7 +17,7 @@ let index_removed = Stdint.Uint32.max_int
    No problem of conflict since 2^32-1 is invalid for an index.
 *)
                       
-let none = String.make 56 '\000'
+let none = String.make 28 '\000'
 
 let exists = Sys.file_exists
 
@@ -28,32 +28,31 @@ let create path =
 
 let read_commit fd =
   let open Unix in
-  let buf = Bytes.create 116 in
-  let r = read fd buf 0 116 in
+  let buf = Bytes.create 60 in (* 28 + 28 + 4 *)
+  let r = read fd buf 0 60 in
   if r = 0 then None (* EOF *)
-  else if r <> 116 then Utils.failwithf "Roots.read_commit: garbage of %d bytes found" r
+  else if r <> 60 then Utils.failwithf "Roots.read_commit: garbage of %d bytes found" r
   else begin
-    Format.eprintf "%S@." (Bytes.to_string buf);
-    Some (Hash.hash56_of_string @@ Bytes.sub_string buf 0 56,
+    Some (Hash.of_string @@ Bytes.sub_string buf 0 28,
           (let cstr = Cstruct.of_bytes buf in
-           Utils.Cstruct.get_uint32 cstr 56,
+           Utils.Cstruct.get_uint32 cstr 28,
 
-           let s = Bytes.sub_string buf 60 56 in
-           if s = none then None else Some (Hash.hash56_of_string s))
+           let s = Bytes.sub_string buf 32 28 in
+           if s = none then None else Some (Hash.of_string s))
           )
   end
     
 let write_commit fd ?parent hash index =
   let open Unix in
   let hash = (hash : Hash.t :> string) in
-  let buf = Bytes.create 116 in
-  Bytes.blit_string hash 0 buf 0 56;
+  let buf = Bytes.create 60 in
+  Bytes.blit_string hash 0 buf 0 28;
   let cstr = Cstruct.create 4 in
   Utils.Cstruct.set_uint32 cstr 0 index;
-  Cstruct.blit_to_bytes cstr 0 buf 56 4;
-  Bytes.blit_string (match parent with None -> none | Some p -> (p : Hash.t :> string)) 0 buf 60 56;
-  let w = single_write fd buf 0 116 in
-  if w <> 116 then Utils.failwithf "Roots.write_commit: failed (%d bytes written)" w
+  Cstruct.blit_to_bytes cstr 0 buf 28 4;
+  Bytes.blit_string (match parent with None -> none | Some p -> (p : Hash.t :> string)) 0 buf 32 28;
+  let w = single_write fd buf 0 60 in
+  if w <> 60 then Utils.failwithf "Roots.write_commit: failed (%d bytes written)" w
 
 let open_ path =
   let open Unix in

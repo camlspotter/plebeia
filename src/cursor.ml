@@ -391,5 +391,3 @@ let subtree_or_create cur segment =
 
 
 let stat (Cursor (_,_,context)) = Context.stat context
-
-  

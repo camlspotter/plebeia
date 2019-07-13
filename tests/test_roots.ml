@@ -8,8 +8,8 @@ let test_with_roots f =
 
 module RS = Random.State
               
-let random_hash56 st =
-  Hash.hash56_of_string @@ random_string st 56
+let random_hash st =
+  Hash.of_string @@ random_string st 28
   
 let random_index st =
   Uint32.of_int64 @@ RS.int64 st @@ Int64.(of_uint32 Uint32.max_int - 256L + 1L)
@@ -18,7 +18,7 @@ let st = Random.State.make_self_init ()
 
 let () = test_with_roots @@ fun fn ->
   let t = create fn in
-  let h = random_hash56 st in
+  let h = random_hash st in
   let i = random_index st in
   add t h i;
   close t;

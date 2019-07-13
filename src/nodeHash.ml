@@ -1,95 +1,116 @@
 open Hash
 open Node
 
-let of_leaf v =
-  extend_to_t @@ hash_list [ "\000"; Value.to_string v]
+type t = LH of Hash.t * string
 
-let of_empty_bud = hash56_of_string @@ String.make 56 '\000'
+let to_string (LH (h,x)) = Hash.to_string h ^ x
 
-(* the hash of a bud node is the hash of its child *)
+(*
+let of_string x =   
+  assert (String.length x = 56);
+  LH (Hash.of_string (String.sub x 0 28), String.sub x 28 28)
+*)
+
+let shorten (LH (h,_)) = h
+    
+let make h postfix =
+  assert (String.length postfix = 28);
+  LH (h, postfix)
+
+let zero = "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
+let h_zero = Hash.of_string zero
+
+let lh_zero = make h_zero zero
+let one = "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001"
+
 let of_bud = function
-  | None -> of_empty_bud
-  | Some h -> h
+  | None -> lh_zero
+  | Some lh -> lh
 
 (*
    |<-     H(0x01 || l || h)    ->|
    |                          |0|0|0...........................01|
 *)
+let of_internal_hash h = make h one
 let of_internal l r =
-  extend_to_t 
+  of_internal_hash
   @@ reset_last_2bits 
   @@ hash_list [ "\001"; to_string l; to_string r ]
+
+let of_leaf_hash h = make h one
+
+let of_leaf v =
+  let h = hash_list [ "\000"; Value.to_string v] in
+  of_leaf_hash h
 
 (*
    |<-                       H_child                           ->|
    | The first 224bits of H_child |0......01|<- segment bits ->|1|
 *) 
-let of_extender seg h =
-  hash56_of_string (String.sub (to_string h) 0 28 ^ Segment_encoding.encode seg)
+let of_extender_hash seg h = make h (Segment_encoding.encode seg)
+let of_extender seg lh =
+  make (shorten lh) (Segment_encoding.encode seg)
+let of_extender' ~segment_code lh =
+  make (shorten lh) segment_code
 
-let of_extender' ~segment_code (h : t) =
-  hash56_of_string (String.sub (to_string h) 0 28 ^ segment_code)
-
-
-
-let hash (Cursor (trail, node, context)) =
-  let rec hash_aux : node -> (node * t) = function
+let long_hash context node : (view * t) =
+  let rec aux : node -> (view * t) = function
     | Disk (index, wit) -> 
-        let v, h = hash_aux' (load_node context index wit) in View v, h
+        let v, lh = aux' (load_node context index wit) in v, lh
     | View v -> 
-        let v, h = hash_aux' v in View v, h
+        let v, lh = aux' v in v, lh
 
-  and hash_aux' : view -> (view * t) = fun v -> 
+  and aux' : view -> (view * t) = fun v -> 
     match v with
     (* easy case where it's already hashed *)
-    | Leaf (_, _, Hashed h) -> (v, h)
-    | Bud (_, _, Hashed h) -> (v, h)
-    | Internal (_, _, _, Hashed h)  -> (v, h)
-    | Extender (_, _, _, Hashed h) -> (v, h)
+    | Leaf (_, _, Hashed h) -> (v, of_leaf_hash h)
+    | Bud (None, _, Hashed _h) -> (v, of_bud None)
+    | Bud (Some n, _, Hashed _h) -> (v, of_bud @@ Some (snd @@ aux n))
+    | Internal (_, _, _, Hashed h)  -> (v, of_internal_hash h)
+    | Extender (seg, _, _, Hashed h) -> (v, of_extender_hash seg h)
 
-    (* hashing is necessary below *)
+    (* from here, hashing is necessary *)
+
     | Leaf (v, _, Not_Hashed) -> 
-        let h = of_leaf v in
-        (_Leaf (v, Not_Indexed, Hashed h), h)
+        let h = hash_list [ "\000"; Value.to_string v] in
+        (_Leaf (v, Not_Indexed, Hashed h), of_leaf_hash h)
 
     | Bud (Some underneath, _, Not_Hashed) ->
-        let (node, h) = hash_aux underneath in
-        (_Bud (Some node, Not_Indexed, Hashed h), h)
+        let (v, lh) = aux underneath in
+        let h = shorten lh in
+        (_Bud (Some (View v), Not_Indexed, Hashed h), lh)
 
     | Bud (None, _, Not_Hashed) ->
-        let h = of_empty_bud in
-        (_Bud (None, Not_Indexed, Hashed h), h)
+        let lh = of_bud None in
+        let h = shorten lh in
+        (_Bud (None, Not_Indexed, Hashed h), lh)
 
-    | Internal (left, right, Left_Not_Indexed, Not_Hashed) -> (
-        let (left, hl) = hash_aux left
-        and (right, hr) = hash_aux right in
-        (*
-           |<-     H(0x01 || l || h)    ->|
-           |                           |00|0...........................01|
-        *)
-        let h = of_internal hl hr in
-        (_Internal (left, right, Left_Not_Indexed, Hashed h), h))
+    | Internal (left, right, Left_Not_Indexed, Not_Hashed) -> 
+        let (left, lhl) = aux left
+        and (right, lhr) = aux right in
+        let lh = of_internal lhl lhr in
+        let h = shorten lh in
+        (_Internal (View left, View right, Left_Not_Indexed, Hashed h), lh)
 
-    | Internal (left, right, Right_Not_Indexed, Not_Hashed) -> (
-        let (left, hl) = hash_aux left
-        and (right, hr) = hash_aux right in
-        (*
-           |<-     H(0x01 || l || h)    ->|
-           |                           |00|0...........................01|
-        *)
-        let h = of_internal hl hr in
-        (_Internal (left, right, Right_Not_Indexed, Hashed h), h))
+    | Internal (left, right, Right_Not_Indexed, Not_Hashed) ->
+        (* XXX dupe of the above *)
+        let (left, lhl) = aux left
+        and (right, lhr) = aux right in
+        let lh = of_internal lhl lhr in
+        let h = shorten lh in
+        (_Internal (View left, View right, Right_Not_Indexed, Hashed h), lh)
 
     | Extender (segment, underneath, _, Not_Hashed)  ->
-        let (underneath, h) = hash_aux underneath in
-        (*
-           |<-                       H_child                           ->|
-           | The first 224bits of H_child |0......01|<- segment bits ->|1|
-        *) 
-        let h = of_extender segment h in
-        (_Extender (segment, underneath, Not_Indexed, Hashed h), h)
+        let (underneath, lh) = aux underneath in
+        let lh = of_extender segment lh in
+        let h = shorten lh in
+        (_Extender (segment, View underneath, Not_Indexed, Hashed h), lh)
 
     | Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed) -> assert false
   in 
-  let (node, h) =  hash_aux node in
-  (_Cursor (trail, node, context), h)
+  aux node
+
+let hash c n = 
+  let v, lh = long_hash c n in
+  v, shorten lh
+

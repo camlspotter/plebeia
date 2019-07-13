@@ -27,10 +27,6 @@ type extender_witness =
   | Not_Extender   (* Sure it is NOT an Extender *)
   | Is_Extender    (* Sure it is an Extender *)
 
-type hashed_witness =
-  | Hashed of Hash.t
-  | Not_Hashed
-
 type node =
   | Disk of Index.t * extender_witness
   (* Represents a node stored on the disk at a given index, the node hasn't

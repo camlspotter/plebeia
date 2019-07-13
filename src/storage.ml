@@ -24,7 +24,7 @@ let get_index buf : Index.t = Index.of_uint32 @@ C.get_uint32 buf 28
 let set_index buf i = C.set_uint32 buf 28 @@ Index.to_uint32 i
 
 (* get the first 224 bits *)
-let get_hash buf = Hash.hash28_of_string @@ C.copy buf 0 28
+let get_hash buf = Hash.of_string @@ C.copy buf 0 28
 
 
 module Chunk = struct
@@ -109,7 +109,7 @@ let rec parse_cell context i =
   | -256l -> (* bud *)
       begin match C.get_char buf 0 with
         | '\255' -> 
-            _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud)
+            _Bud (None, Indexed i, Hashed NodeHash.(shorten @@ of_bud None))
         | _ ->  
             (* We must load the child for the hash *)
             let i' = C.get_uint32 buf 24 in
@@ -125,20 +125,20 @@ let rec parse_cell context i =
       let h = get_hash buf in
       let buf = make_buf context (Index.pred i) in
       let v = Value.of_string @@ C.copy buf 0 l in
-      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
+      _Leaf (v, Indexed i, Hashed h)
 
   | x when -64l <= x && x <= -33l -> (* leaf whose value is in the 2 previous cells *)
       let l = - Int32.to_int x in (* 33 to 64 *)
       let h = get_hash buf in
       let buf = make_buf2 context (Index.pred @@ Index.pred i) in
       let v = Value.of_string @@ C.copy buf 0 l in
-      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
+      _Leaf (v, Indexed i, Hashed h)
 
   | -255l -> (* leaf whose value is in Plebeia *)
       let h = get_hash buf in
       let (bufs, _size) = Chunk.get_chunks context @@ Index.pred i in
       let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
-      _Leaf (v, Indexed i, Hashed (Hash.extend_to_t h))
+      _Leaf (v, Indexed i, Hashed h)
 
   | x when -253l <= x && x <= -65l -> assert false
 
@@ -157,7 +157,6 @@ let rec parse_cell context i =
             | None -> assert false
             | Some h -> h
           in
-          let h = NodeHash.of_extender' ~segment_code:seg_code h in
           _Extender (seg, View v, Indexed i, Hashed h)
       | 0 -> (* internal *)
           let s_0_215 = C.copy buf 0 27 (* 216bits *) in
@@ -165,7 +164,7 @@ let rec parse_cell context i =
             let c = Char.code @@ C.get_char buf 27 in
             (Char.chr (c land 0xfc), (c land 2) = 2)
           in
-          let h = Hash.extend_to_t @@ Hash.hash28_of_string (s_0_215 ^ String.make 1 c_216_223) in
+          let h = Hash.of_string (s_0_215 ^ String.make 1 c_216_223) in
           let i' = get_index buf in
           if refer_to_right then
             _Internal (Disk (Index.pred i, Maybe_Extender), Disk (i', Maybe_Extender), Indexed i, Hashed h)
@@ -201,8 +200,9 @@ let write_medium_leaf context v =
 let write_large_leaf_to_plebeia context v =
   ignore @@ Chunk.write_to_chunks context 1000 (Value.to_string v)
 
-let write_internal context nl nr h =
+let write_internal context nl nr lh =
   (* internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| *)
+  let h = NodeHash.shorten lh in
   let i = Context.new_index context in
   let buf = make_buf context i in
 
@@ -230,7 +230,7 @@ let write_internal context nl nr h =
   C.set_uint32 buf 28 (if refer_to_left then il else ir);
 
   Stat.incr_written_internals (Context.stat context);
-  _Internal (nl, nr, Indexed i, Hashed h), i, h
+  _Internal (nl, nr, Indexed i, Hashed h), i, lh
 
 let write_empty_bud context =
   (* XXX No point to store the empty bud... *)
@@ -240,30 +240,30 @@ let write_empty_bud context =
   write_string bud_first_28 buf 0 28;
   set_index buf (Uint32.of_int32 (-256l));
   Stat.incr_written_buds (Context.stat context);
-  _Bud (None, Indexed i, Hashed NodeHash.of_empty_bud), i, NodeHash.of_empty_bud
+  _Bud (None, Indexed i, Hashed (NodeHash.(shorten @@ of_bud None))), i, NodeHash.of_bud None
 
 
-let write_bud context n h = 
+let write_bud context n lh = 
   (* bud       |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 256 ------------------------>| *)
+  let h = NodeHash.shorten lh in
   let i = Context.new_index context in
   let buf = make_buf context i in
   write_string zero_24 buf 0 24;
   C.set_uint32 buf 24 @@ index n;
   set_index buf (Uint32.of_int32 (-256l));
   Stat.incr_written_buds (Context.stat context);
-  _Bud (Some n, Indexed i, Hashed h), i, h
+  _Bud (Some n, Indexed i, Hashed h), i, lh
 
-let write_leaf context v h =
+let write_leaf context v lh =
   (* contents are ALREADY written *)
+  let h = NodeHash.shorten lh in
   let i = Context.new_index context in
   let len = Value.length v in
   if 1 <= len && len <= 64 then begin
     let buf = make_buf context i in
-    let h = Hash.shorten_to_hash28 h in
     write_string (Hash.to_string h) buf 0 28;
     set_index buf (Uint32.of_int (-len)) (* 1 => -1  64 -> -64 *)
   end else begin
-    let h = Hash.shorten_to_hash28 h in
     let k = -255l in
     let buf = make_buf context i in
     let h = Hash.to_string h in
@@ -275,20 +275,29 @@ let write_leaf context v h =
   if len = 33 || len = 34 then begin
     Stat.incr_written_33_34 (Context.stat context) v
   end;
-  _Leaf (v, Indexed i, Hashed h), i, h
+  _Leaf (v, Indexed i, Hashed h), i, lh
 
-let write_extender context seg n h =
+let write_extender context seg n lh =
   (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
+  let h = NodeHash.shorten lh in
   let i = Context.new_index context in
   let buf = make_buf context i in
   write_string (Segment_encoding.encode seg) buf 0 28;
   set_index buf @@ index n;
   Stat.incr_written_extenders (Context.stat context);
-  _Extender (seg, n, Indexed i, Hashed h), i, h
+  _Extender (seg, n, Indexed i, Hashed h), i, lh
 
-(* XXX Operations are NOT atomic at all *)
+(* XXX Operations are NOT atomic at all 
+   
+   XXX This is complicated because this function hashes + commits 
+   at the same time. 
+*)
 let commit_node context node =
-  let rec commit_aux : node -> (node * Index.t * Hash.t) = function
+  let check_hash h lh = match h with
+    | Hashed h -> assert (h = NodeHash.shorten lh)
+    | Not_Hashed -> ()
+  in
+  let rec commit_aux : node -> (node * Index.t * NodeHash.t) = function
     | Disk (index, wit) ->
         (* Need to get the hash from the disk *)
         let v, i, h = commit_aux' (load_node context index wit) in
@@ -298,74 +307,65 @@ let commit_node context node =
         let v, i, h = commit_aux' v in
         View v, i, h
 
-  and commit_aux' : view -> (view * Index.t * Hash.t) = fun v -> 
+  and commit_aux' : view -> (view * Index.t * NodeHash.t) = fun v -> 
     match v with
     (* easy case where it's already commited *)
-    | Leaf (_, Indexed i, Hashed h) -> (v, i, h)
-    | Bud (_, Indexed i, Hashed h) -> (v, i, h)
-    | Internal (_, _, Indexed i, Hashed h)  -> (v, i, h)
-    | Extender (_, _, Indexed i, Hashed h) -> (v, i, h)
-
+    | Leaf (_, Indexed i, Hashed h) 
+    | Bud (_, Indexed i, Hashed h)
+    | Internal (_, _, Indexed i, Hashed h)
+    | Extender (_, _, Indexed i, Hashed h) ->
+        let lh = snd @@ NodeHash.long_hash context (View v) in
+        assert (NodeHash.shorten lh = h);
+        (v, i, lh)
+         
     (* indexing is necessary below.  If required, the hash is also computed *)
     | Leaf (value, Not_Indexed, h) ->
-        let h = match h with
-          | Not_Hashed -> NodeHash.of_leaf value 
-          | Hashed h -> h
-        in
+        let _v, lh = NodeHash.long_hash context (View v) in
+        check_hash h lh;
         (* if the size of the value is 1 <= size <= 32, the contents are written
            to the previous index of the leaf *)
         let len = Value.length value in
         if 1 <= len && len <= 32 then begin
           write_small_leaf context value;
-          write_leaf context value h
+          write_leaf context value lh
         end else if 33 <= len && len <= 64 then begin
           write_medium_leaf context value;
-          write_leaf context value h
+          write_leaf context value lh
         end else begin
           write_large_leaf_to_plebeia context value;
-          write_leaf context value h
+          write_leaf context value lh
         end
         
     | Bud (Some underneath, Not_Indexed, h) ->
-        let (node, _, h') = commit_aux underneath in
-        let h = match h with
-          | Hashed h -> assert (h = h'); h
-          | _ -> NodeHash.of_bud (Some h')
-        in
-        write_bud context node h
+        let (node, _, lh') = commit_aux underneath in
+        let lh = NodeHash.of_bud @@ Some lh' in
+        check_hash h lh;
+        write_bud context node lh
 
     | Bud (None, Not_Indexed, h) ->
-        begin match h with
-          | Hashed h -> assert (h = NodeHash.of_empty_bud)
-          | _ -> ()
-        end;
+        let lh = NodeHash.of_bud None in
+        check_hash h lh;
         write_empty_bud context
 
     | Internal (left, right, Left_Not_Indexed, h) ->
-        let (right, _ir, hr) = commit_aux right in
-        let (left, _il, hl) = commit_aux left in (* This one must be the latter *)
-        let h = match h with
-          | Not_Hashed -> NodeHash.of_internal hl hr
-          | Hashed h -> h
-        in
-        write_internal context left right h
+        let (right, _ir, lhr) = commit_aux right in
+        let (left, _il, lhl) = commit_aux left in (* This one must be the latter *)
+        let lh = NodeHash.of_internal lhl lhr in
+        check_hash h lh;
+        write_internal context left right lh
 
     | Internal (left, right, Right_Not_Indexed, h) ->
-        let (left, _il, hl) = commit_aux left in
-        let (right, _ir, hr) = commit_aux right in (* This one must be the latter *)
-        let h = match h with
-          | Not_Hashed -> NodeHash.of_internal hl hr
-          | Hashed h -> h
-        in
-        write_internal context left right h
+        let (left, _il, lhl) = commit_aux left in
+        let (right, _ir, lhr) = commit_aux right in (* This one must be the latter *)
+        let lh = NodeHash.of_internal lhl lhr in
+        check_hash h lh;
+        write_internal context left right lh
 
     | Extender (segment, underneath, Not_Indexed, h)  ->
-        let (underneath, _i, h') = commit_aux underneath in
-        let h = match h with
-          | Hashed h -> h
-          | Not_Hashed -> NodeHash.of_extender segment h'
-        in
-        write_extender context segment underneath h
+        let (underneath, _i, lh') = commit_aux underneath in
+        let lh = NodeHash.of_extender segment lh' in
+        check_hash h lh;
+        write_extender context segment underneath lh
         
     | (Leaf (_, Left_Not_Indexed, _)|
        Leaf (_, Right_Not_Indexed, _)|
@@ -383,8 +383,8 @@ let commit_node context node =
        Extender (_, _, Indexed _, Not_Hashed)) -> assert false
 
   in 
-  let (node, i, h) =  commit_aux node in
-  node, i, h
+  let (node, i, lh) =  commit_aux node in
+  node, i, NodeHash.shorten lh
 
 let load_node (context : Context.t) (index : Index.t) (ewit:extender_witness) : view = 
   let v = parse_cell context index in

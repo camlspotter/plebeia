@@ -12,7 +12,7 @@ Plebeia supports sub-trees. That is, a leaf can either contain a value or the ro
 
 The trie is persisted to a file on disk by appending nodes. All nodes take up excatly 256 bits (32 bytes) of disk space making it easy to index them. Hashes are 448 bit long offering about 111.5 bits of security.
 
-Leaf data is persisted either in an external key-value store with reference counting or in the same data file as the tree.  Garbage collection of the trie is implemented with a stop and copy approach. (This GC is not implemented.)
+Leaf data is persisted in the same data file as the tree.  Garbage collection of the trie is implemented with a stop and copy approach. (This GC is not implemented.)
 
 ## Hash format
 

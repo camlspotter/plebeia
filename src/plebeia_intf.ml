@@ -15,12 +15,8 @@ module type S = sig
     type t
     (** Root hash of a tree. *)
 
-    type hash28
-      
     val to_string : t -> string
-    val hash56_of_string : string -> t
-    val hash28_of_string : string -> hash28
-    val extend_to_t : hash28 -> t
+    val of_string : string -> t
   end
 
   (** A segment represents a path from the root of a tree to a leaf or

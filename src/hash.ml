@@ -35,18 +35,10 @@ print (h.hexdigest())
 let hash = Blake2B_28.of_string
 let hash_list = Blake2B_28.of_strings
 
-type h28
-type h56
-
-type 'a gen = string
-
-type hash28 = h28 gen
-type hash56 = h56 gen
-type t = hash56
+type t = string
 
 let to_string x = x
-let hash28_of_string x = assert (String.length x = 28); x
-let hash56_of_string x = assert (String.length x = 56); x
+let of_string x = assert (String.length x = 28); x
 
 let _reset_last_bit s =
   let len = String.length s in
@@ -71,8 +63,4 @@ let reset_last_2bits s =
 
 *)
 
-let extend_to_t h =
-  hash56_of_string
-    (h ^ "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\001")
-
-let shorten_to_hash28 h = String.sub h 0 28 
+let zero = of_string @@ String.make 28 '\000'

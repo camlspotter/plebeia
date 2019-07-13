@@ -51,7 +51,9 @@ module Impl = struct
   
   let gc ~src:_ _ ~dest:_ = failwith "not implemented"
   
-  let hash = NodeHash.hash
+  let hash (Cursor (trail, node, context)) = 
+    let v, h = NodeHash.hash context node in
+    _Cursor (trail, View v, context), h
   
   let open_ = Context.open_
   let close = Context.close
