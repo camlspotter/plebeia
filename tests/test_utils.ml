@@ -58,7 +58,7 @@ let with_temp_file ?(postfix="test") f =
   
 let test_with_context length f =
   with_temp_file (fun fn ->
-    let context = Context.make ~shared:true ~length fn in
+    let context = Context.create ~length fn in
     Exn.protect (fun () -> f context) (fun () -> Context.close context))
   
 let test_with_cursor f =
