@@ -5,12 +5,6 @@ type t = LH of Hash.t * string
 
 let to_string (LH (h,x)) = Hash.to_string h ^ x
 
-(*
-let of_string x =   
-  assert (String.length x = 56);
-  LH (Hash.of_string (String.sub x 0 28), String.sub x 28 28)
-*)
-
 let shorten (LH (h,_)) = h
     
 let make h postfix =
