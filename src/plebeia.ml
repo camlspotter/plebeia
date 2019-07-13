@@ -55,6 +55,7 @@ module Impl = struct
     let v, h = NodeHash.hash context node in
     _Cursor (trail, View v, context), h
   
+  let create = Context.create
   let open_ = Context.open_
   let close = Context.close
   

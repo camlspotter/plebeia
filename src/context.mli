@@ -6,9 +6,8 @@ open Types
 
 type t
 
-val make : 
+val create : 
   ?pos:int64 
-  -> ?shared:bool 
   -> ?length:int 
   -> string (* path *)
   -> t

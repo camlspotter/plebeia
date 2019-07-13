@@ -92,7 +92,7 @@ let may_resize =
       resize required t
     else ()
   
-let make ?(pos=0L) ?(shared=false) ?length fn =
+let create ?(pos=0L) ?length fn =
   let fd = Unix.openfile fn [O_CREAT; O_TRUNC; O_RDWR] 0o644 in
   let mapped_length = 
     match length with 
@@ -101,23 +101,25 @@ let make ?(pos=0L) ?(shared=false) ?length fn =
         match Sys.int_size with
         | 31 | 32 -> Uint32.of_int i
         | 63 ->
-            if i > Uint32.(to_int max_int) then Utils.failwithf "Context.make: too large: %d@." i
+            if i > Uint32.(to_int max_int) then Utils.failwithf "Context.create: too large: %d@." i
             else Uint32.of_int i
         | _ -> assert false
   in
-  let array = make_array fd ~pos ~shared mapped_length in
+  let array = make_array fd ~pos ~shared:true mapped_length in
   Header.write array Uint32.zero;
   { array ;
     mapped_length ;
     current_length = Uint32.zero ;
     fd ; 
     pos ;
-    shared ;
+    shared = true ;
     stat = Stat.create ()
   }
 
 let open_ ?(pos=0L) ?(shared=false) fn =
-  if not @@ Sys.file_exists fn then make ~pos ~shared fn 
+  if not @@ Sys.file_exists fn then 
+    if shared then create ~pos fn 
+    else Utils.failwithf "%s: not found" fn
   else begin
     let fd = Unix.openfile fn [O_RDWR] 0o644 in
     let st = Unix.LargeFile.fstat fd in
