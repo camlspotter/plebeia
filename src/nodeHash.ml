@@ -72,11 +72,13 @@ let long_hash context node : (view * t) =
     (* from here, hashing is necessary *)
 
     | Leaf (v, _, Not_Hashed) -> 
-        let h = hash_list [ "\000"; Value.to_string v] in
-        (_Leaf (v, Not_Indexed, Hashed h), of_leaf_hash h)
+        let lh = of_leaf v in
+        let h = shorten lh in
+        (_Leaf (v, Not_Indexed, Hashed h), lh)
 
     | Bud (Some underneath, _, Not_Hashed) ->
         let (v, lh) = aux underneath in
+        let lh = of_bud @@ Some lh in
         let h = shorten lh in
         (_Bud (Some (View v), Not_Indexed, Hashed h), lh)
 
@@ -113,4 +115,3 @@ let long_hash context node : (view * t) =
 let hash c n = 
   let v, lh = long_hash c n in
   v, shorten lh
-
