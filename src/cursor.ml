@@ -13,13 +13,13 @@ let attach trail node context =
   match trail with
   | Top -> _Cursor (_Top, node, context)
   | Left (prev_trail, right, _) ->
-      _Cursor (_Left (prev_trail, right, Modified_Left), node, context)
+      _Cursor (_Left (prev_trail, right, Modified), node, context)
   | Right (left, prev_trail, _) ->
-      _Cursor (_Right (left, prev_trail, Modified_Right), node, context)
+      _Cursor (_Right (left, prev_trail, Modified), node, context)
   | Budded (prev_trail, _) ->
-      _Cursor (_Budded (prev_trail, Modified_Left), node, context)
+      _Cursor (_Budded (prev_trail, Modified), node, context)
   | Extended (prev_trail, segment, _) ->
-      _Cursor (_Extended (prev_trail, segment, Modified_Left), node, context)
+      _Cursor (_Extended (prev_trail, segment, Modified), node, context)
 
 (* Tools to create Not_Indexed and Not_Hashed nodes *)
 module NotHashed : sig
@@ -113,24 +113,21 @@ let go_up (Cursor (trail, node, context))  = match trail with
 
   (* Modified cases. *)
 
-  | Left (prev_trail, right, Modified_Left) ->
+  | Left (prev_trail, right, Modified) ->
       let internal = NotHashed.internal node right Left_Not_Indexed in
       Ok (attach prev_trail internal context)
 
-  | Right (left, prev_trail, Modified_Right) ->
+  | Right (left, prev_trail, Modified) ->
       let internal = NotHashed.internal left node Right_Not_Indexed in
       Ok (attach prev_trail internal context)
 
-  | Budded (prev_trail, Modified_Left) ->
+  | Budded (prev_trail, Modified) ->
       let bud = NotHashed.bud @@ Some node in
       Ok (attach prev_trail bud context)
 
-  | Extended (prev_trail, segment, Modified_Left) ->
+  | Extended (prev_trail, segment, Modified) ->
       let extender = NotHashed.extend segment node in
       Ok (attach prev_trail extender context)
-
-  | Left (_, _, Modified_Right)|Right (_, _, Modified_Left)|
-    Budded (_, Modified_Right)|Extended (_, _, Modified_Right) -> assert false
 
 let rec go_top (Cursor (trail, _, _) as c) =
   match trail with
@@ -189,22 +186,22 @@ let diverge (Cursor (trail, extender, _context)) (common_prefix, remaining_exten
             assert (side <> side');
             let trail = 
               if Segment.is_empty common_prefix then trail 
-              else _Extended (trail, common_prefix, Modified_Left)
+              else _Extended (trail, common_prefix, Modified)
             in
             let n' = NotHashed.extend seg' n in
             match side with
             | Segment.Left -> 
                 if Segment.is_empty seg then
-                  Ok (_Left (trail, n', Modified_Left))
+                  Ok (_Left (trail, n', Modified))
                 else
-                  Ok (_Extended (_Left (trail, n', Modified_Left),
-                            seg, Modified_Left))
+                  Ok (_Extended (_Left (trail, n', Modified),
+                            seg, Modified))
             | Segment.Right -> 
                 if Segment.is_empty seg then
-                  Ok (_Right (n', trail, Modified_Right))
+                  Ok (_Right (n', trail, Modified))
                 else
-                  Ok (_Extended (_Right (n', trail, Modified_Right),
-                            seg, Modified_Left))
+                  Ok (_Extended (_Right (n', trail, Modified),
+                            seg, Modified))
       end
   | _ -> Error "diverge: not an Extender"
 

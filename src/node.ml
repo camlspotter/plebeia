@@ -193,11 +193,8 @@ let _Extender (p, n, ir, hit) =
   check_view @@ Extender (p, n, ir, hit)
 
 type modified =
-  | Modified_Left
-  | Modified_Right
-  | Unmodified of
-      indexed *
-      hashed
+  | Modified
+  | Unmodified of indexed * hashed
 
 type trail =
   | Top
@@ -243,8 +240,7 @@ let trail_modified_invariant = function
         | Hashed _ -> Error "Left: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Left (_, _, Modified_Left) -> Ok ()
-  | Left (_, _, Modified_Right) -> Error "Left: invalid Modified_Right"
+  | Left (_, _, Modified) -> Ok ()
   | Right (n, _, Unmodified (ir, hit)) ->
       begin match ir with
         | Right_Not_Indexed -> Ok ()
@@ -259,22 +255,19 @@ let trail_modified_invariant = function
         | Hashed _ -> Error "Right: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Right (_, _, Modified_Right) -> Ok ()
-  | Right (_, _, Modified_Left) -> Error "Right: invalid Modified_Left"
+  | Right (_, _, Modified) -> Ok ()
   | Budded (_, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ | Not_Indexed -> Ok ()
         | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
       end
-  | Budded (_, Modified_Left) -> Ok () 
-  | Budded (_, Modified_Right) -> Error "Budded: invalid Modified_Right"
+  | Budded (_, Modified) -> Ok () 
   | Extended (_, _, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ | Not_Indexed -> Ok ()
         | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexed"
       end
-  | Extended (_, _, Modified_Left) -> Ok () 
-  | Extended (_, _, Modified_Right) -> Error "Budded: invalid Modified_Right"
+  | Extended (_, _, Modified) -> Ok () 
 
 let trail_index_and_hash_invariant = function
   | Top -> Ok ()
@@ -352,8 +345,7 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Hashed _ -> Error "Cursor: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Left (_, _, Modified_Left) -> Ok ()
-  | Left (_, _, Modified_Right) -> Error "Left: invalid Modified_Right"
+  | Left (_, _, Modified) -> Ok ()
   | Right (_, _, Unmodified (ir, hit)) ->
       begin match ir with
         | Left_Not_Indexed -> Ok ()
@@ -368,8 +360,7 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Hashed _ -> Error "Cursor: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Right (_, _, Modified_Right) -> Ok ()
-  | Right (_, _, Modified_Left) -> Error "Right: invalid Modified_Left"
+  | Right (_, _, Modified) -> Ok ()
   | Budded (_, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ when indexed n -> Ok ()
@@ -377,8 +368,7 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Not_Indexed -> Ok ()
         | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
       end
-  | Budded (_, Modified_Left) -> Ok () 
-  | Budded (_, Modified_Right) -> Error "Budded: invalid Modified_Right"
+  | Budded (_, Modified) -> Ok () 
   | Extended (_, _, Unmodified (ir, hit)) ->
       begin match ir with
         | Indexed _ when indexed n -> Ok ()
@@ -391,8 +381,7 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Hashed _ -> Error "Extended: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Extended (_, _, Modified_Left) -> Ok () 
-  | Extended (_, _, Modified_Right) -> Error "Budded: invalid Modified_Right"
+  | Extended (_, _, Modified) -> Ok () 
 
 let check_cursor c = 
   match cursor_invariant c with

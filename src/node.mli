@@ -106,11 +106,8 @@ val _Extender : Segment.t
                -> view
 
 type modified =
-  | Modified_Left
-  | Modified_Right
-  | Unmodified of
-      indexed *
-      hashed
+  | Modified
+  | Unmodified of indexed * hashed
 
 (** A trail represents the content of the memory stack when recursively exploring a tree.
    Constructing these trails from closure would be easier, but it would make it harder

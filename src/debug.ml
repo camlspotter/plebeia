@@ -42,8 +42,7 @@ module Dot = struct
     | Not_Indexed -> "i"
       
   let modified_rule = function
-    | Modified_Left -> "*_"
-    | Modified_Right -> "_*"
+    | Modified -> "*"
     | Unmodified (ir, _) -> indexing_rule ir
       
   let disk n = Printf.sprintf "%s [shape=box];" n
