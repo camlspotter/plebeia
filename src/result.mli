@@ -3,9 +3,11 @@ type ('a, 'b) t = ('a, 'b) result
 val return : 'a -> ('a, 'b) t
 (** monadic return *)
 
+val bind : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
 val (>>=) : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
 (** monadic bind *)
 
+val map : ('a -> 'b) -> ('a, 'e) t -> ('b, 'e) t
 val (>>|) : ('a, 'e) t -> ('a -> 'b) -> ('b, 'e) t
 (** monadic map *)
 

@@ -4,14 +4,17 @@ type ('a, 'b) t = ('a, 'b) result
 
 let return x = Ok x
 
-let (>>|) y f = match y with
+let map f y = match y with
   | Ok x -> Ok (f x)
   | Error e -> Error e
-(* Error monad operator. *)
 
-let (>>=) x f = match x with
+let (>>|) y f = map f y
+
+let bind x f = match x with
   | Error e -> Error e
   | Ok x -> f x
+
+let (>>=) = bind
 
 let from_Ok = function
   | Ok x -> x
