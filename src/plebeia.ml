@@ -7,9 +7,8 @@
    debugging.
 *)
 module Impl = struct
-  type error = Types.error
-
-  module Index            = Types.Index
+  module Index            = Index
+  module Error            = Error
   module Value            = Value
   module Segment          = Segment
   module Hash             = Hash
@@ -23,7 +22,6 @@ module Impl = struct
   module Utils            = Utils
   module Result           = Result
   module Key              = Key
-  module Types            = Types
   module Stat             = Stat
   module Debug            = Debug
     

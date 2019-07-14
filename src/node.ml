@@ -1,4 +1,3 @@
-open Types
 open Result
 
 type hashed =
@@ -72,7 +71,7 @@ and view =
    to port the code to C. The type parameters of the trail keep track of the type of each
    element on the "stack" using a product type. *)
 
-let view_shape_invariant : view -> (unit, error) result = function
+let view_shape_invariant : view -> (unit, Error.t) result = function
   | Bud (None, _, _) -> Ok ()
   | Bud (Some (Disk _), _, _) -> Error "Bud: cannot have Disk" (* or, we must load the Disk and check *)
   | Bud (Some (View (Bud _)), _, _) -> Error "Bud: cannot have Bud"
@@ -104,7 +103,7 @@ let index = function
   | View (Extender (_, _, Indexed i, _)) -> Some i
   | View (Bud _ | Leaf _ | Internal _ | Extender _) -> None
 
-let view_indexed_invariant : view -> (unit, error) result = function
+let view_indexed_invariant : view -> (unit, Error.t) result = function
   | Bud (None, Indexed _, _) -> Ok ()
   | Bud (Some n, Indexed _, _) when indexed n -> Ok ()
   | Bud (_, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Bud: invalid indexed"
@@ -152,7 +151,7 @@ let hash_of_view = function
   | (Extender (_, _, _, Hashed h)) -> Some h
   | (Extender (_, _, _, Not_Hashed)) -> None
 
-let view_hashed_invariant : view -> (unit, error) result = function
+let view_hashed_invariant : view -> (unit, Error.t) result = function
   | Leaf _ -> Ok ()
   | Bud (None, _, _) -> Ok ()
   | Bud (_, _, Not_Hashed) -> Ok ()
@@ -163,14 +162,14 @@ let view_hashed_invariant : view -> (unit, error) result = function
   | Extender (_, _, _, Not_Hashed) -> Ok ()
   | _ -> Error "Invalid Hashed"
 
-let view_index_and_hash_invariant : view -> (unit, error) result = function
+let view_index_and_hash_invariant : view -> (unit, Error.t) result = function
   | Bud (_, Indexed _, Not_Hashed)
   | Leaf (_, Indexed _, Not_Hashed)
   | Internal (_, _, Indexed _, Not_Hashed)
   | Extender (_, _, Indexed _, Not_Hashed) -> Error "View: Indexed with Not_Hashed"
   | _ -> Ok ()
 
-let view_invariant : view -> (unit, error) result = fun v ->
+let view_invariant : view -> (unit, Error.t) result = fun v ->
   view_shape_invariant v >>= fun () ->
   view_indexed_invariant v >>= fun () ->
   view_hashed_invariant v >>= fun () ->

@@ -1,5 +1,3 @@
-open Types
-
 (* XXX Constructors of view, trail, and cursor should be private, 
    to prevent invalid values formed 
 *)

@@ -1,11 +1,9 @@
-open Stdint
-open Types
 open Node
 
 (** node storage.
     See Layout.md for the format *)
 
-exception LoadFailure of error
+exception LoadFailure of Error.t
 
 module C = Utils.Cstruct
 
@@ -41,7 +39,7 @@ module Chunk = struct
     let cdr, size = get_footer_fields context last_index in
     (* Format.eprintf "Loading from %d size=%d@." (Index.to_int last_index) size; *)
     let ncells = ncells size in
-    let first_index = Uint32.(last_index - of_int ncells + one) in
+    let first_index = Index.(last_index - of_int ncells + one) in
     (Context.get_bytes context first_index size, size, cdr)
 
   let get_chunks context last_index =
@@ -104,7 +102,7 @@ end
 let rec parse_cell context i =
   let buf = make_buf context i in
   let tag = get_index buf in
-  let tag_int32 = Uint32.to_int32 tag in (* easier to match *)
+  let tag_int32 = Index.to_int32 tag in (* easier to match *)
   match tag_int32 with
   | -256l -> (* bud *)
       begin match C.get_char buf 0 with
@@ -238,7 +236,7 @@ let write_empty_bud context =
   let i = Context.new_index context in
   let buf = make_buf context i in
   write_string bud_first_28 buf 0 28;
-  set_index buf (Uint32.of_int32 (-256l));
+  set_index buf (Index.of_int32 (-256l));
   Stat.incr_written_buds (Context.stat context);
   _Bud (None, Indexed i, Hashed (NodeHash.(shorten @@ of_bud None))), i, NodeHash.of_bud None
 
@@ -250,7 +248,7 @@ let write_bud context n lh =
   let buf = make_buf context i in
   write_string zero_24 buf 0 24;
   C.set_uint32 buf 24 @@ index n;
-  set_index buf (Uint32.of_int32 (-256l));
+  set_index buf (Index.of_int32 (-256l));
   Stat.incr_written_buds (Context.stat context);
   _Bud (Some n, Indexed i, Hashed h), i, lh
 
@@ -262,13 +260,13 @@ let write_leaf context v lh =
   if 1 <= len && len <= 64 then begin
     let buf = make_buf context i in
     write_string (Hash.to_string h) buf 0 28;
-    set_index buf (Uint32.of_int (-len)) (* 1 => -1  64 -> -64 *)
+    set_index buf (Index.of_int (-len)) (* 1 => -1  64 -> -64 *)
   end else begin
     let k = -255l in
     let buf = make_buf context i in
     let h = Hash.to_string h in
     write_string h buf 0 28;
-    set_index buf (Uint32.of_int32 k)
+    set_index buf (Index.of_int32 k)
   end;
   Stat.incr_written_leaves (Context.stat context);
   Stat.incr_written_leaf_sizes (Context.stat context) len;

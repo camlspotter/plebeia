@@ -2,8 +2,6 @@
    Sparse merkle tree storage
 *)
 
-open Types
-
 type t
 
 val create : 

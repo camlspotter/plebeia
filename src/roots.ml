@@ -5,8 +5,6 @@
 
    TODO: each add/remove accesses disk.  We can make the IO buffered.
 *)
-open Types
-
 type t = 
   { tbl : (Hash.t, (Index.t * Hash.t option)) Hashtbl.t  (* all are in the memory *)
   ; fd : Unix.file_descr
@@ -75,7 +73,7 @@ let open_ path = if not @@ exists path then create path else open_ path
 let add { tbl; fd } ?parent hash index =
   Hashtbl.replace tbl hash (index, parent);
   write_commit fd ?parent hash index;
-  Format.eprintf "Added root %S at %Ld@." (Hash.to_string hash) (Types.Index.to_int64 index)
+  Format.eprintf "Added root %S at %Ld@." (Hash.to_string hash) (Index.to_int64 index)
 
 let mem { tbl ; _ } = Hashtbl.mem tbl
 

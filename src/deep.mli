@@ -1,4 +1,3 @@
-open Types
 open Cursor
 
 val deep : 
@@ -6,8 +5,8 @@ val deep :
   -> create_subtrees: bool (* create_subtree if necessary *)
   -> t
   -> Segment.t list 
-  -> (t -> Segment.t -> (t * 'a, error) result) 
-  -> (t * 'a, error) result
+  -> (t -> Segment.t -> (t * 'a, Error.t) result) 
+  -> (t * 'a, Error.t) result
 (** Multi Bud level interface. [deep] performs [f] against the node 
     pointed by the multi segments.
 *)
@@ -15,20 +14,20 @@ val deep :
 val deep_ro : 
   t
   -> Segment.t list 
-  -> (t -> Segment.t -> ('a, error) result) 
-  -> ('a, error) result
+  -> (t -> Segment.t -> ('a, Error.t) result) 
+  -> ('a, Error.t) result
 (** Simplified version of [deep] for read only operations *)
 
-val deep_get : t -> Segment.t list -> (Value.t, error) result
+val deep_get : t -> Segment.t list -> (Value.t, Error.t) result
 
-val deep_upsert : t -> Segment.t list -> Value.t -> (t, error) result
+val deep_upsert : t -> Segment.t list -> Value.t -> (t, Error.t) result
 
-val deep_delete : t -> Segment.t list -> (t, error) result
+val deep_delete : t -> Segment.t list -> (t, Error.t) result
 (** If the target does not exists, do nothing *)
     
-val deep_create_subtree : t -> Segment.t list -> (t, error) result
+val deep_create_subtree : t -> Segment.t list -> (t, Error.t) result
 
-val copy : create_subtrees: bool -> t -> Segment.t list -> Segment.t list -> (t, error) result
+val copy : create_subtrees: bool -> t -> Segment.t list -> Segment.t list -> (t, Error.t) result
 (** Subtree copy by making two nodes point to the same subtree. 
     
     Copy attempts which introduce loops are rejected. 
