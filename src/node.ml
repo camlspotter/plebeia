@@ -400,3 +400,22 @@ let path_of_trail trail =
     | Extended (tr, seg, _) -> aux (seg @ xs, xss) tr
   in
   aux ([], []) trail
+
+(** Tools to create Not_Indexed and Not_Hashed nodes *)
+
+let new_leaf v = View (_Leaf (v, Not_Indexed, Not_Hashed))
+
+let new_extend : Segment.segment -> node -> node = fun segment node ->
+  if segment = Segment.empty then node
+  else 
+    match node with
+    | View (Extender (seg, n, _, _)) ->
+        View (_Extender (Segment.concat segment seg, n, Not_Indexed, Not_Hashed))
+    | _ ->
+        View (_Extender (segment, node, Not_Indexed, Not_Hashed))
+let new_bud no = View (_Bud (no, Not_Indexed, Not_Hashed))
+
+let new_internal n1 n2 i = 
+  View (_Internal (n1, n2, i, Not_Hashed))
+
+

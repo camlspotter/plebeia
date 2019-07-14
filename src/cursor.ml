@@ -21,29 +21,6 @@ let attach trail node context =
   | Extended (prev_trail, segment, _) ->
       _Cursor (_Extended (prev_trail, segment, Modified), node, context)
 
-(* Tools to create Not_Indexed and Not_Hashed nodes *)
-module NotHashed : sig
-  val leaf : Value.t -> node
-  val extend : Segment.segment -> node -> node
-  val bud : node option -> node
-  val internal : node -> node -> indexed -> node
-end = struct
-  let leaf v = View (_Leaf (v, Not_Indexed, Not_Hashed))
-
-  let extend : Segment.segment -> node -> node = fun segment node ->
-    if segment = Segment.empty then node
-    else 
-      match node with
-      | View (Extender (seg, n, _, _)) ->
-          View (_Extender (Segment.concat segment seg, n, Not_Indexed, Not_Hashed))
-      | _ ->
-          View (_Extender (segment, node, Not_Indexed, Not_Hashed))
-  let bud no = View (_Bud (no, Not_Indexed, Not_Hashed))
-
-  let internal n1 n2 i = 
-    View (_Internal (n1, n2, i, Not_Hashed))
-end
-
 let view_cursor (Cursor (trail, n, context)) =
   let v = view context n in
   (_Cursor (trail, View (view context n), context), v)
@@ -52,32 +29,32 @@ let go_below_bud (Cursor (trail, n, context)) =
   (* This function expects a cursor positionned on a bud and moves it one step below. *)
   match view context n with
   | Bud (None,  _, _) -> Ok None
-  | Bud (Some below, indexed, hashed_is_transitive) ->
+  | Bud (Some below, indexed, hashed) ->
       Ok (Some (_Cursor (
-          _Budded (trail, Unmodified (indexed, hashed_is_transitive)), below,  context)))
+          _Budded (trail, Unmodified (indexed, hashed)), below,  context)))
   | _ -> Error "Attempted to navigate below a bud, but got a different kind of node."
 
 let go_side side (Cursor (trail, n, context)) =
   (* Move the cursor down left or down right in the tree, assuming we are on an internal node. *)
   match view context n with
-  | Internal (l, r, indexed, hashed_is_transitive) ->
+  | Internal (l, r, indexed, hashed) ->
       Ok (match side with
           | Segment.Right ->
               _Cursor (_Right (l, trail,
-                             Unmodified (indexed, hashed_is_transitive)),
+                             Unmodified (indexed, hashed)),
                        r, context)
           | Segment.Left ->
               _Cursor (_Left (trail, r,
-                            Unmodified (indexed, hashed_is_transitive)),
+                            Unmodified (indexed, hashed)),
                        l, context))
   | _ -> Error "Attempted to navigate right or left of a non internal node"
 
 let go_down_extender (Cursor (trail, n, context)) =
   (* Move the cursor down the extender it points to. *)
   match view context n with
-  | Extender (segment, below, indexed, hashed_is_transitive) ->
+  | Extender (segment, below, indexed, hashed) ->
       Ok (_Cursor (_Extended (trail, segment,
-                            Unmodified (indexed, hashed_is_transitive)),
+                            Unmodified (indexed, hashed)),
                    below, context))
   | _ -> Error "Attempted to go down an extender but did not find an extender"
 
@@ -88,45 +65,45 @@ let go_down_extender (Cursor (trail, n, context)) =
 let go_up (Cursor (trail, node, context))  = match trail with
   | Top -> Error "cannot go above top"
   | Left (prev_trail, right,
-          Unmodified (indexed, hashed_is_transitive)) ->
+          Unmodified (indexed, hashed)) ->
       let new_node =
-        View (_Internal (node, right, indexed, hashed_is_transitive))
+        View (_Internal (node, right, indexed, hashed))
       in Ok (_Cursor (prev_trail, new_node, context))
 
   | Right (left, prev_trail,
-           Unmodified (indexed, hashed_is_transitive)) ->
+           Unmodified (indexed, hashed)) ->
       let new_node =
-        View (_Internal (left, node, indexed, hashed_is_transitive))
+        View (_Internal (left, node, indexed, hashed))
       in Ok (_Cursor (prev_trail, new_node, context))
 
   | Budded (prev_trail,
-            Unmodified (indexed, hashed_is_transitive)) ->
+            Unmodified (indexed, hashed)) ->
       let new_node =
-        View (_Bud (Some node, indexed, hashed_is_transitive))
+        View (_Bud (Some node, indexed, hashed))
       in Ok (_Cursor (prev_trail, new_node, context))
 
   | Extended (prev_trail, segment,
-              Unmodified (indexed, hashed_is_transitive)) ->
+              Unmodified (indexed, hashed)) ->
     let new_node =
-      View (_Extender (segment, node, indexed, hashed_is_transitive))
+      View (_Extender (segment, node, indexed, hashed))
     in Ok (_Cursor (prev_trail, new_node, context))
 
   (* Modified cases. *)
 
   | Left (prev_trail, right, Modified) ->
-      let internal = NotHashed.internal node right Left_Not_Indexed in
+      let internal = new_internal node right Left_Not_Indexed in
       Ok (attach prev_trail internal context)
 
   | Right (left, prev_trail, Modified) ->
-      let internal = NotHashed.internal left node Right_Not_Indexed in
+      let internal = new_internal left node Right_Not_Indexed in
       Ok (attach prev_trail internal context)
 
   | Budded (prev_trail, Modified) ->
-      let bud = NotHashed.bud @@ Some node in
+      let bud = new_bud @@ Some node in
       Ok (attach prev_trail bud context)
 
   | Extended (prev_trail, segment, Modified) ->
-      let extender = NotHashed.extend segment node in
+      let extender = new_extend segment node in
       Ok (attach prev_trail extender context)
 
 let rec go_top (Cursor (trail, _, _) as c) =
@@ -152,7 +129,7 @@ let unify_extenders prev_trail node context = match node with
   | View (Extender (seg, n, _, _)) ->
       begin match prev_trail with
         | Extended (prev_trail', seg', _mr) ->
-            Ok (attach prev_trail' (NotHashed.extend (Segment.concat seg' seg) n) context)
+            Ok (attach prev_trail' (new_extend (Segment.concat seg' seg) n) context)
         | _ -> Ok (attach prev_trail node context)
       end
   | _ -> Ok (attach prev_trail node context)
@@ -160,14 +137,14 @@ let unify_extenders prev_trail node context = match node with
 let rec remove_up trail context = match trail with
   | Top -> Error "cannot remove top"
   | Budded (prev_trail, _) ->
-      Ok (attach prev_trail (NotHashed.bud None) context)
+      Ok (attach prev_trail (new_bud None) context)
   | Extended (prev_trail, _, _) -> remove_up prev_trail context
   (* for Left and Right, we may need to squash Extenders in prev_trail *)
   | Left (prev_trail, right, _) ->
-      let n = NotHashed.extend Segment.(of_side_list [Right]) right in
+      let n = new_extend Segment.(of_side_list [Right]) right in
       unify_extenders prev_trail n context
   | Right (left, prev_trail, _) ->
-      let n = NotHashed.extend Segment.(of_side_list [Left]) left in
+      let n = new_extend Segment.(of_side_list [Left]) left in
       unify_extenders prev_trail n context
 
 (* Let [c] is a cursor which points an Extender, whose segment is [common_prefix @ remaining_extender].
@@ -188,20 +165,18 @@ let diverge (Cursor (trail, extender, _context)) (common_prefix, remaining_exten
               if Segment.is_empty common_prefix then trail 
               else _Extended (trail, common_prefix, Modified)
             in
-            let n' = NotHashed.extend seg' n in
+            let n' = new_extend seg' n in
             match side with
             | Segment.Left -> 
                 if Segment.is_empty seg then
                   Ok (_Left (trail, n', Modified))
                 else
-                  Ok (_Extended (_Left (trail, n', Modified),
-                            seg, Modified))
+                  Ok (_Extended (_Left (trail, n', Modified), seg, Modified))
             | Segment.Right -> 
                 if Segment.is_empty seg then
                   Ok (_Right (n', trail, Modified))
                 else
-                  Ok (_Extended (_Right (n', trail, Modified),
-                            seg, Modified))
+                  Ok (_Extended (_Right (n', trail, Modified), seg, Modified))
       end
   | _ -> Error "diverge: not an Extender"
 
@@ -228,38 +203,21 @@ let access_gen cur seg =
       | Some (dir, segment_rest) ->
           match v with
           | Leaf _ | Bud _ ->  Ok (Collide (cur, v))
-          | Internal (l, r,
-                      internal_node_indexed,
-                      hashed_is_transitive) -> begin
+          | Internal (l, r, indexed, hashed) -> begin
               match dir with
               | Left ->
-                let new_trail =
-                  _Left (
-                    trail, r,
-                    Unmodified (
-                      internal_node_indexed,
-                      hashed_is_transitive)) in
+                let new_trail = _Left (trail, r, Unmodified (indexed, hashed)) in
                 aux (_Cursor (new_trail, l, context)) segment_rest
               | Right ->
-                let new_trail = 
-                  _Right (
-                    l, trail,
-                    Unmodified (
-                      internal_node_indexed, 
-                      hashed_is_transitive)) in
+                let new_trail = _Right (l, trail, Unmodified (indexed, hashed)) in
                 aux (_Cursor (new_trail, r, context)) segment_rest
             end
-          | Extender (extender, node_below,
-                      indexed,
-                      hashed_is_transitive) ->
+          | Extender (extender, node_below, indexed, hashed) ->
             let (shared, remaining_extender, remaining_segment) =
               Segment.common_prefix extender segment in
             if remaining_extender = Segment.empty then
               let new_trail =
-                _Extended (trail, extender,
-                         Unmodified (
-                           indexed,
-                           hashed_is_transitive)) in
+                _Extended (trail, extender, Unmodified (indexed, hashed)) in
               aux (_Cursor (new_trail, node_below, context)) remaining_segment
             else
               Ok (Middle_of_extender (cur, shared, remaining_extender, remaining_segment))
@@ -295,7 +253,7 @@ let get cur seg =
 
 let empty context =
   (* A bud with nothing underneath, i.e. an empty tree or an empty sub-tree. *)
-  _Cursor (_Top, NotHashed.bud None, context)
+  _Cursor (_Top, new_bud None, context)
 
 let delete cur seg =
   access_gen cur seg >>= function
@@ -308,8 +266,8 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
   access_gen cur segment >>= function
   | Empty_bud -> 
       alteration None >>= fun n' ->
-      let n' = NotHashed.extend segment n' in
-      let n' = NotHashed.bud (Some n') in
+      let n' = new_extend segment n' in
+      let n' = new_bud (Some n') in
       Ok (attach trail n' context)
   | (Reached (c, _) | Middle_of_extender (c, _, _, _::_) as res) ->
       (* XXX cleanup required *)
@@ -341,7 +299,7 @@ let update cur segment value =
 
 let upsert cur segment value =
   alter cur segment (fun x ->
-     let y = Ok (NotHashed.leaf value) in 
+     let y = Ok (new_leaf value) in 
      match x with
      | None -> y
      | Some (Leaf _) -> y
@@ -354,7 +312,7 @@ let insert cur segment value =
 
 let create_subtree cur segment =
   alter cur segment (function
-      | None -> Ok (NotHashed.bud None)
+      | None -> Ok (new_bud None)
       | Some _ -> Error "a node already presents for this path")
 
 let subtree_or_create cur segment =
@@ -365,6 +323,5 @@ let subtree_or_create cur segment =
     | Error _ -> cur
   in
   subtree cur segment
-
 
 let stat (Cursor (_,_,context)) = Context.stat context

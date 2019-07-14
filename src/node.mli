@@ -187,3 +187,12 @@ val _Cursor : (trail * node * Context.t) -> cursor
 
 val path_of_trail : trail -> Segment.side list list
 (** Segment side list of the given trail, splitted by buds *)
+
+(** Tools to create Not_Indexed and Not_Hashed nodes *)
+
+val new_leaf : Value.t -> node
+val new_extend : Segment.t -> node -> node
+val new_bud : node option -> node
+val new_internal : node -> node -> indexed -> node
+
+

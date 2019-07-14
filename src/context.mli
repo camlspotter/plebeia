@@ -13,7 +13,6 @@ val create :
     Note that if the file already exists, the contents are cleaned away. 
 
     pos: the start position in the file
-    shared: if false, read only.
     length: initial size of the file in bytes
 *) 
 
