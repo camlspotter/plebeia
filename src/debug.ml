@@ -153,7 +153,7 @@ let () = Cursor.dot_of_cursor_ref := dot_of_cursor
  
 (* Bud -> Leaf and Bud -> Bud are invalid, but not excluded by the GADT *)
 let validate_node context (node : node) =
-  let rec aux : node -> (view, string) result = 
+  let rec aux : node -> (view, string) Result.t = 
     fun node ->
       let indexing_rule : view -> bool = function
         | Internal (_, _, Indexed _, _) -> true

@@ -1,20 +1,20 @@
 type ('a, 'b) t = ('a, 'b) result
 
-val return : 'a -> ('a, 'b) result
+val return : 'a -> ('a, 'b) t
 (** monadic return *)
 
-val (>>=) : ('a, 'e) result -> ('a -> ('b, 'e) result) -> ('b, 'e) result
+val (>>=) : ('a, 'e) t -> ('a -> ('b, 'e) t) -> ('b, 'e) t
 (** monadic bind *)
 
-val (>>|) : ('a, 'e) result -> ('a -> 'b) -> ('b, 'e) result
+val (>>|) : ('a, 'e) t -> ('a -> 'b) -> ('b, 'e) t
 (** monadic map *)
 
-val from_Ok : ('a, _) result -> 'a
+val from_Ok : ('a, _) t -> 'a
 (** It raises [Failure _] when the argument is [Error _]. *)
 
-val from_Error : (_, 'e) result -> 'e
+val from_Error : (_, 'e) t -> 'e
 (** It raises [Failure _] when the argument is [Ok _]. *)
 
-val default : (unit, 'e) result -> ('e -> unit) -> unit
+val default : (unit, 'e) t -> ('e -> unit) -> unit
   
-val errorf : ('a, unit, string, ('b, string) result) format4 -> 'a
+val errorf : ('a, unit, string, ('b, string) t) format4 -> 'a

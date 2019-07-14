@@ -39,8 +39,8 @@ module type S = sig
   (** Human readable directory names *)
   module Key : sig
     type t = string
-    val to_segments : t -> (Segment.t list, string) result
-    val of_segments : Segment.t list -> (t, string) result
+    val to_segments : t -> (Segment.t list, string) Result.t
+    val of_segments : Segment.t list -> (t, string) Result.t
   end
 
   (** Encoding of segments in nodes *)
@@ -82,14 +82,14 @@ module type S = sig
     val empty : Context.t -> t
     (** Creates a cursor to a new, empty tree. *)
     
-    val subtree : t -> Segment.t -> (t, Error.t) result
+    val subtree : t -> Segment.t -> (t, Error.t) Result.t
     (** Moves the cursor down a segment, to the root of a sub-tree. Think
         "cd segment/" *)
     
-    val create_subtree: t -> Segment.t -> (t, Error.t) result
+    val create_subtree: t -> Segment.t -> (t, Error.t) Result.t
     (** Create a subtree (bud). Think "mkdir segment" *)
     
-    val subtree_or_create : t -> Segment.t -> (t, Error.t) result
+    val subtree_or_create : t -> Segment.t -> (t, Error.t) Result.t
     (** Same as subtree but create a subtree if not exists *)
     
     type view 
@@ -101,39 +101,39 @@ module type S = sig
       | Middle_of_extender of t * Segment.t * Segment.t * Segment.t (* The segment ends or deeprges at the middle of an Extender with the common prefix, the remaining extender, and the rest of segment *)
       | Reached of t * view (* just reached to a node *)
     
-    val error_access : access_result -> ('a, Error.t) result
+    val error_access : access_result -> ('a, Error.t) Result.t
     (** Make an access result into an error *)
     
-    val access_gen : t -> Segment.t -> (access_result, Error.t) result
+    val access_gen : t -> Segment.t -> (access_result, Error.t) Result.t
     (** Follow a segment *)
 
-    val go_up_to_a_bud : t -> (t, Error.t) result
+    val go_up_to_a_bud : t -> (t, Error.t) Result.t
     (** Moves the cursor back to the bud above.  
         Note that this is not like "cd ../".  If the cursor is already 
         at a bud, it does not move it.
     *)
 
-    val go_top : t -> (t, Error.t) result
+    val go_top : t -> (t, Error.t) Result.t
         
-    val get : t -> Segment.t -> (Value.t, Error.t) result
+    val get : t -> Segment.t -> (Value.t, Error.t) Result.t
     (** Gets a value if present in the current tree at the given
         segment. *)
     
-    val insert: t -> Segment.t -> Value.t -> (t, Error.t) result
+    val insert: t -> Segment.t -> Value.t -> (t, Error.t) Result.t
     (** Inserts a value at the given segment in the current tree.
         Returns the new cursor if successful. *)
     
-    val upsert: t -> Segment.t -> Value.t -> (t, Error.t) result
+    val upsert: t -> Segment.t -> Value.t -> (t, Error.t) Result.t
     (** Upserts. This can still fail if the segment leads to a subtree. *)
     
-    val update: t -> Segment.t -> Value.t -> (t, Error.t) result
+    val update: t -> Segment.t -> Value.t -> (t, Error.t) Result.t
     (** Update. A value must be bound at the segment. *)
 
-    val delete: t -> Segment.t -> (t, Error.t) result
+    val delete: t -> Segment.t -> (t, Error.t) Result.t
     (** Delete a leaf or subtree. *)
     
 (*
-    val snapshot: t -> Segment.t -> Segment.t -> (t, error) result
+    val snapshot: t -> Segment.t -> Segment.t -> (t, error) Result.t
     (** Snapshots a subtree at segment and place a soft link to it at
         another segment location. 
     
@@ -150,8 +150,8 @@ module type S = sig
       -> create_subtrees: bool (* create_subtree if necessary *)
       -> Cursor.t
       -> Segment.t list 
-      -> (Cursor.t -> Segment.t -> (Cursor.t * 'a, Error.t) result) 
-      -> (Cursor.t * 'a, Error.t) result
+      -> (Cursor.t -> Segment.t -> (Cursor.t * 'a, Error.t) Result.t) 
+      -> (Cursor.t * 'a, Error.t) Result.t
     (** Multi Bud level interface. [deep] performs [f] against the node 
         pointed by the multi segments.
     *)
@@ -159,28 +159,28 @@ module type S = sig
     val deep_ro : 
       Cursor.t
       -> Segment.t list 
-      -> (Cursor.t -> Segment.t -> ('a, Error.t) result) 
-      -> ('a, Error.t) result
+      -> (Cursor.t -> Segment.t -> ('a, Error.t) Result.t) 
+      -> ('a, Error.t) Result.t
     (** Simplified version of [deep] for read only operations *)
     
-    val deep_get : Cursor.t -> Segment.t list -> (Value.t, Error.t) result
+    val deep_get : Cursor.t -> Segment.t list -> (Value.t, Error.t) Result.t
 
-    val deep_upsert : Cursor.t -> Segment.t list -> Value.t -> (Cursor.t, Error.t) result
+    val deep_upsert : Cursor.t -> Segment.t list -> Value.t -> (Cursor.t, Error.t) Result.t
     
-    val deep_delete : Cursor.t -> Segment.t list -> (Cursor.t, Error.t) result
+    val deep_delete : Cursor.t -> Segment.t list -> (Cursor.t, Error.t) Result.t
 
-    val deep_create_subtree : Cursor.t -> Segment.t list -> (Cursor.t, Error.t) result
+    val deep_create_subtree : Cursor.t -> Segment.t list -> (Cursor.t, Error.t) Result.t
 
     val copy : 
       create_subtrees: bool 
-      -> Cursor.t -> Segment.t list -> Segment.t list -> (Cursor.t, Error.t) result
+      -> Cursor.t -> Segment.t list -> Segment.t list -> (Cursor.t, Error.t) Result.t
     (** Subtree copy by making two nodes point to the same subtree. 
         
         Copy attempts which introduce loops are rejected. 
     *)
   end
     
-  val commit: Cursor.t -> (Cursor.t * Index.t * Hash.t, Error.t) result
+  val commit: Cursor.t -> (Cursor.t * Index.t * Hash.t, Error.t) Result.t
   (** Commits the change made in a cursor to disk. 
       The cursor must point to a root. 
       Returns the updated cursor and its new root hash. *)
@@ -217,7 +217,7 @@ module type S = sig
     (** Remove a root.  If it does not exist, do nothing *)
   end
 
-  val commit' : Roots.t -> Cursor.t -> (Cursor.t * Index.t * Hash.t, Error.t) result
+  val commit' : Roots.t -> Cursor.t -> (Cursor.t * Index.t * Hash.t, Error.t) Result.t
   (** Same as [commit] but also register the hash to the [Roots.t] *)
 
   val checkout : Roots.t -> Context.t -> Hash.t -> Cursor.t option
