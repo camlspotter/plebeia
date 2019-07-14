@@ -1,5 +1,5 @@
 open Node
-open Error
+open Result
 open Utils
 open Cursor
 

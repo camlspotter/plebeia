@@ -4,7 +4,7 @@
 *)
   
 open Segment
-open Error
+open Result
     
 type t = string
 

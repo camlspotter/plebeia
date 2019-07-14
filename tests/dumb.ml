@@ -1,5 +1,5 @@
 module P =Plebeia.Impl
-open P.Error (* for >>= *)
+open P.Result (* for >>= *)
   
 (* unoptimized tree *)
 type t = 

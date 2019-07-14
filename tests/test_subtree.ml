@@ -4,7 +4,7 @@
    
 *)
 open Plebeia.Impl
-open Error
+open Result
 open Test_utils
 open Cursor
 

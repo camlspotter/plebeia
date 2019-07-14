@@ -1,6 +1,6 @@
 (** Cursor (zipper) based tree operations *)
 
-open Error
+open Result
 open Node
 
 type t = cursor

@@ -1,7 +1,7 @@
 open Utils
 open Node
 open Types
-open Error
+open Result
 
 let rec string_of_node : node -> int -> string = fun node indent ->
   (* pretty prints a tree to a string *)

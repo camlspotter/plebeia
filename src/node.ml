@@ -1,5 +1,5 @@
 open Types
-open Error
+open Result
 
 type hashed =
   | Hashed of Hash.t

@@ -21,7 +21,7 @@ module Impl = struct
   module Roots            = Roots
   module Segment_encoding = Segment_encoding
   module Utils            = Utils
-  module Error            = Error
+  module Result           = Result
   module Key              = Key
   module Types            = Types
   module Stat             = Stat
@@ -29,7 +29,7 @@ module Impl = struct
     
   include Node
   
-  open Error
+  open Result
   
   let to_disk context n =
     let n, i, h = Storage.commit_node context n in

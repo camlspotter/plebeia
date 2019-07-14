@@ -220,6 +220,6 @@ module type S = sig
 
   val checkout : Roots.t -> Context.t -> Hash.t -> Cursor.t option
 
-  (** Error/Result/Either monad *)
-  module Error : module type of Error
+  (** Result monad *)
+  module Result : module type of Result
 end
