@@ -329,28 +329,8 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
       end >>= fun (trail, nopt) ->
       alteration nopt >>= fun n -> 
       let c = attach trail n context in
-      (* XXX alter cannot dive into more than one bud, therefore
-         go_ups should be much simpler *)
-      (* go back along the segments to the "original" position *)
-      let rec go_ups (Cursor (trail, _node, _context) as c ) ss = 
-        match trail, ss with
-        | Budded _, _ -> go_up c >>= fun c -> go_ups c ss
-        | _, [] -> return c
-        | (Left _ | Right _), _ ->
-            go_up c >>= fun c -> go_ups c (List.tl ss)
-        | Extended (_, segs, _), _ ->
-            let ss' = 
-              let rec f ss segs = match ss, segs with
-                | ss, [] -> ss
-                | _::ss, _::segs -> f ss segs
-                | [], _ -> assert false
-              in
-              f ss segs
-            in
-            go_up c >>= fun c -> go_ups c ss'
-        | Top, _ -> assert false
-      in
-      go_ups c segment
+      (* go_up is required since c may point to a new bud *)
+      go_up c >>= go_up_to_a_bud
   | res -> error_access res
 
 let update cur segment value =
