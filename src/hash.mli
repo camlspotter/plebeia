@@ -8,5 +8,6 @@ val hash : string -> t
 val hash_list : string list -> t
 
 val reset_last_2bits : t -> t
-
+(** set the last 2 bits of the hash to 0s *)
+   
 val zero : t

@@ -1,7 +1,5 @@
 type side = Left | Right
 
-let dummy_side = Left
-
 type segment = side list (* FIXME: use bit arithmetic *)
 
 type t = segment

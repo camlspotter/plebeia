@@ -56,11 +56,4 @@ let reset_last_2bits s =
   @@ Char.chr @@ Char.code (Bytes.unsafe_get bs 27) land 0xfc;
   Bytes.to_string bs
 
-(* the hash of a leaf node with value v is taken as `H(0x00 || v)`, followed by a 223 0's and a 1.
-
-   |<-      H(0x00 || v)        ->|
-   |                              |0...........................01|
-
-*)
-
 let zero = of_string @@ String.make 28 '\000'

@@ -1,5 +1,6 @@
 open Node
-
+open Cursor
+    
 val string_of_node : node -> int (* indent *) -> string
 (** Dump a node *)
 

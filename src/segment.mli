@@ -11,10 +11,6 @@ type side = Left | Right
 val string_of_side : side -> string
 (** "L" or "R" *)
   
-val dummy_side : side
-(** Whenever we need to consistently pick side that doesn't really correspond
-  to a real side. By convention, it is Left. *)
-
 type segment = side list
 type t = segment
 (** A segment is always just a list of sides. TODO: use bit arithmetic for

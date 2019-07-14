@@ -75,6 +75,10 @@ module type S = sig
     val pp : Format.formatter -> t -> unit
   end
 
+  module Node : sig
+    type view
+  end
+
   module Cursor : sig
     type t
     (** Cursor in a tree to efficiently search and edit sub-trees. *)
@@ -92,14 +96,12 @@ module type S = sig
     val subtree_or_create : t -> Segment.t -> (t, Error.t) Result.t
     (** Same as subtree but create a subtree if not exists *)
     
-    type view 
-
     (** Result of access_gen *)
     type access_result =
       | Empty_bud (* The bud is empty *)
-      | Collide of t * view (* The segment was blocked by an existing leaf or bud *)
+      | Collide of t * Node.view (* The segment was blocked by an existing leaf or bud *)
       | Middle_of_extender of t * Segment.t * Segment.t * Segment.t (* The segment ends or deeprges at the middle of an Extender with the common prefix, the remaining extender, and the rest of segment *)
-      | Reached of t * view (* just reached to a node *)
+      | Reached of t * Node.view (* just reached to a node *)
     
     val error_access : access_result -> ('a, Error.t) Result.t
     (** Make an access result into an error *)

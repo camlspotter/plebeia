@@ -1,5 +1,6 @@
 open Utils
 open Node
+open Cursor
 open Result
 
 let rec string_of_node : node -> int -> string = fun node indent ->

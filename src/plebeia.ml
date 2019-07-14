@@ -15,6 +15,7 @@ module Impl = struct
   module Context          = Context
   module NodeHash         = NodeHash
   module Storage          = Storage
+  module Node             = Node
   module Cursor           = Cursor
   module Deep             = Deep
   module Roots            = Roots
@@ -25,8 +26,9 @@ module Impl = struct
   module Stat             = Stat
   module Debug            = Debug
     
-  include Node
-  
+  open Node
+  open Cursor
+      
   open Result
   
   let to_disk context n =

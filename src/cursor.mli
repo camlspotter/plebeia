@@ -1,7 +1,81 @@
 open Node
 
+(** Trail and cursor *)
+   
+type modified =
+  | Modified
+  | Unmodified of indexed * hashed
+
+(** A trail represents the content of the memory stack when recursively
+    exploring a tree.  Constructing these trails from closure would be easier,
+    but it would make it harder to port the code to C. The type parameters of
+    the trail keep track of the type of each element on the "stack" using 
+    a product type. *)
+
+type trail = private
+  | Top
+  | Left of (* we took the left branch of an internal node *)
+      trail
+      * node (* the right node *)
+      * modified
+
+  | Right of (* we took the right branch of an internal node *)
+      node (* the left node *)
+      * trail
+      * modified
+
+  | Budded of
+      trail
+      * modified
+
+  | Extended of
+      trail
+      * Segment.t
+      * modified
+
+(** Constructors with invariant checks *)
+
+val _Top : trail
+val _Left : trail
+    * node
+    * modified
+    -> trail
+val _Right : 
+    node
+    * trail
+    * modified
+    -> trail
+val _Budded :
+    trail
+    * modified
+    -> trail
+val _Extended :
+    trail
+    * Segment.t
+    * modified
+    -> trail
+
+type cursor = private
+    Cursor of trail
+              * node
+              * Context.t
+(** The cursor, also known as a zipper combines the information contained in a
+   trail and a subtree to represent an edit point within a tree. This is a
+   functional data structure that represents the program point in a function
+   that modifies a tree. We use an existential type that keeps the .mli sane
+   and enforces the most important: that the hole tags match between the trail
+   and the Node *)
+
 type t = cursor
-(** Zipper for Merkle tree *)
+
+(** Constructor with invariant checks *)
+
+val _Cursor : (trail * node * Context.t) -> cursor
+
+val path_of_trail : trail -> Segment.side list list
+(** Segment side list of the given trail, splitted by buds *)
+
+
 
 val empty : Context.t -> t
 (** Creates a cursor to a new, empty tree. *)
@@ -23,8 +97,6 @@ val go_up : t -> (t, Error.t) Result.t
 
 (** Complex multi step cursor movement *)
     
-type view = Node.view (* XXX I do not want to expose this... *)
-  
 (** Result of access_gen *)
 type access_result =
   | Empty_bud 

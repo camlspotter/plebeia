@@ -1,7 +1,3 @@
-(* XXX Constructors of view, trail, and cursor should be private, 
-   to prevent invalid values formed 
-*)
-
 type hashed =
   | Hashed of Hash.t
   | Not_Hashed
@@ -105,57 +101,15 @@ val _Extender : Segment.t
                * hashed
                -> view
 
-type modified =
-  | Modified
-  | Unmodified of indexed * hashed
 
-(** A trail represents the content of the memory stack when recursively exploring a tree.
-   Constructing these trails from closure would be easier, but it would make it harder
-   to port the code to C. The type parameters of the trail keep track of the type of each
-   element on the "stack" using a product type. *)
+(** Tools to create Not_Indexed and Not_Hashed nodes *)
 
-type trail = private
-  | Top
-  | Left of (* we took the left branch of an internal node *)
-      trail
-      * node (* the right node *)
-      * modified
+val new_leaf : Value.t -> node
+val new_extend : Segment.t -> node -> node
+val new_bud : node option -> node
+val new_internal : node -> node -> indexed -> node
 
-  | Right of (* we took the right branch of an internal node *)
-      node (* the left node *)
-      * trail
-      * modified
-
-  | Budded of
-      trail
-      * modified
-
-  | Extended of
-      trail
-      * Segment.t
-      * modified
-
-(** Constructors with invariant checks *)
-
-val _Top : trail
-val _Left : trail
-    * node
-    * modified
-    -> trail
-val _Right : 
-    node
-    * trail
-    * modified
-    -> trail
-val _Budded :
-    trail
-    * modified
-    -> trail
-val _Extended :
-    trail
-    * Segment.t
-    * modified
-    -> trail
+(** Loading of nodes *)
 
 val load_node_ref : (Context.t -> Index.t -> extender_witness -> view) ref
 (** Placeholder of node loading from a context *)
@@ -169,30 +123,3 @@ val may_forget : node -> node option
 val view : Context.t -> node -> view
 (** Obtain the view of the node.  If the view is not available in the memory,
     it is loaded from the storage. *)
-  
-type cursor = private
-    Cursor of trail
-              * node
-              * Context.t
-(** The cursor, also known as a zipper combines the information contained in a
-   trail and a subtree to represent an edit point within a tree. This is a
-   functional data structure that represents the program point in a function
-   that modifies a tree. We use an existential type that keeps the .mli sane
-   and enforces the most important: that the hole tags match between the trail
-   and the Node *)
-
-(** Constructor with invariant checks *)
-
-val _Cursor : (trail * node * Context.t) -> cursor
-
-val path_of_trail : trail -> Segment.side list list
-(** Segment side list of the given trail, splitted by buds *)
-
-(** Tools to create Not_Indexed and Not_Hashed nodes *)
-
-val new_leaf : Value.t -> node
-val new_extend : Segment.t -> node -> node
-val new_bud : node option -> node
-val new_internal : node -> node -> indexed -> node
-
-

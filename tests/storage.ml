@@ -2,7 +2,8 @@
 open Plebeia.Impl
 open Test_utils
 open Debug
-    
+open Node
+
 module RS = Random.State
 
 let parse_test context n =
