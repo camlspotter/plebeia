@@ -26,7 +26,8 @@ module Impl = struct
   module Types            = Types
   module Stat             = Stat
   module Debug            = Debug
-    
+  module Hashcons         = Hashcons
+
   include Node
   
   open Error

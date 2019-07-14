@@ -9,6 +9,7 @@ type t
 val create : 
   ?pos:int64 
   -> ?length:int 
+  -> hashcons: Hashcons.t
   -> string (* path *)
   -> t
 (** Create a new context storage.  
@@ -22,6 +23,7 @@ val create :
 val open_ : 
   ?pos:int64 
   -> ?shared:bool 
+  -> hashcons: Hashcons.t
   -> string (* path *)
   -> t
 (** Open an existing context storage.
@@ -29,6 +31,8 @@ val open_ :
     pos: the start position in the file
     shared: if false, read only.
 *)
+
+val hashcons : t -> Hashcons.t
 
 val stat : t -> Stat.t
 

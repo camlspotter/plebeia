@@ -27,11 +27,15 @@ type t = {
 
   shared : bool ;
   (* Write to the file or not *)
-  
+
+  hashcons : Hashcons.t ;
+  (* Hashcons tbl *)
+
   stat : Stat.t ;
   (* Statistics *)
 }
 
+let hashcons t = t.hashcons
 let stat t = t.stat
               
 module Header = struct
@@ -92,7 +96,7 @@ let may_resize =
       resize required t
     else ()
   
-let create ?(pos=0L) ?length fn =
+let create ?(pos=0L) ?length ~hashcons fn =
   let fd = Unix.openfile fn [O_CREAT; O_TRUNC; O_RDWR] 0o644 in
   let mapped_length = 
     match length with 
@@ -113,12 +117,13 @@ let create ?(pos=0L) ?length fn =
     fd ; 
     pos ;
     shared = true ;
+    hashcons ;
     stat = Stat.create ()
   }
 
-let open_ ?(pos=0L) ?(shared=false) fn =
+let open_ ?(pos=0L) ?(shared=false) ~hashcons fn =
   if not @@ Sys.file_exists fn then 
-    if shared then create ~pos fn 
+    if shared then create ~pos ~hashcons fn 
     else Utils.failwithf "%s: not found" fn
   else begin
     let fd = Unix.openfile fn [O_RDWR] 0o644 in
@@ -136,6 +141,7 @@ let open_ ?(pos=0L) ?(shared=false) fn =
       fd = fd ;
       pos ; 
       shared ;
+      hashcons ;
       stat = Stat.create ()
     }
   end
