@@ -137,17 +137,6 @@ let rec parse_cell context i =
       let v = Value.of_string @@ C.copy buf 0 l in
       _Leaf (v, Indexed i, Hashed h)
 
-  | -65l -> (* leaf with null value *)
-      let h = get_hash buf in
-      let v = Value.of_string "" in
-      _Leaf (v, Indexed i, Hashed h)
-      
-  | -255l -> (* leaf whose value is in Plebeia *)
-      let h = get_hash buf in
-      let (bufs, _size) = Chunk.get_chunks context @@ Index.pred i in
-      let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
-      _Leaf (v, Indexed i, Hashed h)
-
   | x when -253l <= x && x <= -66l -> assert false
 
   | _ -> 
@@ -395,7 +384,7 @@ let commit_node context node =
             write_leaf context value lh
           end
         in
-        if len <= 36 && false then begin
+        if 1 <= len && len <= 36 then begin
           (* try hashcons *)
           let hashcons = Context.hashcons context in
           match Hashcons.find hashcons value with
