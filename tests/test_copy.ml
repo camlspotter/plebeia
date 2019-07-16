@@ -18,7 +18,7 @@ let () = test_with_cursor @@ fun c ->
   let c, () = ok_or_fail @@ deep ~go_up:true ~create_subtrees:true c [path "LLL"; path "RRR"] (fun cur seg -> upsert cur seg (value "LLL/RRR") >>| fun c -> (c, ())) in
   let Cursor (trail, _, _) = c in
   if trail <> _Top then begin
-    Format.eprintf "deep strange return cursor: %s@." (String.concat "/" @@ List.map Segment.to_string @@ path_of_trail trail);
+    Format.eprintf "deep strange return cursor: %s@." (String.concat "/" @@ List.map Segment.to_string @@ segs_of_trail trail);
     assert false
   end;
   let c = ok_or_fail @@ copy ~create_subtrees:true c [path "LLL"] [path "RRR"] in
