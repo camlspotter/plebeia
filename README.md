@@ -110,6 +110,7 @@ The index part value more than 2^32 - 256 to 2^32 - 1 are used for *tags*:
 ----------------------------------------------------------------------------------------
 internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| (also refers to the previous cell)
 extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>|
+leaf (Z)  |<- first 224 of hash ------------>| |<- -65 ------------------------------->|
 leaf (S)  |<- first 224 of hash ------------>| |<- -1 to -32 ------------------------->| (use the previous cell)
 leaf (M)  |<- first 224 of hash ------------>| |<- -33 to -64 ------------------------>| (use the two previous cells)
 leaf (P)  |<- first 224 of hash ------------>| |<- -255 ------------------------------>| (use the previous cell and some others)
@@ -150,6 +151,16 @@ extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------
 ### Leaf
 
 * The first 224bits are the prefix of the hash of the leaf.
+
+#### Zero leaf
+
+This is for the leaf with the zero size value.
+
+```
+          |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+----------------------------------------------------------------------------------------
+leaf      |<- first 224 of hash ------------>| |<- -65 ------------------------------->|
+```
 
 #### Small leaf
 

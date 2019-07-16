@@ -118,6 +118,11 @@ let rec parse_cell context i =
             end
       end
 
+  | -65l -> (* zero size leaf *)
+      let h = get_hash buf in
+      let v = Value.of_string "" in
+      _Leaf (v, Indexed i, Hashed h)
+      
   | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
       let l = - Int32.to_int x in (* 1 to 32 *)
       let h = get_hash buf in
@@ -138,7 +143,7 @@ let rec parse_cell context i =
       let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
       _Leaf (v, Indexed i, Hashed h)
 
-  | x when -253l <= x && x <= -65l -> assert false
+  | x when -253l <= x && x <= -66l -> assert false
 
   | _ -> 
       let s_224 = C.copy buf 0 28 in
@@ -258,7 +263,11 @@ let write_leaf context v lh =
   let h = Node_hash.shorten lh in
   let i = Context.new_index context in
   let len = Value.length v in
-  if 1 <= len && len <= 64 then begin
+  if len = 0 then begin
+    let buf = make_buf context i in
+    write_string (Hash.to_string h) buf 0 28;
+    set_index buf (Index.of_int (-65))
+  end else if len <= 64 then begin
     let buf = make_buf context i in
     write_string (Hash.to_string h) buf 0 28;
     set_index buf (Index.of_int (-len)) (* 1 => -1  64 -> -64 *)
@@ -324,7 +333,9 @@ let commit_node context node =
         (* if the size of the value is 1 <= size <= 32, the contents are written
            to the previous index of the leaf *)
         let len = Value.length value in
-        if 1 <= len && len <= 32 then begin
+        if len = 0 then begin
+          write_leaf context value lh
+        end else if len <= 32 then begin
           write_small_leaf context value;
           write_leaf context value lh
         end else if 33 <= len && len <= 64 then begin
