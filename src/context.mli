@@ -27,9 +27,9 @@ val open_ :
     shared: if false, read only.
 *)
 
-val stat : t -> Stat.t
-
 val close : t -> unit
+
+val stat : t -> Stat.t
 
 val new_index : t -> Stdint.Uint32.t
 (** Allocate 1 cell and return its index *)

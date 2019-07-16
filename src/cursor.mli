@@ -72,7 +72,10 @@ type t = cursor
 
 val _Cursor : (trail * node * Context.t) -> cursor
 
-val path_of_trail : trail -> Segment.side list list
+val segs_of_trail : trail -> Segment.t list
+(** Segment side list of the given trail, splitted by buds *)
+
+val local_seg_of_trail : trail -> Segment.t
 (** Segment side list of the given trail, splitted by buds *)
 
 
@@ -146,6 +149,9 @@ val get : t -> Segment.t -> (Value.t, Error.t) Result.t
 (** Gets a value if present in the current tree at the given
     segment. *)
 
+val get' : t -> Segment.t -> ([`Value of Value.t | `Bud of t], Error.t) Result.t
+(** Gets a value or a bud at the given segment. *)
+
 val insert: t -> Segment.t -> Value.t -> (t, Error.t) Result.t
 (** Inserts a value at the given segment in the current tree.
     The cursor does NOT move from the original position. *)
@@ -167,6 +173,11 @@ val alter :
   (view option -> (node, string) Result.t) -> (t, string) Result.t
 
 (*
+val hash : t -> t * Hash.t
+(** Calculate the hash of the pointed node *)
+*)
+
+(*
 val snapshot: t -> Segment.t -> Segment.t -> (t, error) Result.t
 (** Snapshots a subtree at segment and place a soft link to it at
     another segment location. 
@@ -175,6 +186,24 @@ val snapshot: t -> Segment.t -> Segment.t -> (t, error) Result.t
 *)
 *)
 
+(** Traversal *)
+
+type where_from =
+  | From_above of dir
+  | From_below of dir
+
+and dir =
+  | Left
+  | Right
+  | Center
+
+val traverse : (where_from list * t) -> (where_from list * t) option
+val force_traverse_up : (where_from list * t) -> (where_from list * t) option
+
+val fold : init:'a -> t -> (t -> ('a, 'b) Result.t) -> (('a, 'b) Result.t, Error.t) Result.t
+(** Fold from a bud, within its bud level.  The function is called only
+    for the leaves and the sub-buds. *)
+  
 (** Statistics *)
 
 val stat : t -> Stat.t

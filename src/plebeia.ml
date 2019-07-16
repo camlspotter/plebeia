@@ -7,70 +7,41 @@
    debugging.
 *)
 module Impl = struct
-  module Index            = Index
+  
+  (* Base *)
   module Error            = Error
-  module Value            = Value
-  module Segment          = Segment
-  module Hash             = Hash
-  module Context          = Context
-  module NodeHash         = NodeHash
-  module Storage          = Storage
-  module Node             = Node
-  module Cursor           = Cursor
-  module Deep             = Deep
-  module Roots            = Roots
-  module Segment_encoding = Segment_encoding
   module Utils            = Utils
   module Result           = Result
-  module Key              = Key
+
+  (* Core *)
+  module Value            = Value
+  module Index            = Index
+  module Segment          = Segment
+  module Context          = Context
+  module Node             = Node
+  module Cursor           = Cursor
+
+  (* Hash *)
+  module Hash             = Hash
+  module Node_hash        = Node_hash
+  module Cursor_hash      = Cursor_hash
+
+  (* Storage *)
+  module Segment_encoding = Segment_encoding
+  module Storage          = Storage
+  module Cursor_storage   = Cursor_storage
+
+  (* High level *)
+  module Deep             = Deep
+  module Roots            = Roots
+  module Vc               = Vc
+
+  (* Helper *)
   module Stat             = Stat
   module Debug            = Debug
-    
-  open Node
-  open Cursor
-      
-  open Result
-  
-  let to_disk context n =
-    let n, i, h = Storage.commit_node context n in
-    match n with
-    | Disk _ -> n, h
-    | View (Extender _) -> Disk (i, Is_Extender), h
-    | View _ -> Disk (i, Not_Extender), h
-    
-  let commit (Cursor (trail, node, context)) =
-    let (node, i, h) =  Storage.commit_node context node in
-    (_Cursor (trail, node, context), i, h)
-  
-  let commit (Cursor (trail, _, _) as c) =
-    match trail with
-    | Top -> 
-        let c, i, h = commit c in
-        Ok (c, i, h)
-    | _ -> failwith "commit: cursor must point to the root"
-  
-  let gc ~src:_ _ ~dest:_ = failwith "not implemented"
-  
-  let hash (Cursor (trail, node, context)) = 
-    let v, h = NodeHash.hash context node in
-    _Cursor (trail, View v, context), h
-  
-  let create = Context.create
-  let open_ = Context.open_
-  let close = Context.close
-  
-  let commit' roots c =
-    commit c >>= fun (_cur, i, h as res) ->
-    Roots.add roots h i;
-    Ok res
-    
-  let checkout roots context hash =
-    match Roots.find roots hash with
-    | None -> None
-    | Some (index, _parent) ->
-        Some (_Cursor (_Top, 
-                       Disk (index, Not_Extender),
-                       context))
+
+  (* Experimental *)
+  module Key              = Key
 end 
 
 include (Impl : Plebeia_intf.S)

@@ -190,7 +190,7 @@ let check_cursor c =
 let _Cursor (t, n, c) = 
   check_cursor @@ Cursor (t, n, c)
 
-let path_of_trail trail =
+let segs_of_trail trail =
   let rec aux (xs, xss) = function
     | Top -> xs :: xss
     | Budded (tr, _) -> aux ([], xs::xss) tr
@@ -199,6 +199,16 @@ let path_of_trail trail =
     | Extended (tr, seg, _) -> aux (seg @ xs, xss) tr
   in
   aux ([], []) trail
+
+let local_seg_of_trail trail =
+  let rec aux xs = function
+    | Top -> xs
+    | Budded (_, _) -> xs
+    | Left (tr, _, _) -> aux (Segment.Left :: xs) tr
+    | Right (_, tr, _) -> aux (Segment.Right :: xs) tr
+    | Extended (tr, seg, _) -> aux (seg @ xs) tr
+  in
+  aux [] trail
 
 let dot_of_cursor_ref = ref (fun _ -> assert false)
     
@@ -444,6 +454,12 @@ let get cur seg =
   | Reached (_, Leaf (v, _, _)) -> Ok v
   | res -> error_access res
 
+let get' cur seg = 
+  access_gen cur seg >>= function
+  | Reached (_, Leaf (v, _, _)) -> Ok (`Value v)
+  | Reached (c, Bud _) -> Ok (`Bud c)
+  | res -> error_access res
+
 let empty context =
   (* A bud with nothing underneath, i.e. an empty tree or an empty sub-tree. *)
   _Cursor (_Top, new_bud None, context)
@@ -517,4 +533,122 @@ let subtree_or_create cur segment =
   in
   subtree cur segment
 
+type where_from =
+  | From_above of dir
+  | From_below of dir
+
+and dir =
+  | Left
+  | Right
+  | Center
+
+(* Traversal step.  By calling this function repeatedly
+   against the result of the function, we can traverse all the nodes.
+   Note that this loads all the nodes in the memory in the end.
+*)
+let traverse (log, Cursor (trail, n, context)) = 
+  let v = match n with
+    | Disk (i, ewit) -> load_node context i ewit
+    | View v -> v
+  in
+  let c = _Cursor (trail, View v, context) in
+  match v, log with
+  | _, From_below _ :: From_below _ :: _ -> assert false
+
+  | Leaf _, From_below _ :: _ -> assert false
+  | Leaf _, [] -> None
+  | Leaf _, From_above d :: log -> 
+      let c = from_Ok @@ go_up c in
+      Some (From_below d :: log, c)
+
+  | Bud (None, _, _), From_below _ :: _ -> assert false
+  | Bud (None, _, _), [] -> None
+  | Bud (None, _, _), From_above d :: log -> 
+      let c = from_Ok @@ go_up c in
+      Some (From_below d :: log, c)
+
+  | Bud (Some _, _, _), From_below _ :: [] -> None
+  | Bud (Some _, _, _), From_below _ :: From_above d :: log ->
+      let c = from_Ok @@ go_up c in
+      Some (From_below d :: log, c)
+  | Bud (Some _, _, _), (From_above _ :: _ | []) ->
+      let c = Utils.from_Some @@ from_Ok @@ go_below_bud c in
+      Some (From_above Center :: log, c)
+
+  | Internal _, From_below Center :: _ -> assert false
+  | Internal _, (From_above _ :: _ | []) ->
+      let c = from_Ok @@ go_side Segment.Left c in
+      Some (From_above Left :: log, c)
+  | Internal _, From_below Left :: log ->
+      let c = from_Ok @@ go_side Segment.Right c in
+      Some (From_above Right :: log, c)
+  | Internal _, From_below Right :: [] -> None
+  | Internal _, From_below Right :: From_above d :: log ->
+      let c = from_Ok @@ go_up c in
+      Some (From_below d :: log, c)
+
+  | Extender (_seg, _, _, _), (From_above _ :: _ | []) ->
+      let c = from_Ok @@ go_down_extender c in
+      Some (From_above Center :: log, c)
+  | Extender (_, _, _, _), From_below _ :: [] -> None
+  | Extender (_seg, _, _, _), From_below _ :: From_above d :: log ->
+      let c = from_Ok @@ go_up c in
+      Some (From_below d :: log, c)
+
+(* Force the traversal go up and prevent it from going down 
+   from the node *)
+let force_traverse_up (log, Cursor (trail, n, context)) =
+  let v = match n with
+    | Disk (i, ewit) -> load_node context i ewit
+    | View v -> v
+  in
+  let c = _Cursor (trail, View v, context) in
+  match v, log with
+  | Bud (Some _, _, _), From_above _ :: [] -> None
+  | Bud (Some _, _, _), From_above d :: log ->
+      let c = from_Ok @@ go_up c in
+      Some (From_below d :: log, c)
+  | Internal _, From_above _ :: [] -> None
+  | Internal _, From_above d :: log ->
+      let c = from_Ok @@ go_up c in
+      Some (From_below d :: log, c)
+  | Extender (_seg, _, _, _), From_above _ :: [] -> None
+  | Extender (_seg, _, _, _), From_above d :: log ->
+      let c = from_Ok @@ go_up c in
+      Some (From_below d :: log, c)
+  | _ -> traverse (log, c)
+
+let fold ~init c f =
+  go_below_bud c >>= function
+  | None -> Ok (Ok init)
+  | Some c ->
+      let rec aux acc log c =
+        let c, v = view_cursor c in
+        match v, log with
+        | Leaf _, From_above _ :: _ -> 
+            let res = f c in
+            begin match res with
+              | Error e -> Error e
+              | Ok acc -> 
+                  match traverse (log, c) with
+                  | None -> Ok acc
+                  | Some (log, c) -> aux acc log c
+            end
+        | Bud _, From_above _ :: _ ->
+            let res = f c in
+            begin match res with
+              | Error e -> Error e
+              | Ok acc ->
+                  match force_traverse_up (log, c) with
+                  | None -> Ok acc
+                  | Some (log, c) -> aux acc log c
+            end
+        | _ -> 
+            begin match traverse (log, c) with
+              | None -> Ok acc
+              | Some (log, c) -> aux acc log c
+            end
+      in
+      Ok (aux init [] c)
+  
 let stat (Cursor (_,_,context)) = Context.stat context
