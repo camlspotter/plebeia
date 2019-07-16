@@ -143,7 +143,7 @@ let rec parse_cell context i =
       let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
       _Leaf (v, Indexed i, Hashed h)
 
-  | x when -253l <= x && x <= -66l -> assert false
+  | x when -256l <= x && x <= -1l -> assert false
 
   | _ -> 
       let s_224 = C.copy buf 0 28 in
