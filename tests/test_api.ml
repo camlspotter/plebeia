@@ -3,7 +3,6 @@ open Result
 open Test_utils
 open Cursor
 open Node
-open Deep
 
 module RS = Random.State
 

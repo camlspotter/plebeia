@@ -626,7 +626,7 @@ let fold ~init c f =
         let c, v = view_cursor c in
         match v, log with
         | Leaf _, From_above _ :: _ -> 
-            let res = f c in
+            let res = f acc c in
             begin match res with
               | Error e -> Error e
               | Ok acc -> 
@@ -635,7 +635,7 @@ let fold ~init c f =
                   | Some (log, c) -> aux acc log c
             end
         | Bud _, From_above _ :: _ ->
-            let res = f c in
+            let res = f acc c in
             begin match res with
               | Error e -> Error e
               | Ok acc ->

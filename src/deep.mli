@@ -18,24 +18,24 @@ val deep_ro :
   -> ('a, Error.t) Result.t
 (** Simplified version of [deep] for read only operations *)
 
-val deep_get : t -> Segment.t list -> (Value.t, Error.t) Result.t
+val get : t -> Segment.t list -> (Value.t, Error.t) Result.t
 
-val deep_get' : t -> Segment.t list -> ([`Value of Value.t | `Bud of t], Error.t) Result.t
+val get' : t -> Segment.t list -> ([`Value of Value.t | `Bud of t], Error.t) Result.t
 
-val deep_insert : t -> Segment.t list -> Value.t -> (t, Error.t) Result.t
+val insert : t -> Segment.t list -> Value.t -> (t, Error.t) Result.t
 
-val deep_upsert : t -> Segment.t list -> Value.t -> (t, Error.t) Result.t
+val upsert : t -> Segment.t list -> Value.t -> (t, Error.t) Result.t
 
-val deep_update : t -> Segment.t list -> Value.t -> (t, Error.t) Result.t
+val update : t -> Segment.t list -> Value.t -> (t, Error.t) Result.t
 
-val deep_delete : t -> Segment.t list -> (t, Error.t) Result.t
+val delete : t -> Segment.t list -> (t, Error.t) Result.t
 (** If the target does not exists, do nothing *)
     
-val deep_create_subtree : create_subtrees: bool -> t -> Segment.t list -> (t, Error.t) Result.t
+val create_subtree : create_subtrees: bool -> t -> Segment.t list -> (t, Error.t) Result.t
 
-val deep_subtree : t -> Segment.t list -> (t, Error.t) Result.t
+val subtree : t -> Segment.t list -> (t, Error.t) Result.t
 
-val deep_subtree_or_create : create_subtrees: bool -> t -> Segment.t list -> (t, Error.t) Result.t
+val subtree_or_create : create_subtrees: bool -> t -> Segment.t list -> (t, Error.t) Result.t
 
 val copy : create_subtrees: bool -> t -> Segment.t list -> Segment.t list -> (t, Error.t) Result.t
 (** Subtree copy by making two nodes point to the same subtree. 

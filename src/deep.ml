@@ -30,37 +30,37 @@ let deep_ro cur segs f =
       f cur seg >>| fun res -> (cur, res)) >>= fun (_, res) -> 
   Ok res
 
-let deep_get cur segs = deep_ro cur segs get
+let get cur segs = deep_ro cur segs get
 
-let deep_get' cur segs = deep_ro cur segs get'
+let get' cur segs = deep_ro cur segs get'
 
-let deep_upsert cur segs v = 
+let upsert cur segs v = 
   deep ~go_up:true ~create_subtrees:true cur segs (fun cur seg ->
       upsert cur seg v >>| fun cur -> cur, ()) >>| fst
   
-let deep_insert cur segs v = 
+let insert cur segs v = 
   deep ~go_up:true ~create_subtrees:true cur segs (fun cur seg ->
       insert cur seg v >>| fun cur -> cur, ()) >>| fst
   
-let deep_update cur segs v =
+let update cur segs v =
   deep ~go_up:true ~create_subtrees:false cur segs (fun cur seg ->
-      get cur seg >>= fun _ -> update cur seg v >>| fun cur -> cur, ()) >>| fst
+      Cursor.get cur seg >>= fun _ -> update cur seg v >>| fun cur -> cur, ()) >>| fst
 
-let deep_delete cur segs = 
+let delete cur segs = 
   deep ~go_up:true ~create_subtrees:true cur segs (fun cur seg ->
       match delete cur seg with
       | Ok cur -> Ok (cur, ())
       | Error _ -> Ok (cur, ())) >>| fst
   
-let deep_create_subtree ~create_subtrees cur segs = 
+let create_subtree ~create_subtrees cur segs = 
   deep ~go_up:true ~create_subtrees cur segs (fun cur seg ->
       subtree_or_create cur seg >>| fun cur -> (cur, ())) >>| fst
 
-let deep_subtree cur segs =
+let subtree cur segs =
   deep ~go_up:false ~create_subtrees:false cur segs (fun cur seg ->
       subtree cur seg >>| fun cur -> (cur, ())) >>| fst
 
-let deep_subtree_or_create ~create_subtrees cur segs =
+let subtree_or_create ~create_subtrees cur segs =
   deep ~go_up:false ~create_subtrees cur segs (fun cur seg ->
       subtree_or_create cur seg >>| fun cur -> (cur, ())) >>| fst
 

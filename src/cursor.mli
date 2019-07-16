@@ -72,6 +72,8 @@ type t = cursor
 
 val _Cursor : (trail * node * Context.t) -> cursor
 
+val view_cursor : t -> t * view
+
 val segs_of_trail : trail -> Segment.t list
 (** Segment side list of the given trail, splitted by buds *)
 
@@ -200,7 +202,7 @@ and dir =
 val traverse : (where_from list * t) -> (where_from list * t) option
 val force_traverse_up : (where_from list * t) -> (where_from list * t) option
 
-val fold : init:'a -> t -> (t -> ('a, 'b) Result.t) -> (('a, 'b) Result.t, Error.t) Result.t
+val fold : init:'a -> t -> ('a -> t -> ('a, 'b) Result.t) -> (('a, 'b) Result.t, Error.t) Result.t
 (** Fold from a bud, within its bud level.  The function is called only
     for the leaves and the sub-buds. *)
   

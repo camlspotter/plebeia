@@ -49,14 +49,23 @@ let checkout { roots ; context } hash =
                      Disk (index, Not_Extender),
                      context))
 
-let get = Deep.deep_get
-let get' = Deep.deep_get'
-let insert = Deep.deep_insert
-let upsert = Deep.deep_upsert
-let update = Deep.deep_update
-let delete = Deep.deep_delete
-let create_subtree = Deep.deep_create_subtree
-let subtree_or_create = Deep.deep_subtree_or_create
+let fold ~init c f =
+  Cursor.fold ~init c (fun acc c ->
+      let Cursor (trail, _, _), v = Cursor.view_cursor c in
+      let seg = local_seg_of_trail trail in
+      match v with
+      | Leaf (v, _, _) -> f acc seg (`Leaf v)
+      | Bud _ -> f acc seg `Bud
+      | _ -> assert false)
+ 
+let get = Deep.get
+let get' = Deep.get'
+let insert = Deep.insert
+let upsert = Deep.upsert
+let update = Deep.update
+let delete = Deep.delete
+let create_subtree = Deep.create_subtree
+let subtree_or_create = Deep.subtree_or_create
 let deep = Deep.deep                          
 let copy = Deep.copy
 let stat { context ; _ } = Context.stat context
