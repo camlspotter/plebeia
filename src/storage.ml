@@ -118,6 +118,11 @@ let rec parse_cell context i =
             end
       end
 
+  | -65l -> (* zero size leaf *)
+      let h = get_hash buf in
+      let v = Value.of_string "" in
+      _Leaf (v, Indexed i, Hashed h)
+      
   | x when -32l <= x && x <= -1l -> (* leaf whose value is in the previous cell *)
       let l = - Int32.to_int x in (* 1 to 32 *)
       let h = get_hash buf in
@@ -143,7 +148,7 @@ let rec parse_cell context i =
       let v = Value.of_string @@ Chunk.string_of_cstructs bufs in
       _Leaf (v, Indexed i, Hashed h)
 
-  | x when -253l <= x && x <= -65l -> assert false
+  | x when -253l <= x && x <= -66l -> assert false
 
   | _ -> 
       let s_224 = C.copy buf 0 28 in

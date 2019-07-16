@@ -154,12 +154,13 @@ extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------
 
 #### Zero leaf
 
-This is the leaf for zero size data.
+This is for the leaf with the zero size value.
 
 ```
           |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
 ----------------------------------------------------------------------------------------
 leaf      |<- first 224 of hash ------------>| |<- -65 ------------------------------->|
+```
 
 #### Small leaf
 
