@@ -30,6 +30,7 @@ module Impl = struct
   module Segment_encoding = Segment_encoding
   module Storage          = Storage
   module Cursor_storage   = Cursor_storage
+  module Hashcons         = Hashcons
 
   (* High level *)
   module Deep             = Deep
@@ -39,8 +40,6 @@ module Impl = struct
   (* Helper *)
   module Stat             = Stat
   module Debug            = Debug
-  module Hashcons         = Hashcons
-
 
   (* Experimental *)
   module Key              = Key

@@ -132,6 +132,11 @@ let rec parse_cell context i =
       let v = Value.of_string @@ C.copy buf 0 l in
       _Leaf (v, Indexed i, Hashed h)
 
+  | -65l -> (* leaf with null value *)
+      let h = get_hash buf in
+      let v = Value.of_string "" in
+      _Leaf (v, Indexed i, Hashed h)
+      
   | -255l -> (* leaf whose value is in Plebeia *)
       let h = get_hash buf in
       let (bufs, _size) = Chunk.get_chunks context @@ Index.pred i in
@@ -290,7 +295,11 @@ let write_leaf context v lh =
   let h = Node_hash.shorten lh in
   let i = Context.new_index context in
   let len = Value.length v in
-  if 1 <= len && len <= 64 then begin
+  if len = 0 then begin
+    let buf = make_buf context i in
+    write_string (Hash.to_string h) buf 0 28;
+    set_index buf (Index.of_int (-65))
+  end else if len <= 64 then begin
     let buf = make_buf context i in
     write_string (Hash.to_string h) buf 0 28;
     set_index buf (Index.of_int (-len)) (* 1 => -1  64 -> -64 *)
@@ -310,12 +319,12 @@ let write_leaf context v lh =
 
 let write_shared_leaf context index v lh =
   (* |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 254 ------------------------>| *)
-  let h = NodeHash.shorten lh in
+  let h = Node_hash.shorten lh in
   let i = Context.new_index context in
   let buf = make_buf context i in
   write_string zero_24 buf 0 24;
   C.set_uint32 buf 24 index;
-  set_index buf (Uint32.of_int32 (-254l));
+  set_index buf (Index.of_int32 (-254l));
   Stat.incr_written_leaves (Context.stat context);
   _Leaf (v, Indexed i, Hashed h), i, lh
 
@@ -368,7 +377,9 @@ let commit_node context node =
            to the previous index of the leaf *)
         let len = Value.length value in
         let create_new () =
-          if 1 <= len && len <= 32 then begin
+          if len = 0 then begin
+            write_leaf context value lh
+          end else if len <= 32 then begin
             write_small_leaf context value;
             write_leaf context value lh
           end else if 33 <= len && len <= 64 then begin
@@ -379,13 +390,13 @@ let commit_node context node =
             write_leaf context value lh
           end
         in
-        if len <= 36 then begin
+        if len <= 36 && false then begin
           (* try hashcons *)
           let hashcons = Context.hashcons context in
           match Hashcons.find hashcons value with
           | Error e -> failwith e
           | Ok (Some index) ->
-              let lh = NodeHash.of_leaf value (* XXX inefficient! *) in
+              let lh = Node_hash.of_leaf value (* XXX inefficient! *) in
               write_shared_leaf context index value lh
           | Ok None -> 
               let v, i, lh = create_new () in
@@ -445,18 +456,3 @@ let commit_node context node =
   in 
   let (node, i, lh) =  commit_aux node in
   node, i, Node_hash.shorten lh
-
-let load_node (context : Context.t) (index : Index.t) (ewit:extender_witness) : view = 
-  let v = parse_cell context index in
-  Stat.incr_loaded_nodes (Context.stat context);
-  match ewit, v with
-  | Is_Extender, Extender _ -> v
-  | Is_Extender, _ -> assert false (* better report *)
-  | Maybe_Extender, Extender _ -> v
-  | Not_Extender, Extender _ -> assert false (* better report *)
-  | Not_Extender, _ -> v
-  | Maybe_Extender, _ -> v
-
-let () = load_node_ref := load_node
->>>>>>> stable
-

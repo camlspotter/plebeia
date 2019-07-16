@@ -10,16 +10,20 @@ type t =
 
 let create ?context_pos ?context_length ~prefix () =
   let roots = Roots.create (prefix ^ ".roots") in
+  let hashcons = Hashcons.create (prefix ^ ".hash") in
   let context = 
     Context.create ?pos:context_pos ?length:context_length
+      ~hashcons
       (prefix ^ ".context")
   in
   { roots ; context }
 
 let open_ ?context_pos ~prefix =
   let roots = Roots.open_ (prefix ^ ".roots") in
+  let hashcons = Hashcons.open_ (prefix ^ ".hash") in
   let context = 
     Context.open_ ?pos:context_pos ~shared:true
+      ~hashcons
       (prefix ^ ".context")
   in
   { roots ; context }

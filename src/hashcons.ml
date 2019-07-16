@@ -3,7 +3,7 @@
 *)
 
 type t = 
-  { tbl : (int * Value.t, Types.Index.t) Hashtbl.t
+  { tbl : (int * Value.t, Index.t) Hashtbl.t
   ; fd : Unix.file_descr
   }
       
@@ -30,7 +30,7 @@ let write_entry fd v index =
   let open Unix in
   let v = Value.to_string v in
   let size = String.length v in
-  assert (0 < size && size <= 36);
+  assert (size <= 36);
   let buf = Bytes.create 44 in
   Bytes.blit_string v 0 buf 8 size;
   let cstr = Cstruct.create 8 in
@@ -77,7 +77,5 @@ let add { tbl ; fd } v index =
         Ok ()
   
 let close { fd ; _ } = Unix.close fd
-
-         
 
    

@@ -46,15 +46,9 @@ let shuffle st xs =
 
 let with_temp_file ?(postfix="test") f =
   let fn = Filename.temp_file "plebeia" postfix in
-  try
-    let res = f fn in
-    Unix.unlink fn; (* If the funciton fails, the temp file should remain for postmortem analysis *)
-    res
-  with
-  | e -> 
-      Format.eprintf "Error %s.  Tempfile %s@."
-        (Printexc.to_string e) fn;
-      raise e
+  let res = f fn in
+  Unix.unlink fn; (* If the funciton fails, the temp file should remain for postmortem analysis *)
+  res
   
 let test_with_context length f =
   with_temp_file ~postfix:".context" (fun fn ->
