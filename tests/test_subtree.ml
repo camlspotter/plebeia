@@ -4,7 +4,7 @@
    
 *)
 open Plebeia.Impl
-open Error
+open Result
 open Test_utils
 open Cursor
 
@@ -77,12 +77,12 @@ let doit st (rev_hist, stat_subdirs, stat_inserts, stat_deletes, stat_commits) c
     let (cur, _, _) = 
       incr stat_commits; 
       add_hist `commit;
-      ok_or_fail @@ commit cur 
+      Cursor_storage.commit_cursor cur 
     in cur
   else cur
 
 let print_hist = function
-  | `commit -> Format.eprintf "  let c, _, _ = ok_or_fail @@@@ commit c in@."
+  | `commit -> Format.eprintf "  let c, _, _ = Cursor_storage.commit_cursor c in@."
   | `subtree s -> Format.eprintf "  let c = ok_or_fail @@@@ subtree c (path \"%s\") in@." (Segment.to_string s)
   | `create_subtree s -> Format.eprintf "  let c = ok_or_fail @@@@ create_subtree c (path \"%s\") in@." (Segment.to_string s)
   | `insert s -> Format.eprintf "  let c = ok_or_fail @@@@ insert c (path \"%s\") (value \"1\") in@." (Segment.to_string s)

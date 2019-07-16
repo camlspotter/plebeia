@@ -1,5 +1,4 @@
-open Types
-open Error
+open Result
 
 type hashed =
   | Hashed of Hash.t
@@ -72,7 +71,7 @@ and view =
    to port the code to C. The type parameters of the trail keep track of the type of each
    element on the "stack" using a product type. *)
 
-let view_shape_invariant : view -> (unit, error) result = function
+let view_shape_invariant : view -> (unit, Error.t) Result.t = function
   | Bud (None, _, _) -> Ok ()
   | Bud (Some (Disk _), _, _) -> Error "Bud: cannot have Disk" (* or, we must load the Disk and check *)
   | Bud (Some (View (Bud _)), _, _) -> Error "Bud: cannot have Bud"
@@ -104,7 +103,7 @@ let index = function
   | View (Extender (_, _, Indexed i, _)) -> Some i
   | View (Bud _ | Leaf _ | Internal _ | Extender _) -> None
 
-let view_indexed_invariant : view -> (unit, error) result = function
+let view_indexed_invariant : view -> (unit, Error.t) Result.t = function
   | Bud (None, Indexed _, _) -> Ok ()
   | Bud (Some n, Indexed _, _) when indexed n -> Ok ()
   | Bud (_, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Bud: invalid indexed"
@@ -152,7 +151,7 @@ let hash_of_view = function
   | (Extender (_, _, _, Hashed h)) -> Some h
   | (Extender (_, _, _, Not_Hashed)) -> None
 
-let view_hashed_invariant : view -> (unit, error) result = function
+let view_hashed_invariant : view -> (unit, Error.t) Result.t = function
   | Leaf _ -> Ok ()
   | Bud (None, _, _) -> Ok ()
   | Bud (_, _, Not_Hashed) -> Ok ()
@@ -163,14 +162,14 @@ let view_hashed_invariant : view -> (unit, error) result = function
   | Extender (_, _, _, Not_Hashed) -> Ok ()
   | _ -> Error "Invalid Hashed"
 
-let view_index_and_hash_invariant : view -> (unit, error) result = function
+let view_index_and_hash_invariant : view -> (unit, Error.t) Result.t = function
   | Bud (_, Indexed _, Not_Hashed)
   | Leaf (_, Indexed _, Not_Hashed)
   | Internal (_, _, Indexed _, Not_Hashed)
   | Extender (_, _, Indexed _, Not_Hashed) -> Error "View: Indexed with Not_Hashed"
   | _ -> Ok ()
 
-let view_invariant : view -> (unit, error) result = fun v ->
+let view_invariant : view -> (unit, Error.t) Result.t = fun v ->
   view_shape_invariant v >>= fun () ->
   view_indexed_invariant v >>= fun () ->
   view_hashed_invariant v >>= fun () ->
@@ -193,117 +192,22 @@ let _Leaf (v, ir, hit) =
 let _Extender (p, n, ir, hit) =
   check_view @@ Extender (p, n, ir, hit)
 
-type modified =
-  | Modified_Left
-  | Modified_Right
-  | Unmodified of
-      indexed *
-      hashed
+let new_leaf v = View (_Leaf (v, Not_Indexed, Not_Hashed))
 
-type trail =
-  | Top
-  | Left of (* we took the left branch of an internal node *)
-      trail
-      * node
-      * modified
+let new_extend : Segment.segment -> node -> node = fun segment node ->
+  if segment = Segment.empty then node
+  else 
+    match node with
+    | View (Extender (seg, n, _, _)) ->
+        View (_Extender (Segment.concat segment seg, n, Not_Indexed, Not_Hashed))
+    | _ ->
+        View (_Extender (segment, node, Not_Indexed, Not_Hashed))
+let new_bud no = View (_Bud (no, Not_Indexed, Not_Hashed))
 
-  | Right of (* we took the right branch of an internal node *)
-      node
-      * trail
-      * modified
+let new_internal n1 n2 i = 
+  View (_Internal (n1, n2, i, Not_Hashed))
 
-  | Budded of
-      trail
-      * modified
 
-  | Extended of
-      trail
-      * Segment.t
-      * modified
-  (* not the use of the "extender" and "not extender" type to enforce
-     that two extenders cannot follow each other *)
-
-let trail_shape_invariant = function
-  | Extended (Extended _, _, _) -> Error "Extended: cannot have Extended"
-  | Extended (_, seg, _) when Segment.is_empty seg -> Error "Extended: invalid empty segment"
-  | _ -> Ok ()
-
-let trail_modified_invariant = function
-  | Top -> Ok ()
-  | Left (_, n, Unmodified (ir, hit)) -> 
-      begin match ir with
-        | Left_Not_Indexed -> Ok ()
-        | Right_Not_Indexed when not @@ indexed n -> Ok ()
-        | Right_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Left: invalid Not_Indexed"
-        | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Left: invalid Indexed"
-      end >>= fun () ->
-      begin match hit with
-        | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Left: invalid Hashed"
-        | Not_Hashed -> Ok ()
-      end
-  | Left (_, _, Modified_Left) -> Ok ()
-  | Left (_, _, Modified_Right) -> Error "Left: invalid Modified_Right"
-  | Right (n, _, Unmodified (ir, hit)) ->
-      begin match ir with
-        | Right_Not_Indexed -> Ok ()
-        | Left_Not_Indexed when not @@ indexed n -> Ok ()
-        | Left_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Right: invalid Not_Indexed"
-        | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Right: invalid Indexed"
-      end >>= fun () ->
-      begin match hit with
-        | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Right: invalid Hashed"
-        | Not_Hashed -> Ok ()
-      end
-  | Right (_, _, Modified_Right) -> Ok ()
-  | Right (_, _, Modified_Left) -> Error "Right: invalid Modified_Left"
-  | Budded (_, Unmodified (ir, _hit)) ->
-      begin match ir with
-        | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
-      end
-  | Budded (_, Modified_Left) -> Ok () 
-  | Budded (_, Modified_Right) -> Error "Budded: invalid Modified_Right"
-  | Extended (_, _, Unmodified (ir, _hit)) ->
-      begin match ir with
-        | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexed"
-      end
-  | Extended (_, _, Modified_Left) -> Ok () 
-  | Extended (_, _, Modified_Right) -> Error "Budded: invalid Modified_Right"
-
-let trail_index_and_hash_invariant = function
-  | Top -> Ok ()
-  | Left (_, _, Unmodified (Indexed _, Not_Hashed))
-  | Right (_, _, Unmodified (Indexed _, Not_Hashed))
-  | Budded (_, Unmodified (Indexed _, Not_Hashed))
-  | Extended (_, _, Unmodified (Indexed _, Not_Hashed)) -> Error "Trail: Indexed with Not_Hashed"
-  | _ -> Ok ()
-
-let trail_invariant t = 
-  trail_shape_invariant t >>= fun () ->
-  trail_modified_invariant t >>= fun () ->
-  trail_index_and_hash_invariant t
-
-let check_trail t = 
-  match trail_invariant t with
-  | Ok _ -> t
-  | Error s -> failwith s
-
-let _Top = Top
-let _Left (t, n, mr) = 
-  check_trail @@ Left (t, n, mr)
-let _Right (n, t, mr) =
-  check_trail @@ Right (n, t, mr)
-let _Budded (t, mr) =
-  check_trail @@ Budded (t, mr)
-let _Extended (t, s, mr) =
-  check_trail @@ Extended (t, s, mr)
 
 let load_node_ref = ref (fun _ _ _ -> assert false)
 
@@ -317,98 +221,6 @@ let may_forget = function
   | View (Extender (_, _, Indexed i, _)) -> Some (Disk (i, Is_Extender))
   | _ -> None
 
-type cursor =
-    Cursor of trail
-              * node
-              * Context.t
-(* The cursor, also known as a zipper combines the information contained in a
-   trail and a subtree to represent an edit point within a tree. This is a
-   functional data structure that represents the program point in a function
-   that modifies a tree. We use an existential type that keeps the .mli sane
-   and enforces the most important: that the hole tags match between the trail
-   and the Node *)
-
 let view c = function
   | Disk (i, wit) -> load_node c i wit
   | View v -> v
-
-let cursor_invariant (Cursor (trail, n, c)) =
-  match trail with
-  | Top -> 
-      begin match view c n with
-        | Bud _ -> Ok ()
-        | _ -> Error "Cursor: Top has no Bud"
-      end
-  | Left (_, _, Unmodified (ir, hit)) -> 
-      begin match ir with
-        | Left_Not_Indexed when not @@ indexed n -> Ok ()
-        | Left_Not_Indexed -> Error "Cursor: invalid Left_Not_Indexed"
-        | Right_Not_Indexed -> Ok ()
-        | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
-        | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Cursor: invalid Indexed"
-      end >>= fun () ->
-      begin match hit with
-        | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Cursor: invalid Hashed"
-        | Not_Hashed -> Ok ()
-      end
-  | Left (_, _, Modified_Left) -> Ok ()
-  | Left (_, _, Modified_Right) -> Error "Left: invalid Modified_Right"
-  | Right (_, _, Unmodified (ir, hit)) ->
-      begin match ir with
-        | Left_Not_Indexed -> Ok ()
-        | Right_Not_Indexed when not @@ indexed n -> Ok ()
-        | Right_Not_Indexed -> Error "Cursor: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
-        | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Cursor: invalid Indexed"
-      end >>= fun () ->
-      begin match hit with
-        | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Cursor: invalid Hashed"
-        | Not_Hashed -> Ok ()
-      end
-  | Right (_, _, Modified_Right) -> Ok ()
-  | Right (_, _, Modified_Left) -> Error "Right: invalid Modified_Left"
-  | Budded (_, Unmodified (ir, _hit)) ->
-      begin match ir with
-        | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Budded: invalid Indexed"
-        | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
-      end
-  | Budded (_, Modified_Left) -> Ok () 
-  | Budded (_, Modified_Right) -> Error "Budded: invalid Modified_Right"
-  | Extended (_, _, Unmodified (ir, hit)) ->
-      begin match ir with
-        | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Extended: invalid Indexed"
-        | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexed"
-      end >>= fun () ->
-      begin match hit with
-        | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Extended: invalid Hashed"
-        | Not_Hashed -> Ok ()
-      end
-  | Extended (_, _, Modified_Left) -> Ok () 
-  | Extended (_, _, Modified_Right) -> Error "Budded: invalid Modified_Right"
-
-let check_cursor c = 
-  match cursor_invariant c with
-  | Ok _ -> c
-  | Error s -> failwith s
-
-let _Cursor (t, n, c) = 
-  check_cursor @@ Cursor (t, n, c)
-
-let path_of_trail trail =
-  let rec aux (xs, xss) = function
-    | Top -> xs :: xss
-    | Budded (tr, _) -> aux ([], xs::xss) tr
-    | Left (tr, _, _) -> aux (Segment.Left :: xs, xss) tr
-    | Right (_, tr, _) -> aux (Segment.Right :: xs, xss) tr
-    | Extended (tr, seg, _) -> aux (seg @ xs, xss) tr
-  in
-  aux ([], []) trail

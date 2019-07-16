@@ -1,6 +1,6 @@
 (** Module encapsulating the values inserted in the Patricia tree. *)
 
-type t = private string
+type t
 (** Type of a value. *)
 
 val of_string : string -> t

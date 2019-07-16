@@ -16,10 +16,10 @@ val open_ : string -> t
 val close : t -> unit
 (** Close the root storage *)
   
-val add : t -> ?parent: Hash.t -> Hash.t -> Types.Index.t -> unit
+val add : t -> ?parent: Hash.t -> Hash.t -> Index.t -> unit
 (** Add a root *)
 
-val find : t -> Hash.t -> (Types.Index.t * Hash.t option) option
+val find : t -> Hash.t -> (Index.t * Hash.t option) option
 (** Find a root of the given hash *)
 
 val remove : t -> Hash.t -> unit

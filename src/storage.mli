@@ -1,7 +1,6 @@
-open Types
 open Node
 
-exception LoadFailure of error
+exception LoadFailure of Error.t
 
 val parse_cell : Context.t -> Index.t -> view
 (** Exposed for test *)

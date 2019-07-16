@@ -2,8 +2,6 @@
    Sparse merkle tree storage
 *)
 
-open Types
-
 type t
 
 val create : 
@@ -16,7 +14,6 @@ val create :
     Note that if the file already exists, the contents are cleaned away. 
 
     pos: the start position in the file
-    shared: if false, read only.
     length: initial size of the file in bytes
 *) 
 
@@ -34,9 +31,9 @@ val open_ :
 
 val hashcons : t -> Hashcons.t
 
-val stat : t -> Stat.t
-
 val close : t -> unit
+
+val stat : t -> Stat.t
 
 val new_index : t -> Stdint.Uint32.t
 (** Allocate 1 cell and return its index *)

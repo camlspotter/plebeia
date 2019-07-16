@@ -1,5 +1,5 @@
 module P =Plebeia.Impl
-open P.Error (* for >>= *)
+open P.Result (* for >>= *)
   
 (* unoptimized tree *)
 type t = 
@@ -19,8 +19,8 @@ type cursor = t * trail
 
 let get_node (t, _) = t
   
-let rec of_plebeia_node : P.Context.t -> P.node -> t = fun context -> function
-  | Disk (i, wit) -> of_plebeia_node context (View (P.load_node context i wit))
+let rec of_plebeia_node : P.Context.t -> P.Node.node -> t = fun context -> function
+  | Disk (i, wit) -> of_plebeia_node context (View (P.Node.load_node context i wit))
   | View n  -> 
       match n with
       | Bud (None, _, _) -> Tree Null

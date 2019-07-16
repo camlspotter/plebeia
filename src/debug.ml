@@ -1,7 +1,7 @@
 open Utils
 open Node
-open Types
-open Error
+open Cursor
+open Result
 
 let rec string_of_node : node -> int -> string = fun node indent ->
   (* pretty prints a tree to a string *)
@@ -43,8 +43,7 @@ module Dot = struct
     | Not_Indexed -> "i"
       
   let modified_rule = function
-    | Modified_Left -> "*_"
-    | Modified_Right -> "_*"
+    | Modified -> "*"
     | Unmodified (ir, _) -> indexing_rule ir
       
   let disk n = Printf.sprintf "%s [shape=box];" n
@@ -154,7 +153,7 @@ let () = Cursor.dot_of_cursor_ref := dot_of_cursor
  
 (* Bud -> Leaf and Bud -> Bud are invalid, but not excluded by the GADT *)
 let validate_node context (node : node) =
-  let rec aux : node -> (view, string) result = 
+  let rec aux : node -> (view, string) Result.t = 
     fun node ->
       let indexing_rule : view -> bool = function
         | Internal (_, _, Indexed _, _) -> true

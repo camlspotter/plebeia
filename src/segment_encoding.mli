@@ -6,4 +6,6 @@
 *)
 
 val encode : Segment.t -> string
+(** The length of the segment must be <= 222.  Otherwise the funciton fails. *)
+
 val decode : string -> Segment.t

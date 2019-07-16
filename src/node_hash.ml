@@ -109,3 +109,9 @@ let long_hash context node : (view * t) =
 let hash c n = 
   let v, lh = long_hash c n in
   v, shorten lh
+
+(*
+let hash (Cursor (trail, node, context)) = 
+  let v, h = Node_hash.hash context node in
+  _Cursor (trail, View v, context), h
+*)
