@@ -113,6 +113,7 @@ extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------
 leaf (Z)  |<- first 224 of hash ------------>| |<- -65 ------------------------------->|
 leaf (S)  |<- first 224 of hash ------------>| |<- -1 to -32 ------------------------->| (use the previous cell)
 leaf (M)  |<- first 224 of hash ------------>| |<- -33 to -64 ------------------------>| (use the two previous cells)
+link      |<- 192 0's ->|<-   child index  ->| |<- -254 ------------------------------>|
 leaf (P)  |<- first 224 of hash ------------>| |<- -255 ------------------------------>| (use the previous cell and some others)
 bud       |<- 192 0's ->|<-   child index  ->| |<- -256 ------------------------------>|
 empty bud |<- 1111111111111111111111111111 ->| |<- -256 ------------------------------>|
@@ -211,7 +212,7 @@ The value stored from the head of the cell at the position -2 to the previous ce
 The medium leaves are introduced to store several public keys whose sizes are 33 and 34 bytes including
 tags (of 1 byte) which do not fit with the small leaves.
 
-#### Large leaf in Plebeia
+#### Large leaf
 
 The tag is 2^32-255.
 
@@ -252,6 +253,13 @@ Cell chunk layout:
 
 The contents of a value are stored from the last cell chunk in the list whose cdr index is 0.
 The head of cell chunk list carries the last part of the contents.
+
+### Link
+
+Hash-consing can break the invariant of the internal node: neither of its sub-nodes is stored
+at the previous cell of it.  To work around this, a special Link node with tag -254 is 
+introduced to keep the invariant.  One of the sub-nodes are connected to the internal node
+via a link node which is placed in the previous cell of the internal node.
 
 ### Bud
 

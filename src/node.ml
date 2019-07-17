@@ -111,13 +111,16 @@ let view_indexed_invariant : view -> (unit, Error.t) Result.t = function
   | Leaf (_, Indexed _, _) -> Ok ()
   | Leaf (_, Not_Indexed, _) -> Ok ()
   | Leaf (_, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Leaf: invalid indexed"
-  | Internal (l, r, Indexed i, _) ->
+  | Internal (l, r, Indexed _i, _) ->
       begin match index l, index r with
         | None, _ -> Error "Internal: invalid Indexed"
         | _, None -> Error "Internal: invalid Indeced"
+(*
         | Some li, Some ri -> 
             if Index.(i - li = one || i - ri = one) then Ok ()
             else Error "Internal: invalid indices"
+*)
+        | _ -> Ok () (* we now use fat internals *)
       end
   | Internal (l, _r, Left_Not_Indexed, _) when not @@ indexed l -> Ok ()
   | Internal (_l, r, Right_Not_Indexed, _) when not @@ indexed r -> Ok ()

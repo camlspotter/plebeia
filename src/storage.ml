@@ -137,6 +137,10 @@ let rec parse_cell context i =
       let v = Value.of_string @@ C.copy buf 0 l in
       _Leaf (v, Indexed i, Hashed h)
 
+  | -254l -> (* linked *)
+      let i' = C.get_uint32 buf 24 in
+      parse_cell context i'
+      
   | -255l -> (* leaf whose value is in Plebeia *)
       let h = get_hash buf in
       let (bufs, _size) = Chunk.get_chunks context @@ Index.pred i in
@@ -235,6 +239,39 @@ let write_medium_leaf context v =
 let write_large_leaf_to_plebeia context v =
   ignore @@ Chunk.write_to_chunks context 1000 (Value.to_string v)
 
+
+let write_leaf context v lh =
+  (* contents are ALREADY written *)
+  let h = Node_hash.shorten lh in
+  let i = Context.new_index context in
+  let len = Value.length v in
+  if len = 0 then begin
+    let buf = make_buf context i in
+    write_string (Hash.to_string h) buf 0 28;
+    set_index buf (Index.of_int (-65))
+  end else if len <= 64 then begin
+    let buf = make_buf context i in
+    write_string (Hash.to_string h) buf 0 28;
+    set_index buf (Index.of_int (-len)) (* 1 => -1  64 -> -64 *)
+  end else begin
+    let k = -255l in
+    let buf = make_buf context i in
+    let h = Hash.to_string h in
+    write_string h buf 0 28;
+    set_index buf (Index.of_int32 k)
+  end;
+  Stat.incr_written_leaves (Context.stat context);
+  Stat.incr_written_leaf_sizes (Context.stat context) len;
+  _Leaf (v, Indexed i, Hashed h), i, lh
+
+let write_link context i index =
+  (* |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 254 ------------------------>| *)
+  let buf = make_buf context i in
+  write_string zero_24 buf 0 24;
+  C.set_uint32 buf 24 index;
+  set_index buf (Index.of_int32 (-254l));
+  Stat.incr_written_links (Context.stat context)
+
 let write_internal context nl nr lh =
   (* internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| *)
   let h = Node_hash.shorten lh in
@@ -244,12 +281,19 @@ let write_internal context nl nr lh =
   let hstr = Hash.to_string h in
   let il = index nl in
   let ir = index nr in
-  let refer_to_left =
+
+  let refer_to_left, i =
     if i = Index.succ il then
       (* the following index refers to the right *)
-      false
-    else if i = Index.succ ir then true
-    else assert false
+      false, i
+    else if i = Index.succ ir then true, i
+    else begin
+      (* Fat internal *)
+      (* Write the link to the right at i *)
+      write_link context i ir;
+      let i = Index.succ i in
+      true, i
+    end 
   in
 
   (* 0 to 215 bits *)
@@ -289,44 +333,6 @@ let write_bud context n lh =
   set_index buf (Index.of_int32 (-256l));
   Stat.incr_written_buds (Context.stat context);
   _Bud (Some n, Indexed i, Hashed h), i, lh
-
-let write_leaf context v lh =
-  (* contents are ALREADY written *)
-  let h = Node_hash.shorten lh in
-  let i = Context.new_index context in
-  let len = Value.length v in
-  if len = 0 then begin
-    let buf = make_buf context i in
-    write_string (Hash.to_string h) buf 0 28;
-    set_index buf (Index.of_int (-65))
-  end else if len <= 64 then begin
-    let buf = make_buf context i in
-    write_string (Hash.to_string h) buf 0 28;
-    set_index buf (Index.of_int (-len)) (* 1 => -1  64 -> -64 *)
-  end else begin
-    let k = -255l in
-    let buf = make_buf context i in
-    let h = Hash.to_string h in
-    write_string h buf 0 28;
-    set_index buf (Index.of_int32 k)
-  end;
-  Stat.incr_written_leaves (Context.stat context);
-  Stat.incr_written_leaf_sizes (Context.stat context) len;
-  if len = 33 || len = 34 then begin
-    Stat.incr_written_33_34 (Context.stat context) v
-  end;
-  _Leaf (v, Indexed i, Hashed h), i, lh
-
-let write_shared_leaf context index v lh =
-  (* |<- 192 0's ->|<-   child index  ->| |<- 2^32 - 254 ------------------------>| *)
-  let h = Node_hash.shorten lh in
-  let i = Context.new_index context in
-  let buf = make_buf context i in
-  write_string zero_24 buf 0 24;
-  C.set_uint32 buf 24 index;
-  set_index buf (Index.of_int32 (-254l));
-  Stat.incr_written_leaves (Context.stat context);
-  _Leaf (v, Indexed i, Hashed h), i, lh
 
 let write_extender context seg n lh =
   (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
@@ -376,6 +382,9 @@ let commit_node context node =
         (* if the size of the value is 1 <= size <= 32, the contents are written
            to the previous index of the leaf *)
         let len = Value.length value in
+
+  if len <> 0 then Stat.incr_written_leaf_sizes' (Context.stat context) len;
+
         let create_new () =
           if len = 0 then begin
             write_leaf context value lh
@@ -397,7 +406,8 @@ let commit_node context node =
           | Error e -> failwith e
           | Ok (Some index) ->
               let lh = Node_hash.of_leaf value (* XXX inefficient! *) in
-              write_shared_leaf context index value lh
+              let h = Node_hash.shorten lh in
+              _Leaf (value, Indexed index, Hashed h), index, lh
           | Ok None -> 
               let v, i, lh = create_new () in
               begin match Hashcons.add hashcons value i with
