@@ -1,88 +1,102 @@
 (* Implementation of the root table.
    
    All the data should be in memory.
-   Very simple append only format on disk.
-
-   TODO: each add/remove accesses disk.  We can make the IO buffered.
 *)
+
+module C = Storage.Cstruct
+
 type t = 
-  { tbl : (Hash.t, (Index.t * Hash.t option)) Hashtbl.t  (* all are in the memory *)
-  ; fd : Unix.file_descr
+  { tbl : (Hash.t, (Index.t * Index.t option)) Hashtbl.t  (* all are in the memory *)
+  ; mutable last_commit_index : Index.t option
+  ; storage : Storage.t (* == context.storage *)
+  ; context : Context.t
   }
 
-let index_removed = Stdint.Uint32.max_int
-(* Special index to express "removed".  
-   No problem of conflict since 2^32-1 is invalid for an index.
+(* commits
+
+|0        19|20      23|24        27|28      31|
+|<- meta  ->|<- prev ->|<- parent ->|<- idx  ->|
+
 *)
-                      
-let none = String.make 28 '\000'
 
-let exists = Sys.file_exists
+type commit = 
+  { commit_meta : string (* 20 bytes *)
+  ; commit_prev : Index.t option
+  ; commit_parent : Index.t option
+  ; commit_index : Index.t
+  }
 
-let create path =
-  let open Unix in
-  let fd = openfile path [ O_RDWR; O_CREAT; O_TRUNC ] 0o644 in
-  { tbl = Hashtbl.create 1001; fd }
+let write_commit storage commit =
+  let i = Storage.new_index storage in
+  let buf = Storage.make_buf storage i in
+  C.set_index buf 28 commit.commit_index;
+  C.set_index buf 24 (Utils.Option.default Index.zero commit.commit_parent);
+  C.set_index buf 20 (Utils.Option.default Index.zero commit.commit_prev);
+  C.write_string commit.commit_meta buf 0 20;
+  i
 
-let read_commit fd =
-  let open Unix in
-  let buf = Bytes.create 60 in (* 28 + 28 + 4 *)
-  let r = read fd buf 0 60 in
-  if r = 0 then None (* EOF *)
-  else if r <> 60 then Utils.failwithf "Roots.read_commit: garbage of %d bytes found" r
-  else begin
-    Some (Hash.of_string @@ Bytes.sub_string buf 0 28,
-          (let cstr = Cstruct.of_bytes buf in
-           Utils.Cstruct.get_uint32 cstr 28,
+let read_commit storage i =
+  let buf = Storage.make_buf storage i in
+  let zero_then_none x = if x = Index.zero then None else Some x in
+  let commit_index = C.get_index buf 28 in
+  let commit_parent = zero_then_none @@ C.get_index buf 24 in
+  let commit_prev = zero_then_none @@ C.get_index buf 20 in
+  let commit_meta = C.copy buf 0 20 in
+  { commit_index ; commit_parent ; commit_prev ; commit_meta }
 
-           let s = Bytes.sub_string buf 32 28 in
-           if s = none then None else Some (Hash.of_string s))
-          )
-  end
+(* Cache
+
+|0    23|24      27|28      31|
+|   0   |<- prev ->|<- leaf ->|
     
-let write_commit fd ?parent hash index =
-  let open Unix in
-  let hash = (hash : Hash.t :> string) in
-  let buf = Bytes.create 60 in
-  Bytes.blit_string hash 0 buf 0 28;
-  let cstr = Cstruct.create 4 in
-  Utils.Cstruct.set_uint32 cstr 0 index;
-  Cstruct.blit_to_bytes cstr 0 buf 28 4;
-  Bytes.blit_string (match parent with None -> none | Some p -> (p : Hash.t :> string)) 0 buf 32 28;
-  let w = single_write fd buf 0 60 in
-  if w <> 60 then Utils.failwithf "Roots.write_commit: failed (%d bytes written)" w
+let write_cache context previous_cache_idx leaf_idx size     
+*)
 
-let open_ path =
-  let open Unix in
-  let fd = openfile path [ O_RDWR ] 0o644 in
-  let tbl = Hashtbl.create 1001 in
-  let rec loop () =
-    match read_commit fd with
-    | None -> { tbl; fd }
-    | Some (h,(i,_)) when i = index_removed -> 
-        Hashtbl.remove tbl h;
-        loop ()
-    | Some (h,(i,p)) -> 
-        Hashtbl.replace tbl h (i,p);
-        loop ()
+let pp_entry ppf (hash, (index, parent)) =
+  let f fmt = Format.fprintf ppf fmt in
+  f "%S at %Ld (parent=%a)@." 
+    (Hash.to_string hash) 
+    (Index.to_int64 index)
+    (fun _ppf -> function
+       | None -> f "none"
+       | Some x -> f "%Ld" (Index.to_int64 x)) parent
+
+let read_commits t =
+  let rec aux = function
+    | None -> ()
+    | Some i ->
+        let commit = read_commit t.storage i in
+        let h = match Node.(hash_of_view @@ load_node t.context commit.commit_index Not_Extender) with
+          | None -> assert false
+          | Some h -> h
+        in
+        if Hashtbl.mem t.tbl h then assert false (* hash collision *)
+        else Hashtbl.add t.tbl h (commit.commit_index, commit.commit_parent);
+        Format.eprintf "read %a@." pp_entry (h, (commit.commit_index, commit.commit_parent));
+        aux commit.commit_prev
   in
-  loop ()
-
-let open_ path = if not @@ exists path then create path else open_ path
+  aux t.last_commit_index
   
-let add { tbl; fd } ?parent hash index =
-  Hashtbl.replace tbl hash (index, parent);
-  write_commit fd ?parent hash index;
-  Format.eprintf "Added root %S at %Ld@." (Hash.to_string hash) (Index.to_int64 index)
+let write_commit t ?parent index =
+  let commit_prev = t.last_commit_index in
+  let commit = { commit_prev ; commit_index = index ; commit_parent = parent ; commit_meta = "dummydummydummydummy" } in
+  let i = write_commit t.storage commit in
+  t.last_commit_index <- Some i;
+  Storage.write_last_commit_index t.storage (Some i)
+
+let add t ?parent hash index =
+  Hashtbl.replace t.tbl hash (index, parent);
+  write_commit t ?parent index;
+  Format.eprintf "Added root %a@." pp_entry (hash, (index, parent))
 
 let mem { tbl ; _ } = Hashtbl.mem tbl
 
-let remove ({ tbl; fd } as t) hash =
-  if mem t hash then begin
-    Hashtbl.remove tbl hash;
-    write_commit fd hash index_removed
-  end else ()
-
 let find { tbl ; _ } = Hashtbl.find_opt tbl
 
-let close { fd ; _ } = Unix.close fd
+let create context = 
+  let storage = context.Context.storage in
+  let last_commit_index = Storage.read_last_commit_index storage in
+  let t = { tbl = Hashtbl.create 101 ; last_commit_index ; storage ; context } in
+  read_commits t;
+  t
+

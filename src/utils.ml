@@ -29,6 +29,7 @@ module Exn = struct
     | x -> fin (); x
 end
 
+(* XXX to be removed *)
 module Cstruct = struct
   open Stdint
 

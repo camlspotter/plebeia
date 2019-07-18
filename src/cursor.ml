@@ -651,4 +651,5 @@ let fold ~init c f =
       in
       Ok (aux init [] c)
   
-let stat (Cursor (_,_,context)) = Context.stat context
+let stat (Cursor (_,_,{ stat ; _ })) = stat
+

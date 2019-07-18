@@ -2,7 +2,15 @@
    Sparse merkle tree storage
 *)
 
-type t
+type t = {
+  storage : Storage.t ;
+
+  hashcons : Hashcons.t ;
+  (* Hashcons tbl *)
+
+  stat : Stat.t ;
+  (* Statistics *)
+}
 
 val create : 
   ?pos:int64 
@@ -29,24 +37,4 @@ val open_ :
     shared: if false, read only.
 *)
 
-val hashcons : t -> Hashcons.t
-
 val close : t -> unit
-
-val stat : t -> Stat.t
-
-val new_index : t -> Stdint.Uint32.t
-(** Allocate 1 cell and return its index *)
-
-val new_indices : t -> int -> Stdint.Uint32.t
-(** Allocate the give number of contiguous cells and return the first index *)
-
-val get_cell : t -> Index.t -> Cstruct.t
-(** Map the cell of the given index to Cstruct.t *)
-   
-val get_bytes : t -> Index.t -> int -> Cstruct.t
-(** Map the bytes starting from the cell of the given index to Cstruct.t *)
-
-
-val read_last_commit_index : t -> Index.t option
-val write_last_commit_index : t -> Index.t option -> unit

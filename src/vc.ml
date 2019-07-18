@@ -5,52 +5,46 @@ type cursor = Cursor.t
 
 type t = 
   { roots : Roots.t
-  ; roots2 : Roots2.t
   ; context : Context.t
   }
 
 let create ?context_pos ?context_length ~prefix () =
-  let roots = Roots.create (prefix ^ ".roots") in
   let hashcons = Hashcons.create (prefix ^ ".hash") in
   let context = 
     Context.create ?pos:context_pos ?length:context_length
       ~hashcons
       (prefix ^ ".context")
   in
-  let roots2 = Roots2.create context in
-  { roots ; roots2 ; context }
+  let roots = Roots.create context in
+  { roots ; context }
 
 let open_ ?context_pos ~prefix =
-  let roots = Roots.open_ (prefix ^ ".roots") in
   let hashcons = Hashcons.open_ (prefix ^ ".hash") in
   let context = 
     Context.open_ ?pos:context_pos ~shared:true
       ~hashcons
       (prefix ^ ".context")
   in
-  let roots2 = Roots2.create context in
-  { roots ; roots2 ; context }
+  let roots = Roots.create context in
+  { roots ; context }
 
-let close { roots ; context ; _ } =
-  Context.close context;
-  Roots.close roots
+let close { context ; _ } = Context.close context
 
 let empty_cursor { context ; _ } = Cursor.empty context
 
 let hash = Cursor_hash.hash
 
-let commit { roots ; roots2 ; context } (Cursor (_, _, context') as c) =
+let commit { roots ; context } (Cursor (_, _, context') as c) =
   assert (context == context');
   let (cur, i, h) = Cursor_storage.commit_cursor c in
   match Roots.find roots h with
   | None ->
       Roots.add roots h i;
-      Roots2.add roots2 h i;
       (cur, h)
   | Some _i' -> Pervasives.failwith "hash collision"
 
-let checkout { roots2 ; context ; _ } hash =
-  match Roots2.find roots2 hash with
+let checkout { roots ; context ; _ } hash =
+  match Roots.find roots hash with
   | None -> None
   | Some (index, _parent) ->
       Some (_Cursor (_Top, 
@@ -76,5 +70,5 @@ let create_subtree = Deep.create_subtree
 let subtree_or_create = Deep.subtree_or_create
 let deep = Deep.deep                          
 let copy = Deep.copy
-let stat { context ; _ } = Context.stat context
+let stat { context = { stat ; _ } ; _ } = stat
 

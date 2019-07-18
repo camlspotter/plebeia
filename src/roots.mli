@@ -4,23 +4,22 @@
    Very simple append only format on disk.
 *)
 
-type t
+type t = 
+  { tbl : (Hash.t, (Index.t * Index.t option)) Hashtbl.t  (* all are in the memory *)
+  ; mutable last_commit_index : Index.t option
+  ; storage : Storage.t (* == context.storage *)
+  ; context : Context.t
+  }
 (** Storage type *)
-  
-val create : string -> t
-(** Create a new root storage.  Note that if the file already exists, it is truncated. *)
 
-val open_ : string -> t
-(** Create a new, or open an exising root storage *)
+val create : Context.t -> t
 
-val close : t -> unit
-(** Close the root storage *)
+val read_commits : t -> unit
   
-val add : t -> ?parent: Hash.t -> Hash.t -> Index.t -> unit
+val add : t -> ?parent: Index.t -> Hash.t -> Index.t -> unit
 (** Add a root *)
 
-val find : t -> Hash.t -> (Index.t * Hash.t option) option
-(** Find a root of the given hash *)
+val mem : t -> Hash.t -> bool
 
-val remove : t -> Hash.t -> unit
-(** Remove a root.  If it does not exist, do nothing *)
+val find : t -> Hash.t -> (Index.t * Index.t option) option
+(** Find a root of the given hash *)

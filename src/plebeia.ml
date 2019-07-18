@@ -7,7 +7,7 @@
    debugging.
 *)
 module Impl = struct
-  
+
   (* Base *)
   module Error            = Error
   module Utils            = Utils
@@ -29,13 +29,13 @@ module Impl = struct
   (* Storage *)
   module Segment_encoding = Segment_encoding
   module Storage          = Storage
+  module Context_storage  = Context_storage
   module Cursor_storage   = Cursor_storage
   module Hashcons         = Hashcons
 
   (* High level *)
   module Deep             = Deep
   module Roots            = Roots
-  module Roots2           = Roots2
   module Vc               = Vc
 
   (* Helper *)
@@ -44,7 +44,7 @@ module Impl = struct
 
   (* Experimental *)
   module Key              = Key
-end 
+end
 
 include (Impl : Plebeia_intf.S)
 (* Standard APIs, module interfaces are restricted. *)

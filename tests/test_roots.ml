@@ -2,9 +2,8 @@ open Plebeia.Impl
 open Roots
 open Test_utils
 open Stdint
-    
-let test_with_roots f =
-  with_temp_file ~postfix:"root" f
+
+let () = exit 0
 
 module RS = Random.State
               
@@ -16,18 +15,31 @@ let random_index st =
 
 let st = Random.State.make_self_init ()
 
-let () = test_with_roots @@ fun fn ->
-  let t = create fn in
-  let h = random_hash st in
-  let i = random_index st in
-  add t h i;
-  close t;
-  let t = open_ fn in
-  begin match find t h with
-    | None -> assert false
-    | Some (i', _) when i <> i' -> 
-        Format.eprintf "%Ld %Ld@." (Index.to_int64 i) (Index.to_int64 i');
-        assert false
-    | _ -> ()
-  end;
-  close t
+let () = 
+  test_with_context 100000 @@ fun c ->
+  let t = create c in
+  let choose xs =
+    let pos = RS.int st (List.length xs) in
+    List.nth xs pos
+  in
+  let rec loop acc = function
+    | 0 -> ()
+    | n ->
+        let v = Value.of_string @@ string_of_int n in
+        let lh = Node_hash.of_leaf v in
+        let h = Node_hash.shorten lh in
+        let _, i, _ = Context_storage.write_leaf c v lh in
+        let parent = match acc with
+          | [] -> None
+          | _ -> 
+              if RS.int st 2 = 0 then None
+              else Some (choose acc)
+        in
+        Roots.add t ?parent h i;
+        loop (i::acc) (n-1)
+  in
+  loop [] 100;
+  let t' = create c in
+  assert (List.sort compare (Hashtbl.fold (fun k v acc -> (k,v)::acc) t.tbl [])
+          = List.sort compare (Hashtbl.fold (fun k v acc -> (k,v)::acc) t'.tbl []))
+

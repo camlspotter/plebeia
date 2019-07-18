@@ -1,35 +1,48 @@
-open Node
+type storage
+type t = storage
 
-exception LoadFailure of Error.t
-
-val parse_cell : Context.t -> Index.t -> view
-(** Exposed for test *)
-
-module Chunk : sig
-  (* XXX move to tests *)
-  val test_write_read : Random.State.t -> Context.t -> unit
+module Cstruct : sig
+  include module type of struct include Cstruct end
+  val get_index : Cstruct.t -> int -> Index.t
+  val set_index : Cstruct.t -> int -> Index.t -> unit
+  val get_hash : Cstruct.t -> int -> Hash.t
+  val write_string : string -> Cstruct.t -> int -> int -> unit
 end
 
-val commit_node : Context.t -> node -> node * Index.t * Hash.t
-(** Write a node to the storage, and returns the updated version 
-    of the node with its index and hash *)
-    
-val load_node : Context.t -> Index.t -> extender_witness -> view
-(** Read the node from context.array, parse it and create a view node with it. *)
+module Header : sig
+  type t = 
+    { next_index : Index.t 
+    ; last_root_index : Index.t option
+    ; last_cache_index : Index.t option
+    }
 
-val load_node_fully : Context.t -> node -> node
-(** Recusively visit and load all the subnodes in memory.
-   Only for test purposes
-*)
+  val read : storage -> t
+  val write : storage -> t -> unit
 
-type commit = 
-  { commit_meta : string (* 20 bytes *)
-  ; commit_prev : Index.t option
-  ; commit_parent : Index.t option
-  ; commit_index : Index.t
-  }
+end
 
-val read_commit : Context.t -> Index.t -> commit
-val write_commit : Context.t -> commit -> Index.t
+val get_cell : t -> Index.t -> Cstruct.t
+val get_bytes : t -> Index.t -> int -> Cstruct.t
 
-val write_leaf : Context.t -> Value.t -> Node_hash.t -> view * Stdint.uint32 * Node_hash.t
+val create : ?pos:int64 -> ?length:int -> string -> t
+val open_ : ?pos:int64 -> ?shared:bool -> string -> t
+val close : t -> unit
+
+val may_resize : Index.t -> t -> unit
+
+val set_current_length : t -> Index.t -> unit
+val read_last_commit_index : t -> Index.t option
+val write_last_commit_index : t -> Index.t option -> unit
+
+val new_index : t -> Index.t
+val new_indices : t -> int -> Index.t
+
+val make_buf : t -> Index.t -> Cstruct.t
+val make_buf2 : t -> Index.t -> Cstruct.t      
+
+module Chunk : sig
+  val read : t -> Index.t -> string
+  val write : t -> ?max_cells_per_chunk:int -> string -> Index.t
+                                                           
+  val test_write_read : Random.State.t -> t -> unit
+end
