@@ -9,20 +9,16 @@ type t =
   }
 
 let create ?context_pos ?context_length ~prefix () =
-  let hashcons = Hashcons.create (prefix ^ ".hash") in
   let context = 
     Context.create ?pos:context_pos ?length:context_length
-      ~hashcons
       (prefix ^ ".context")
   in
   let roots = Roots.create context in
   { roots ; context }
 
 let open_ ?context_pos ~prefix =
-  let hashcons = Hashcons.open_ (prefix ^ ".hash") in
   let context = 
     Context.open_ ?pos:context_pos ~shared:true
-      ~hashcons
       (prefix ^ ".context")
   in
   let roots = Roots.create context in
@@ -40,6 +36,7 @@ let commit { roots ; context } (Cursor (_, _, context') as c) =
   match Roots.find roots h with
   | None ->
       Roots.add roots h i;
+      Storage.Checkpoint.check context.Context.storage;
       (cur, h)
   | Some _i' -> Pervasives.failwith "hash collision"
 

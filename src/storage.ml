@@ -9,28 +9,13 @@ module Int64 = Stdint.Int64
    restricts the maximum file size in 32bit arch to [1_073_741_823], which is roughly just 1GB.
 *)
 
-module Cstruct = struct
-  open Stdint
+module C = Xcstruct
 
-  include Cstruct
-  include Cstruct.LE (* Intel friendly *)
-
-  (* The original [uint32] functions of Cstruct returns **[int32]**.
-     Very confusing, so we patch them here. *)
-  let get_uint32 buf x = Uint32.of_int32 @@ Cstruct.LE.get_uint32 buf x
-  let set_uint32 buf x v = Cstruct.LE.set_uint32 buf x @@ Uint32.to_int32 v
-  let get_index buf x = Index.of_uint32 @@ get_uint32 buf x
-  let set_index buf x v = set_uint32 buf x @@ Index.to_uint32 v
-  let get_hash buf pos = Hash.of_string @@ copy buf pos (pos+28)
-
-  (* Cstruct.blit_from_string, but make sure all the string contents are written *)
-  let write_string s buf off len =
-    let slen = String.length s in
-    if slen <> len then begin Format.eprintf "write_string: %d <> %d@." slen len; assert false end;
-    blit_from_string s 0 buf off len
-end
-
-module C = Cstruct
+type checkpoint = 
+  { cp_previous_index : Index.t option
+  ; cp_last_root_index : Index.t option
+  ; cp_last_cache_index : Index.t option
+  }
 
 type storage = {
   mutable array : Bigstring.t ;
@@ -42,6 +27,10 @@ type storage = {
 
   mutable mapped_length : Index.t ;
 
+  mutable last_checkpoint_index : Index.t option ;
+  mutable last_root_index : Index.t option ;
+  mutable last_cache_index : Index.t option ;
+  
   fd : Unix.file_descr ; 
   (* File descriptor to the mapped file *)
 
@@ -50,10 +39,19 @@ type storage = {
 
   shared : bool ;
   (* Write to the file or not *)
+  
+  version : int ;
 }
 
 type t = storage
 
+let set_last_checkpoint_index t x = t.last_checkpoint_index <- x
+let set_last_root_index t x       = t.last_root_index <- x
+let set_last_cache_index t x      = t.last_cache_index <- x
+let get_last_checkpoint_index t   = t.last_checkpoint_index
+let get_last_root_index t         = t.last_root_index
+let get_last_cache_index t        = t.last_cache_index
+    
 (* Constants *)
 
 (* 2^32 - 256 .. 2^32 - 1 are used for tags for nodes
@@ -66,57 +64,7 @@ let max_index = Index.(max_int - of_int 256)
 let bytes_per_cell = 32L
 
 
-(* Header *)
-  
-module Header = struct
-
-  type t = 
-    { next_index : Index.t 
-    ; last_root_index : Index.t option
-    ; last_cache_index : Index.t option
-    }
-
-  (* Header is the first cell, which carries the current length *)
-  (*
-  |0                19|20        23|24        27|28        31|
-  |...................|<- i hash ->|<- i root ->|<- i last ->|
-  *)
-  
-  let zero_then_none x = if x = Index.zero then None else Some x
-    
-  let raw_read array =
-    let cstr = Cstruct.of_bigarray ~off:0 ~len:32 array in
-    let next_index = Cstruct.get_index cstr 28 in
-    let last_root_index = zero_then_none @@ Cstruct.get_index cstr 24 in
-    let last_cache_index = zero_then_none @@ Cstruct.get_index cstr 20 in
-    { next_index ; last_root_index ; last_cache_index }
-
-  let read t = raw_read t.array
-
-  let raw_write array { next_index ; last_root_index ; last_cache_index } =
-    (* XXX atomic! *)
-    let cstr = Cstruct.of_bigarray ~off:0 ~len:32 array in
-    Cstruct.set_index cstr 28 next_index;
-    Cstruct.set_index cstr 24 (Utils.Option.default Index.zero last_root_index);
-    Cstruct.set_index cstr 20 (Utils.Option.default Index.zero last_cache_index)
-
-  let write t = raw_write t.array
-    
-end
-
-(* Access *)
-
-let get_cell t i =
-  (* XXX May overflow in 32bits arch! *)
-  let i = Index.to_int i in 
-  Cstruct.of_bigarray ~off:(i*32) ~len:32 t.array
-
-let get_bytes t i n =
-  (* XXX May overflow in 32bits arch! *)
-  let i = Index.to_int i in 
-  Cstruct.of_bigarray ~off:(i*32) ~len:n t.array
-
-(* Initialize and resize *)
+(* Resize *)
 
 let resize_step = Index.of_int 1000_000 (* 32MB *)
 
@@ -146,6 +94,113 @@ let may_resize =
       resize required t
     else ()
 
+
+(* Access *)
+
+let get_cell t i =
+  (* XXX May overflow in 32bits arch! *)
+  let i = Index.to_int i in 
+  C.of_bigarray ~off:(i*32) ~len:32 t.array
+
+let get_bytes t i n =
+  (* XXX May overflow in 32bits arch! *)
+  let i = Index.to_int i in 
+  C.of_bigarray ~off:(i*32) ~len:n t.array
+
+let new_index c =
+  (* XXX check of size *)
+  let i = c.current_length in
+  let i' = Index.succ i in
+  c.current_length <- i';
+  may_resize i' c;
+  i
+
+let new_indices c n =
+  (* XXX check of size *)
+  assert (n > 0);
+  let i = c.current_length in
+  let i' = Index.(i + of_int n) in
+  c.current_length <- i';
+  may_resize i' c;
+  i
+
+module Checkpoint = struct
+
+  type t = checkpoint
+
+  (*
+  |0                     |16        19|20        23|24        27|28       31|
+  |< hash of the right ->|<- i hash ->|<- i root ->|<- i prev ->|<- -253  ->|
+  *)
+  
+  let zero_then_none x = if x = Index.zero then None else Some x
+    
+  module Blake2B_16 = struct
+    open Blake2.Blake2b
+
+    let of_string s =
+      let b = init 16 in
+      update b (Bigstring.of_string s);
+      let Hash bs = final b in
+      Bigstring.to_string bs
+  end
+  
+  let raw_read array i =
+    let i = Index.to_int i in
+    let cstr = C.of_bigarray ~off:(i*32) ~len:32 array in
+    let tag = C.get_index cstr 28 in
+    if Index.to_int32 tag <> -253l then None
+    else 
+      let cp_previous_index = zero_then_none @@ C.get_index cstr 24 in
+      let cp_last_root_index = zero_then_none @@ C.get_index cstr 20 in
+      let cp_last_cache_index = zero_then_none @@ C.get_index cstr 16 in
+      let h = C.copy cstr 0 16 in
+      let string_16_27 = C.copy cstr 16 12 in
+      let h' = Blake2B_16.of_string string_16_27 in
+      if h <> h' then None
+      else Some { cp_previous_index ; cp_last_root_index ; cp_last_cache_index }
+
+  let _read t i = raw_read t.array i
+
+  let write t = function
+    | None -> None
+    | Some { cp_previous_index ; cp_last_root_index ; cp_last_cache_index } ->
+        (* The write is NOT atomic but corruption can be detected by the checksum *)
+        let i = new_index t in
+        let cstr = get_cell t i in
+        C.set_index cstr 24 (Utils.Option.default Index.zero cp_previous_index);
+        C.set_index cstr 20 (Utils.Option.default Index.zero cp_last_root_index);
+        C.set_index cstr 16 (Utils.Option.default Index.zero cp_last_cache_index);
+        let string_16_27 = C.copy cstr 16 12 in
+        let h = Blake2B_16.of_string string_16_27 in
+        C.write_string h cstr 0 16;
+        Some i
+
+  let find array i0 =
+    let rec aux i =
+      match raw_read array i with
+      | None when i = Index.zero -> None
+      | None -> aux (Index.pred i)
+      | Some cp -> Some (cp,i)
+    in
+    match aux i0 with
+    | None ->
+        Format.eprintf "No checkpoint found.  %Ld cells are discarded@." (Index.to_int64 i0);
+        None
+    | Some (cp,i) ->
+        Format.eprintf "Checkpoint found.  %Ld cells are discarded@." (Index.(to_int64 (i0 - i)));
+        Some (cp,i)
+          
+  let check t =
+    let cp = { cp_previous_index = t.last_checkpoint_index ;
+               cp_last_root_index = t.last_root_index ;
+               cp_last_cache_index = t.last_cache_index } in
+    match write t (Some cp) with
+    | None -> ()
+    | Some i -> t.last_checkpoint_index <- Some i
+    
+end
+
 let create ?(pos=0L) ?length fn =
   let fd = Unix.openfile fn [O_CREAT; O_TRUNC; O_RDWR] 0o644 in
   let mapped_length = 
@@ -160,15 +215,22 @@ let create ?(pos=0L) ?length fn =
         | _ -> assert false
   in
   let array = make_array fd ~pos ~shared:true mapped_length in
-  Header.raw_write array { next_index = Index.one (* zero is for header *)
-                         ; last_root_index = None
-                         ; last_cache_index = None };
+
+  let version = 1 in
+  let cstr = C.of_bigarray ~off:0 ~len:32 array in
+  C.blit_from_string ("PLEBEIA " ^ String.make 28 '\000') 0 cstr 0 32;
+  C.set_index cstr 24 (Index.of_int version);
+
   { array ;
     mapped_length ;
-    current_length = Index.one ;
+    current_length = Index.one ; (* #0 is unused, since 0 is for none *)
+    last_checkpoint_index = None ;
+    last_root_index = None ;
+    last_cache_index = None ;
     fd ; 
     pos ;
     shared = true ;
+    version
   }
 
 let open_ ?(pos=0L) ?(shared=false) fn =
@@ -180,53 +242,42 @@ let open_ ?(pos=0L) ?(shared=false) fn =
     let st = Unix.LargeFile.fstat fd in
     let sz = Int64.sub st.Unix.LargeFile.st_size pos in (* XXX think about the garbage *)
     assert (Int64.rem sz 32L = 0L);
-    let cells = Int64.(sz / 32L - 1L (* header *) ) in 
+    let cells = Int64.(sz / 32L) in 
     if cells > Index.to_int64 max_index then assert false;
     let mapped_length = Index.of_int64 cells in
     let array = make_array fd ~pos ~shared mapped_length in
-    let header = Header.raw_read array in
+
+    let cstr = C.of_bigarray ~off:0 ~len:32 array in
+    if not (C.copy cstr 0 8 = "PLEBEIA ") then failwith "This is not Plebeia data file";
+    let version = Index.to_int @@ C.get_index cstr 24 in
+
+    C.set_index cstr 24 (Index.of_int 1); (* version *)
+
+    let last_checkpoint_index, last_root_index, last_cache_index = 
+      match Checkpoint.find array (Index.pred mapped_length) with
+      | None -> None, None, None
+      | Some (cp,i) -> Some i, cp.cp_last_root_index, cp.cp_last_cache_index
+    in
+    let current_length = 
+      match last_checkpoint_index with
+      | None -> Index.one
+      | Some i -> Index.succ i
+    in
     { array ;
       mapped_length ;
-      current_length = header.next_index ;
+      current_length ;
+      last_checkpoint_index ;
+      last_root_index ;
+      last_cache_index ;
       fd = fd ;
       pos ; 
       shared ;
+      version
     }
   end
 
-(* XXX must be changed *)  
-let set_current_length c i =
-  c.current_length <- i;
-  let h = Header.read c in
-  Header.write c { h with next_index = i }
-  
-let read_last_commit_index c =
-  let h = Header.read c in 
-  h.last_root_index 
-  
-let write_last_commit_index c i =
-  let h = Header.read c in
-  Header.write c { h with last_root_index = i }
-  
-let new_index c =
-  (* XXX check of size *)
-  let i = c.current_length in
-  let i' = Index.succ i in
-  set_current_length c i';
-  may_resize i' c;
-  i
-
-let new_indices c n =
-  (* XXX check of size *)
-  assert (n > 0);
-  let i = c.current_length in
-  let i' = Index.(i + of_int n) in
-  set_current_length c i';
-  may_resize i' c;
-  i
-
-let close ({ fd ; current_length ; _ } as c) =
-  set_current_length c current_length;
+let close ({ fd ; _ } as t) =
+  Checkpoint.check t;
   Unix.close fd
 
 let make_buf storage i = get_cell storage i

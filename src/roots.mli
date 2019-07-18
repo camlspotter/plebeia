@@ -6,8 +6,6 @@
 
 type t = 
   { tbl : (Hash.t, (Index.t * Index.t option)) Hashtbl.t  (* all are in the memory *)
-  ; mutable last_commit_index : Index.t option
-  ; storage : Storage.t (* == context.storage *)
   ; context : Context.t
   }
 (** Storage type *)

@@ -29,7 +29,7 @@ module Impl = struct
   (* Storage *)
   module Segment_encoding = Segment_encoding
   module Storage          = Storage
-  module Context_storage  = Context_storage
+  module Node_storage     = Node_storage
   module Cursor_storage   = Cursor_storage
   module Hashcons         = Hashcons
 

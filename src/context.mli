@@ -15,7 +15,6 @@ type t = {
 val create : 
   ?pos:int64 
   -> ?length:int 
-  -> hashcons: Hashcons.t
   -> string (* path *)
   -> t
 (** Create a new context storage.  
@@ -28,7 +27,6 @@ val create :
 val open_ : 
   ?pos:int64 
   -> ?shared:bool 
-  -> hashcons: Hashcons.t
   -> string (* path *)
   -> t
 (** Open an existing context storage.

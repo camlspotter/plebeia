@@ -3,8 +3,6 @@ open Roots
 open Test_utils
 open Stdint
 
-let () = exit 0
-
 module RS = Random.State
               
 let random_hash st =
@@ -26,9 +24,8 @@ let () =
     | 0 -> ()
     | n ->
         let v = Value.of_string @@ string_of_int n in
-        let lh = Node_hash.of_leaf v in
-        let h = Node_hash.shorten lh in
-        let _, i, _ = Context_storage.write_leaf c v lh in
+        let node = Node.new_leaf v in
+        let _node, i, h = Node_storage.commit_node c node in
         let parent = match acc with
           | [] -> None
           | _ -> 
@@ -40,6 +37,5 @@ let () =
   in
   loop [] 100;
   let t' = create c in
-  assert (List.sort compare (Hashtbl.fold (fun k v acc -> (k,v)::acc) t.tbl [])
-          = List.sort compare (Hashtbl.fold (fun k v acc -> (k,v)::acc) t'.tbl []))
-
+  assert (List.sort compare (List.of_seq @@ Hashtbl.to_seq t.tbl)
+          = List.sort compare (List.of_seq @@ Hashtbl.to_seq t'.tbl))

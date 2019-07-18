@@ -1,61 +1,84 @@
 (* Many small leaves share the same value, therefore sharing the nodes
    can reduce the storage usage tremendously.
+   
+storage format
+   * index to the value
+   * index to the previous record
+
+|0        7|8            31|
+|<- prev ->|<- 7 indexes ->|
+   
 *)
+
+module C = Xcstruct
 
 type t = 
   { tbl : (int * Value.t, Index.t) Hashtbl.t
-  ; fd : Unix.file_descr
+  ; mutable journal : Index.t list
+  ; storage : Storage.t
   }
-      
-let create path =
-  let open Unix in
-  let fd = openfile path [ O_RDWR; O_CREAT; O_TRUNC ] 0o644 in
-  { tbl = Hashtbl.create 1001; fd }
 
-let read_entry fd =
-  let open Unix in
-  let buf = Bytes.create 44 in (* 36 + 4 + 4 *)
-  let r = read fd buf 0 44 in
-  if r = 0 then None (* EOF *)
-  else if r <> 44 then Utils.failwithf "Hashcons.read_entry: garbage of %d bytes found" r
-  else begin
-    let cstr = Cstruct.of_bytes buf in
-    let size = Stdint.Uint32.to_int @@ Utils.Cstruct.get_uint32 cstr 0 in
-    let index = Utils.Cstruct.get_uint32 cstr 4 in
-    let v = Value.of_string @@ Bytes.sub_string buf 8 size in
-    Some (size, v, index)
-  end
-
-let write_entry fd v index =
-  let open Unix in
-  let v = Value.to_string v in
-  let size = String.length v in
-  assert (size <= 36);
-  let buf = Bytes.create 44 in
-  Bytes.blit_string v 0 buf 8 size;
-  let cstr = Cstruct.create 8 in
-  Utils.Cstruct.set_uint32 cstr 0 (Stdint.Uint32.of_int size);
-  Utils.Cstruct.set_uint32 cstr 4 index;
-  Cstruct.blit_to_bytes cstr 0 buf 0 8;
-  let w = single_write fd buf 0 44 in
-  if w <> 44 then Utils.failwithf "Hashcons.write_entry: failed (%d bytes written)" w
-
-let open_ path =
-  let open Unix in
-  let fd = openfile path [ O_RDWR ] 0o644 in
-  let tbl = Hashtbl.create 1001 in
-  let rec loop () =
-    match read_entry fd with
-    | None -> { tbl; fd }
-    | Some (size, v, index) ->
-        Hashtbl.replace tbl (size, v) index;
-        loop ()
+let create storage = 
+  { tbl = Hashtbl.create 101 
+  ; journal = []
+  ; storage
+  }
+  
+let zero_28 = String.make 28 '\000'
+    
+let write_entry t xs =
+  let len = List.length xs in
+  assert (0 < len && len <= 7);
+  let i = Storage.new_index t.storage in
+  let buf = Storage.make_buf t.storage i in
+  C.set_index buf 0 (Utils.Option.default Index.zero (Storage.get_last_cache_index t.storage));
+  C.blit_from_string zero_28 0 buf 4 28;
+  let rec aux pos = function
+    | [] -> ()
+    | x::xs -> 
+        C.set_index buf pos x;
+        aux (pos+4) xs
   in
-  loop ()
+  aux 4 xs;
+  i
 
-let exists = Sys.file_exists
+let may_flush_journal t =
+  if List.length t.journal <> 7 then ()
+  else begin
+    let i = write_entry t t.journal in
+    t.journal <- [];
+    Storage.set_last_cache_index t.storage (Some i)
+  end
+    
+let read_entry t i =
+  let buf = Storage.make_buf t.storage i in
+  let prev = Index.zero_then_none @@ C.get_index buf 0 in
+  let rec parse pos =
+    if pos = 32 then []
+    else
+      let i = C.get_index buf pos in
+      if i = Index.zero then parse (pos+4)
+      else i :: parse (pos+4)
+  in
+  prev, parse 4
 
-let open_ path = if not @@ exists path then create path else open_ path
+let read t ~load_leaf_value =
+  let add_index t i =
+    match load_leaf_value i with
+    | None -> () (* bad value. ignore it *)
+    | Some v ->
+        let len = String.length @@ Value.to_string v in
+        Hashtbl.replace t.tbl (len, v) i
+  in    
+  let rec loop = function
+    | None -> ()
+    | Some i ->
+        let prev, indices = read_entry t i in
+        List.iter (add_index t) indices;
+        loop prev
+  in
+  loop @@ Storage.get_last_cache_index t.storage
+
   
 let find { tbl ; _ } v =
   let s = Value.to_string v in
@@ -64,18 +87,18 @@ let find { tbl ; _ } v =
   else
     Ok (Hashtbl.find_opt tbl (len, v))
 
-let add { tbl ; fd } v index =
+
+let add t v index =
   let s = Value.to_string v in
   let len = String.length s in
   if len > 36 then Error "hashcons: too large"
   else 
-    match Hashtbl.find_opt tbl (len, v) with
+    match Hashtbl.find_opt t.tbl (len, v) with
     | Some _ -> Error "hashcons: registered"
     | None ->
-        Hashtbl.replace tbl (len, v) index;
-        write_entry fd v index;
+        Hashtbl.replace t.tbl (len, v) index;
+        t.journal <- index :: t.journal;
+        may_flush_journal t;
         Ok ()
-  
-let close { fd ; _ } = Unix.close fd
 
    

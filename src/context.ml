@@ -19,15 +19,17 @@ type t = {
   (* Statistics *)
 }
 
-let create ?(pos=0L) ?length ~hashcons fn =
+let create ?(pos=0L) ?length fn =
   let storage = Storage.create ~pos ?length fn in
+  let hashcons = Hashcons.create storage in
   { storage ;
     hashcons ;
     stat = Stat.create ()
   }
 
-let open_ ?(pos=0L) ?(shared=false) ~hashcons fn =
+let open_ ?(pos=0L) ?(shared=false) fn =
   let storage = Storage.open_ ~pos ~shared fn in
+  let hashcons = Hashcons.create storage in
   { storage ;
     hashcons ;
     stat = Stat.create () 

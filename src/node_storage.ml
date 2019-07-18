@@ -1,6 +1,6 @@
 open Node
 open Storage
-module C = Storage.Cstruct
+module C = Xcstruct
 
 (** node storage.
     See Layout.md for the format *)
@@ -380,4 +380,3 @@ let commit_node context node =
   in 
   let (node, i, lh) =  commit_aux node in
   node, i, Node_hash.shorten lh
-

@@ -52,12 +52,9 @@ let with_temp_file ?(postfix="test") f =
   
 let test_with_context length f =
   with_temp_file ~postfix:".context" (fun fn ->
-      with_temp_file ~postfix:".hashcons" (fun fn' ->
-          let hashcons = Hashcons.create fn' in
-          let context = Context.create ~length ~hashcons fn in
-          Exn.protect (fun () -> f context) (fun () -> 
-              Context.close context;
-              Hashcons.close hashcons)))
+      let context = Context.create ~length fn in
+      Exn.protect (fun () -> f context) (fun () -> 
+          Context.close context))
   
 let test_with_cursor f =
   test_with_context 1000000 (fun context ->
