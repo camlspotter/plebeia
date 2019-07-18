@@ -39,4 +39,12 @@ module Cstruct = struct
      Very confusing, so we patch them here. *)
   let get_uint32 buf x = Uint32.of_int32 @@ Cstruct.LE.get_uint32 buf x
   let set_uint32 buf x v = Cstruct.LE.set_uint32 buf x @@ Uint32.to_int32 v
+  let get_index buf x = Index.of_uint32 @@ get_uint32 buf x
+  let set_index buf x v = set_uint32 buf x @@ Index.to_uint32 v
+end
+
+module Option = struct
+  let default d = function
+    | None -> d
+    | Some v -> v
 end

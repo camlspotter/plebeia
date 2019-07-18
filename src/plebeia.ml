@@ -35,6 +35,7 @@ module Impl = struct
   (* High level *)
   module Deep             = Deep
   module Roots            = Roots
+  module Roots2           = Roots2
   module Vc               = Vc
 
   (* Helper *)

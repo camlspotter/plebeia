@@ -38,24 +38,37 @@ let hashcons t = t.hashcons
 let stat t = t.stat
               
 module Header = struct
+  
   (* Header is the first cell, which carries the current length *)
-  let read a = 
+  (*
+  |0                19|20        23|24        27|28        31|
+  |...................|<- i hash ->|<- i root ->|<- i last ->|
+  *)
+  
+  let read a =
     let cstr = Cstruct.of_bigarray ~off:0 ~len:32 a in
-    Index.of_uint32 @@ Utils.Cstruct.get_uint32 cstr 0
+    let i_last = Utils.Cstruct.get_index cstr 28 in
+    let i_root = Utils.Cstruct.get_index cstr 24 in
+    let i_hash = Utils.Cstruct.get_index cstr 20 in
+    (i_last, i_root, i_hash)
 
-  let write a i = 
+  let write a (i_last, i_root, i_hash) = 
+    (* XXX atomic! *)
     let cstr = Cstruct.of_bigarray ~off:0 ~len:32 a in
-    Utils.Cstruct.set_uint32 cstr 0 i
+    Utils.Cstruct.set_index cstr 28 i_last;
+    Utils.Cstruct.set_index cstr 24 i_root;
+    Utils.Cstruct.set_index cstr 20 i_hash
+    
 end
 
 let get_cell t i =
   (* XXX May overflow in 32bits arch! *)
-  let i = Index.to_int i + 1 (* header *) in 
+  let i = Index.to_int i in 
   Cstruct.of_bigarray ~off:(i*32) ~len:32 t.array
 
 let get_bytes t i n =
   (* XXX May overflow in 32bits arch! *)
-  let i = Index.to_int i + 1 (* header *) in 
+  let i = Index.to_int i in 
   Cstruct.of_bigarray ~off:(i*32) ~len:n t.array
 
 (* 2^32 - 256 .. 2^32 - 1 are used for tags 
@@ -109,10 +122,10 @@ let create ?(pos=0L) ?length ~hashcons fn =
         | _ -> assert false
   in
   let array = make_array fd ~pos ~shared:true mapped_length in
-  Header.write array Index.zero;
+  Header.write array (Index.one (* zero is for header *), Index.zero, Index.zero) ;
   { array ;
     mapped_length ;
-    current_length = Index.zero ;
+    current_length = Index.one ;
     fd ; 
     pos ;
     shared = true ;
@@ -133,7 +146,7 @@ let open_ ?(pos=0L) ?(shared=false) ~hashcons fn =
     if cells > Index.to_int64 max_index then assert false;
     let mapped_length = Index.of_int64 cells in
     let array = make_array fd ~pos ~shared mapped_length in
-    let current_length = Header.read array in
+    let current_length, _, _ = Header.read array in
     { array ;
       mapped_length ;
       current_length ;
@@ -144,10 +157,20 @@ let open_ ?(pos=0L) ?(shared=false) ~hashcons fn =
       stat = Stat.create ()
     }
   end
-  
+
+(* XXX must be changed *)  
 let set_current_length c i =
   c.current_length <- i;
-  Header.write c.array i
+  let _,y,z = Header.read c.array in
+  Header.write c.array (i, y, z)
+  
+let read_last_commit_index c =
+  let _,x,_ = Header.read c.array in 
+  if x = Index.zero then None else Some x
+  
+let write_last_commit_index c i =
+  let x,_y,z = Header.read c.array in
+  Header.write c.array (x, Utils.Option.default Index.zero i, z)
   
 let new_index c =
   (* XXX check of size *)
@@ -166,6 +189,6 @@ let new_indices c n =
   may_resize i' c;
   i
 
-let close { fd ; array ; current_length ; _ } =
-  Header.write array current_length ;
+let close ({ fd ; current_length ; _ } as c) =
+  set_current_length c current_length;
   Unix.close fd

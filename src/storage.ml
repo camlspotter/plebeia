@@ -16,10 +16,13 @@ let write_string s buf off len =
 let make_buf context i = Context.get_cell context i
 let make_buf2 context i = Context.get_bytes context i 64
 
-(* get the last 32 bits *)
-let get_index buf : Index.t = Index.of_uint32 @@ C.get_uint32 buf 28
+let get_index_at buf byte = Index.of_uint32 @@ C.get_uint32 buf byte
+let set_index_at buf byte i = C.set_uint32 buf byte @@ Index.to_uint32 i
 
-let set_index buf i = C.set_uint32 buf 28 @@ Index.to_uint32 i
+(* get the last 32 bits *)
+let get_index buf : Index.t = get_index_at buf 28
+
+let set_index buf i = set_index_at buf 28 i
 
 (* get the first 224 bits *)
 let get_hash buf = Hash.of_string @@ C.copy buf 0 28
@@ -466,3 +469,43 @@ let commit_node context node =
   in 
   let (node, i, lh) =  commit_aux node in
   node, i, Node_hash.shorten lh
+
+(* commits
+
+|0        19|20      23|24        27|28      31|
+|<- meta  ->|<- prev ->|<- parent ->|<- idx  ->|
+
+*)
+
+type commit = 
+  { commit_meta : string (* 20 bytes *)
+  ; commit_prev : Index.t option
+  ; commit_parent : Index.t option
+  ; commit_index : Index.t
+  }
+
+let write_commit context commit =
+  let i = Context.new_index context in
+  let buf = make_buf context i in
+  set_index_at buf 28 commit.commit_index;
+  set_index_at buf 24 (Utils.Option.default Index.zero commit.commit_parent);
+  set_index_at buf 20 (Utils.Option.default Index.zero commit.commit_prev);
+  write_string commit.commit_meta buf 0 20;
+  i
+
+let read_commit context i =
+  let buf = make_buf context i in
+  let zero_then_none x = if x = Index.zero then None else Some x in
+  let commit_index = get_index_at buf 28 in
+  let commit_parent = zero_then_none @@ get_index_at buf 24 in
+  let commit_prev = zero_then_none @@ get_index_at buf 20 in
+  let commit_meta = String.sub (C.to_string buf) 0 20 in (* XXX inefficient *)
+  { commit_index ; commit_parent ; commit_prev ; commit_meta }
+
+(* Cache
+
+|0    23|24      27|28      31|
+|   0   |<- prev ->|<- leaf ->|
+    
+let write_cache context previous_cache_idx leaf_idx size     
+*)

@@ -46,3 +46,7 @@ val get_cell : t -> Index.t -> Cstruct.t
    
 val get_bytes : t -> Index.t -> int -> Cstruct.t
 (** Map the bytes starting from the cell of the given index to Cstruct.t *)
+
+
+val read_last_commit_index : t -> Index.t option
+val write_last_commit_index : t -> Index.t option -> unit
