@@ -19,10 +19,6 @@ type t = {
   (* Statistics *)
 }
 
-let hashcons t = t.hashcons
-let storage t = t.storage
-let stat t = t.stat
-
 let create ?(pos=0L) ?length ~hashcons fn =
   let storage = Storage.create ~pos ?length fn in
   { storage ;
