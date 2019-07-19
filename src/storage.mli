@@ -1,23 +1,15 @@
 type storage
 type t = storage
 
-val get_last_checkpoint_index : t -> Index.t option
+module Header : sig
+  val check : t -> unit
+end
+
 val get_last_root_index       : t -> Index.t option
 val get_last_cache_index      : t -> Index.t option
 
-val set_last_checkpoint_index : t -> Index.t option -> unit
 val set_last_root_index       : t -> Index.t option -> unit
 val set_last_cache_index      : t -> Index.t option -> unit
-
-module Checkpoint : sig
-  type t
-
-  val check : storage -> unit
-  (** last_xxx_index's are written to the storage as a checkpoint
-      only by an explicit call of [check].  If program crashes, anything 
-      after the last checkpoint will be lost.
-  *)
-end
 
 val get_cell : t -> Index.t -> Cstruct.t
 val get_bytes : t -> Index.t -> int -> Cstruct.t

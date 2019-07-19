@@ -32,7 +32,7 @@ let () =
               if RS.int st 2 = 0 then None
               else Some (choose acc)
         in
-        Roots.add t ?parent h i;
+        Roots.add t ?parent h i (String.make 20 '\000');
         loop (i::acc) (n-1)
   in
   loop [] 100;

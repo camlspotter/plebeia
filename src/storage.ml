@@ -11,12 +11,6 @@ module Int64 = Stdint.Int64
 
 module C = Xcstruct
 
-type checkpoint = 
-  { cp_previous_index : Index.t option
-  ; cp_last_root_index : Index.t option
-  ; cp_last_cache_index : Index.t option
-  }
-
 type storage = {
   mutable array : Bigstring.t ;
   (* mmaped array where the nodes are written and indexed. *)
@@ -27,7 +21,6 @@ type storage = {
 
   mutable mapped_length : Index.t ;
 
-  mutable last_checkpoint_index : Index.t option ;
   mutable last_root_index : Index.t option ;
   mutable last_cache_index : Index.t option ;
   
@@ -45,10 +38,8 @@ type storage = {
 
 type t = storage
 
-let set_last_checkpoint_index t x = t.last_checkpoint_index <- x
 let set_last_root_index t x       = t.last_root_index <- x
 let set_last_cache_index t x      = t.last_cache_index <- x
-let get_last_checkpoint_index t   = t.last_checkpoint_index
 let get_last_root_index t         = t.last_root_index
 let get_last_cache_index t        = t.last_cache_index
     
@@ -124,83 +115,77 @@ let new_indices c n =
   may_resize i' c;
   i
 
-module Checkpoint = struct
-
-  type t = checkpoint
+module Header = struct
+  type t = 
+    { last_next_index : Index.t
+    ; last_root_index : Index.t option
+    ; last_cache_index : Index.t option
+    }
 
   (*
-  |0                     |16        19|20        23|24        27|28       31|
-  |< hash of the right ->|<- i hash ->|<- i root ->|<- i prev ->|<- -253  ->|
-  *)
+  Cell #1
+  |0                   19|20         23|24        27|28        31|
+  |< hash of the right ->|<- i cache ->|<- i root ->|<- i next ->|
   
-  let zero_then_none x = if x = Index.zero then None else Some x
+  Cell #2
+  |0                   19|20         23|24        27|28        31|
+  |< hash of the right ->|<- i cache ->|<- i root ->|<- i next ->|
+  *)
     
-  module Blake2B_16 = struct
+  module Blake2B_20 = struct
     open Blake2.Blake2b
-
+  
     let of_string s =
-      let b = init 16 in
+      let b = init 20 in
       update b (Bigstring.of_string s);
       let Hash bs = final b in
       Bigstring.to_string bs
   end
   
-  let raw_read array i =
-    let i = Index.to_int i in
+  let raw_read' array i =
     let cstr = C.of_bigarray ~off:(i*32) ~len:32 array in
-    let tag = C.get_index cstr 28 in
-    if Index.to_int32 tag <> -253l then None
-    else 
-      let cp_previous_index = zero_then_none @@ C.get_index cstr 24 in
-      let cp_last_root_index = zero_then_none @@ C.get_index cstr 20 in
-      let cp_last_cache_index = zero_then_none @@ C.get_index cstr 16 in
-      let h = C.copy cstr 0 16 in
-      let string_16_27 = C.copy cstr 16 12 in
-      let h' = Blake2B_16.of_string string_16_27 in
-      if h <> h' then None
-      else Some { cp_previous_index ; cp_last_root_index ; cp_last_cache_index }
+    let last_next_index = C.get_index cstr 28 in
+    let last_root_index = Index.zero_then_none @@ C.get_index cstr 24 in
+    let last_cache_index = Index.zero_then_none @@ C.get_index cstr 20 in
+    let h = C.copy cstr 0 20 in
+    let string_20_31 = C.copy cstr 20 12 in
+    let h' = Blake2B_20.of_string string_20_31 in (* XXX hash is bigger than the original *)
+    if h <> h' then None
+    else Some { last_next_index ; last_root_index ; last_cache_index }
 
-  let _read t i = raw_read t.array i
+  let raw_read array =
+    match raw_read' array 1 with
+    | Some x -> Some x
+    | None -> (* something wrong in the cell #1 *)
+        match raw_read' array 2 with
+        | Some x -> Some x
+        | None -> None (* something wrong in the cell #2 *)
+      
+  let _read t = raw_read t.array
 
-  let write t = function
-    | None -> None
-    | Some { cp_previous_index ; cp_last_root_index ; cp_last_cache_index } ->
-        (* The write is NOT atomic but corruption can be detected by the checksum *)
-        let i = new_index t in
-        let cstr = get_cell t i in
-        C.set_index cstr 24 (Utils.Option.default Index.zero cp_previous_index);
-        C.set_index cstr 20 (Utils.Option.default Index.zero cp_last_root_index);
-        C.set_index cstr 16 (Utils.Option.default Index.zero cp_last_cache_index);
-        let string_16_27 = C.copy cstr 16 12 in
-        let h = Blake2B_16.of_string string_16_27 in
-        C.write_string h cstr 0 16;
-        Some i
+  let write' t i { last_next_index ; last_root_index ; last_cache_index } =
+    let cstr = get_cell t @@ Index.of_int i in
+    C.set_index cstr 28 last_next_index;
+    C.set_index cstr 24 (Utils.Option.default Index.zero last_root_index);
+    C.set_index cstr 20 (Utils.Option.default Index.zero last_cache_index);
+    let string_20_31 = C.copy cstr 20 12 in
+    let h = Blake2B_20.of_string string_20_31 in
+    C.write_string h cstr 0 20
 
-  let find array i0 =
-    let rec aux i =
-      match raw_read array i with
-      | None when i = Index.zero -> None
-      | None -> aux (Index.pred i)
-      | Some cp -> Some (cp,i)
-    in
-    match aux i0 with
-    | None ->
-        Format.eprintf "No checkpoint found.  %Ld cells are discarded@." (Index.to_int64 i0);
-        None
-    | Some (cp,i) ->
-        Format.eprintf "Checkpoint found.  %Ld cells are discarded@." (Index.(to_int64 (i0 - i)));
-        Some (cp,i)
-          
+  let write t x =
+    (* The write is NOT atomic but corruption can be detected by the checksum 
+       and the double writes
+    *)
+    write' t 1 x;
+    write' t 2 x
+  
   let check t =
-    let cp = { cp_previous_index = t.last_checkpoint_index ;
-               cp_last_root_index = t.last_root_index ;
-               cp_last_cache_index = t.last_cache_index } in
-    match write t (Some cp) with
-    | None -> ()
-    | Some i -> 
-        t.last_checkpoint_index <- Some i;
-        Format.eprintf "Plebeia checkpoint at %Ld@." (Index.to_int64 i)
-    
+    let cp = { last_next_index = t.current_length
+             ; last_root_index = t.last_root_index
+             ; last_cache_index = t.last_cache_index } 
+    in
+    write t cp
+      
 end
 
 let create ?(pos=0L) ?length fn =
@@ -222,18 +207,20 @@ let create ?(pos=0L) ?length fn =
   let cstr = C.of_bigarray ~off:0 ~len:32 array in
   C.blit_from_string ("PLEBEIA " ^ String.make 28 '\000') 0 cstr 0 32;
   C.set_index cstr 24 (Index.of_int version);
-
-  { array ;
-    mapped_length ;
-    current_length = Index.one ; (* #0 is unused, since 0 is for none *)
-    last_checkpoint_index = None ;
-    last_root_index = None ;
-    last_cache_index = None ;
-    fd ; 
-    pos ;
-    shared = true ;
-    version
-  }
+  let t = 
+    { array ;
+      mapped_length ;
+      current_length = Index.of_int 3; (* #0 for PLEBEIA..., #1 and #2 for header *)
+      last_root_index = None ;
+      last_cache_index = None ;
+      fd ; 
+      pos ;
+      shared = true ;
+      version
+    }
+  in
+  Header.check t;
+  t
 
 let open_ ?(pos=0L) ?(shared=false) fn =
   if not @@ Sys.file_exists fn then 
@@ -252,34 +239,25 @@ let open_ ?(pos=0L) ?(shared=false) fn =
     let cstr = C.of_bigarray ~off:0 ~len:32 array in
     if not (C.copy cstr 0 8 = "PLEBEIA ") then failwith "This is not Plebeia data file";
     let version = Index.to_int @@ C.get_index cstr 24 in
+    assert (version = 1);
 
-    C.set_index cstr 24 (Index.of_int 1); (* version *)
-
-    let last_checkpoint_index, last_root_index, last_cache_index = 
-      match Checkpoint.find array (Index.pred mapped_length) with
-      | None -> None, None, None
-      | Some (cp,i) -> Some i, cp.cp_last_root_index, cp.cp_last_cache_index
-    in
-    let current_length = 
-      match last_checkpoint_index with
-      | None -> Index.one
-      | Some i -> Index.succ i
-    in
-    { array ;
-      mapped_length ;
-      current_length ;
-      last_checkpoint_index ;
-      last_root_index ;
-      last_cache_index ;
-      fd = fd ;
-      pos ; 
-      shared ;
-      version
-    }
+    match Header.raw_read array with
+    | None -> Utils.failwithf "Failed to load header"
+    | Some h ->
+        { array ;
+          mapped_length ;
+          current_length = h.Header.last_next_index;
+          last_root_index = h.Header.last_root_index;
+          last_cache_index = h.Header.last_cache_index;
+          fd = fd ;
+          pos ; 
+          shared ;
+          version
+        }
   end
 
 let close ({ fd ; _ } as t) =
-  Checkpoint.check t;
+  Header.check t;
   Unix.close fd
 
 let make_buf storage i = get_cell storage i

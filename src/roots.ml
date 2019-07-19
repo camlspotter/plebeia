@@ -8,7 +8,7 @@ module C = Xcstruct
 let zero_then_none x = if x = Index.zero then None else Some x
 
 type t = 
-  { tbl : (Hash.t, (Index.t * Index.t option)) Hashtbl.t  (* all are in the memory *)
+  { tbl : (Hash.t, (Index.t * Index.t option * string)) Hashtbl.t  (* all are in the memory *)
   ; context : Context.t
   }
 
@@ -43,22 +43,15 @@ let read_commit storage i =
   let commit_meta = C.copy buf 0 20 in
   { commit_index ; commit_parent ; commit_prev ; commit_meta }
 
-(* Cache
-
-|0    23|24      27|28      31|
-|   0   |<- prev ->|<- leaf ->|
-    
-let write_cache context previous_cache_idx leaf_idx size     
-*)
-
-let pp_entry ppf (hash, (index, parent)) =
+let pp_entry ppf (hash, (index, parent, meta)) =
   let f fmt = Format.fprintf ppf fmt in
-  f "%S at %Ld (parent=%a)" 
+  f "%S at %Ld (parent=%a) %S" 
     (Hash.to_string hash) 
     (Index.to_int64 index)
     (fun _ppf -> function
        | None -> f "none"
        | Some x -> f "%Ld" (Index.to_int64 x)) parent
+    meta
 
 let read_commits t =
   let rec aux = function
@@ -70,23 +63,24 @@ let read_commits t =
           | Some h -> h
         in
         if Hashtbl.mem t.tbl h then assert false (* hash collision *)
-        else Hashtbl.add t.tbl h (commit.commit_index, commit.commit_parent);
-        Format.eprintf "read %a@." pp_entry (h, (commit.commit_index, commit.commit_parent));
+        else Hashtbl.add t.tbl h (commit.commit_index, commit.commit_parent, commit.commit_meta);
+        Format.eprintf "read %a@." pp_entry (h, (commit.commit_index, commit.commit_parent, commit.commit_meta));
         aux commit.commit_prev
   in
   aux (Storage.get_last_root_index t.context.Context.storage)
   
-let write_commit t ?parent index =
+let write_commit t ?parent index commit_meta =
   let storage = t.context.Context.storage in
   let commit_prev = Storage.get_last_root_index storage in
-  let commit = { commit_prev ; commit_index = index ; commit_parent = parent ; commit_meta = "dummydummydummydummy" } in
+  let commit = { commit_prev ; commit_index = index ; commit_parent = parent ; commit_meta } in
   let i = write_commit storage commit in
   Storage.set_last_root_index storage (Some i)
 
-let add t ?parent hash index =
-  Hashtbl.replace t.tbl hash (index, parent);
-  write_commit t ?parent index;
-  Format.eprintf "Added root %a@." pp_entry (hash, (index, parent))
+let add t ?parent hash index commit_meta =
+  assert (String.length commit_meta = 20);
+  Hashtbl.replace t.tbl hash (index, parent, commit_meta);
+  write_commit t ?parent index commit_meta;
+  Format.eprintf "Added root %a@." pp_entry (hash, (index, parent, commit_meta))
 
 let mem { tbl ; _ } = Hashtbl.mem tbl
 

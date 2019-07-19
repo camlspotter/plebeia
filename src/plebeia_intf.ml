@@ -33,7 +33,7 @@ module type S = sig
   (** {2 Hash } *)
 
   module Hash : sig
-    type t
+    type t = Hash.t
     (** Root hash of a tree. *)
 
     val to_string : t -> string
