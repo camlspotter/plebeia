@@ -30,19 +30,19 @@ let empty_cursor { context ; _ } = Cursor.empty context
 
 let hash = Cursor_hash.hash
 
-let commit { roots ; context } ~parent ~meta (Cursor (_, _, context') as c) =
+let commit { roots ; context } ~parent ~meta1 ~meta2 (Cursor (_, _, context') as c) =
   assert (context == context');
   let parent = match parent with
     | None -> None
     | Some h -> 
         match Roots.find roots h with
         | None -> Utils.failwithf "No such parent: %S@." (Hash.to_string h)
-        | Some (i, _, _meta) -> Some i
+        | Some { Roots.index ; _ } -> Some index
   in
   let (cur, i, h) = Cursor_storage.commit_cursor c in
   match Roots.find roots h with
   | None ->
-      Roots.add roots ?parent h i meta;
+      Roots.add roots ?parent h i ~meta1 ~meta2;
       Storage.Header.check context.Context.storage;
       (cur, h)
   | Some _i' -> Pervasives.failwith "hash collision"
@@ -50,7 +50,7 @@ let commit { roots ; context } ~parent ~meta (Cursor (_, _, context') as c) =
 let checkout { roots ; context ; _ } hash =
   match Roots.find roots hash with
   | None -> None
-  | Some (index, _parent, _meta) ->
+  | Some { Roots.index ; _ } ->
       Some (_Cursor (_Top, 
                      Disk (index, Not_Extender),
                      context))

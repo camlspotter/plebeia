@@ -130,6 +130,11 @@ let index n = match index n with
 let bud_first_28 = String.make 28 '\255'
 let zero_24 = String.make 24 '\000'
 
+(* XXX The code assumes the only one writer. 
+   If we change it with multiple writers, beware of the indices.
+   We must allocate all the indices at once for each node.
+*)
+   
 let write_small_leaf storage v =
   let len = Value.length v in
   assert (1 <= len && len <= 32);
