@@ -47,7 +47,8 @@ let may_flush_journal t =
   else begin
     let i = write_entry t t.journal in
     t.journal <- [];
-    Storage.set_last_cache_index t.storage (Some i)
+    Storage.set_last_cache_index t.storage (Some i);
+    Format.eprintf "Plebeia cache is flushed at %Ld@." (Index.to_int64 i)
   end
     
 let read_entry t i =

@@ -197,7 +197,9 @@ module Checkpoint = struct
                cp_last_cache_index = t.last_cache_index } in
     match write t (Some cp) with
     | None -> ()
-    | Some i -> t.last_checkpoint_index <- Some i
+    | Some i -> 
+        t.last_checkpoint_index <- Some i;
+        Format.eprintf "Plebeia checkpoint at %Ld@." (Index.to_int64 i)
     
 end
 

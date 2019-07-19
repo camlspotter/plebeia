@@ -42,7 +42,7 @@ val copy: create_subtrees: bool -> Cursor.t -> Segment.t list -> Segment.t list 
 
 val fold : init:'a -> Cursor.t -> ('a -> Segment.t -> [`Leaf of Value.t | `Bud] -> ('a, 'b) Result.t) -> (('a, 'b) Result.t, Error.t) Result.t
 
-val commit : t -> Cursor.t -> Cursor.t * Hash.t
+val commit : t -> parent: Hash.t option -> Cursor.t -> Cursor.t * Hash.t
 val checkout : t -> Hash.t -> Cursor.t option
 
 val stat : t -> Stat.t
