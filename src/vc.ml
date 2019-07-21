@@ -42,9 +42,11 @@ let commit { roots ; context } ~parent ~meta1 ~meta2 (Cursor (_, _, context') as
         | Some { Roots.index ; _ } -> Some index
   in
   let (cur, i, h) = Cursor_storage.commit_cursor c in
+(*
   Format.eprintf "XXXXX COMMIT meta2:%S  hash:%S@." 
     meta2
     (Hash.to_string h);
+*)
   match Roots.find roots h with
   | None ->
       Roots.add roots ?parent h i ~meta1 ~meta2;
