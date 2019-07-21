@@ -15,6 +15,28 @@ let dump_cursor c =
   to_file "plebeia.dot" @@ Debug.dot_of_cursor c;
   to_file "plebeia_dumb.dot" @@ Dumb.dot_of_node @@ Dumb.of_plebeia_node context n
   
+let equal_check context n1 n2 =
+  let res = Node_storage.equal context n1 n2 in
+  match res with
+  | Ok () -> ()
+  | Error (n1',n2') ->
+      prerr_endline "ouch";
+      let n1 = Node_storage.load_node_fully context n1 in
+      let n2 = Node_storage.load_node_fully context n2 in
+      save_to_dot "debug_equal_check_1.dot" @@ _Cursor (_Top, n1, context);
+      save_to_dot "debug_equal_check_2.dot" @@ _Cursor (_Top, n2, context);
+      save_node_to_dot "debug_equal_check_detail1.dot" n1';
+      save_node_to_dot "debug_equal_check_detail2.dot" n2';
+      assert false
+      
+    
+let commit_check c =
+  let Cursor (_tr, n, context) as c, i, _ = Cursor_storage.commit_cursor c in
+  save_to_dot "commit_check.dot" c;
+  let n' = View (load_node context i Not_Extender) in
+  equal_check context n n';
+  c
+
 let () = 
   test_with_cursor @@ fun c ->
   save_to_dot "test_1.dot" c;
@@ -29,6 +51,7 @@ let () =
   let c = ok_or_fail @@ go_up c in
   let c = ok_or_fail @@ go_up c in
   let c = ok_or_fail @@ go_up c in
+  let c = commit_check c in
   ignore c
 
 let () = test_with_cursor @@ fun c ->
@@ -39,6 +62,8 @@ let () = test_with_cursor @@ fun c ->
   let c = ok_or_fail @@ upsert c (path "LRL") (value "LRL") in 
   let c = ok_or_fail @@ upsert c (path "RLR") (value "RLR") in 
   let c = ok_or_fail @@ upsert c (path "LRR") (value "LRR") in
+  save_to_dot "debug2.dot" c;
+  let c = commit_check c in
   ignore c
 
 let () = 
@@ -48,7 +73,9 @@ let () =
   let c = ok_or_fail @@ insert c (path "RRRR") (value "RRRR") in
   save_to_dot "debug3.dot" c;
   let v = ok_or_fail @@ get c (path "RRRR") in
-  assert (v = value "RRRR")
+  assert (v = value "RRRR");
+  let c = commit_check c in
+  ignore c
 
 let () = 
   (* subtree *)
@@ -66,7 +93,7 @@ let () =
   let v = value "RRR/RRR/RRR/RRR/RRR/LLL" in
   let c = ok_or_fail @@ insert c (path "LLL") v in
   let c = ok_or_fail @@ go_top c in
-  let c, _, _ = Cursor_storage.commit_cursor c in
+  let c = commit_check c in
   let c = ok_or_fail @@ subtree c (path "RRR") in
   let c = ok_or_fail @@ subtree c (path "RRR") in
   let c = ok_or_fail @@ subtree c (path "RRR") in
@@ -81,7 +108,7 @@ let () =
   let c = ok_or_fail @@ go_top c in
   let c = ok_or_fail @@ create_subtree c (path "LLLR") in
   let c = ok_or_fail @@ go_top c in
-  let c, _, _ = Cursor_storage.commit_cursor c in
+  let c = commit_check c in
   let c = ok_or_fail @@ create_subtree c (path "RRRR") in
   let c = ok_or_fail @@ go_top c in
   let c = ok_or_fail @@ subtree c (path "LLLR") in
@@ -95,7 +122,7 @@ let () =
   let c = ok_or_fail @@ subtree c (path "RRR") in
   let c = ok_or_fail @@ insert c (path "RRL") (value "1") in
   let c = ok_or_fail @@ go_top c in
-  let c, _, _ = Cursor_storage.commit_cursor c in
+  let c = commit_check c in
   let c = ok_or_fail @@ subtree c (path "RRR") in
   save_to_dot "debug.dot" c;
   let c = ok_or_fail @@ delete c (path "RRL") in (* Once failed here *)
@@ -140,7 +167,8 @@ let validate context n =
       to_file "invalid.dot" @@ Debug.dot_of_node n;
       prerr_endline "Saved the current node to invalid.dot";
       failwith e)
-
+  
+  
 (* Add random leafs and subdirs to plebeia and dumb trees,
    checking the consistency between them.  
    It returns, the final trees and a hashtbl of added leafs and subdirs.
@@ -281,7 +309,7 @@ let add_random st sz c dumb =
 
   (* hash and commit *)
   let c = if RS.int st 10 = 0 then let c, _ = Cursor_hash.hash c in c else c in
-  let c = if RS.int st 10 = 0 then let c, _, _ = Cursor_storage.commit_cursor c in c else c in
+  let c = if RS.int st 10 = 0 then let c = commit_check c in c else c in
   c, dumb, bindings
 
 let random_insertions st sz =
@@ -331,7 +359,7 @@ let random_insertions st sz =
           | Ok c -> 
               (* hash and commit *)
               let c = if RS.int st 10 = 0 then let c, _ = Cursor_hash.hash c in c else c in
-              let c = if RS.int st 10 = 0 then let c, _, _ = Cursor_storage.commit_cursor c in c else c in
+              let c = if RS.int st 10 = 0 then let c = commit_check c in c else c in
               c
           | Error e -> 
               to_file "deletion.dot" @@ Debug.dot_of_cursor c;

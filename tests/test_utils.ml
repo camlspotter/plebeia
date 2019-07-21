@@ -1,5 +1,6 @@
 open Plebeia.Impl
 
+include Debug
 include Utils
     
 let timed f = 
@@ -44,17 +45,15 @@ let shuffle st xs =
   done;
   Array.to_list a
 
-let with_temp_file ?(postfix="test") f =
-  let fn = Filename.temp_file "plebeia" postfix in
-  let res = f fn in
-  Unix.unlink fn; (* If the funciton fails, the temp file should remain for postmortem analysis *)
-  res
-  
+let tempfile = Filename.temp_file "plebeia" ".context"
+
+let () = Format.eprintf "Using temp file %s ...@." tempfile
+
 let test_with_context length f =
-  with_temp_file ~postfix:".context" (fun fn ->
-      let context = Context.create ~length fn in
-      Exn.protect (fun () -> f context) (fun () -> 
-          Context.close context))
+  let context = Context.create ~length tempfile in
+  let res = f context in
+  Context.close context;
+  res
   
 let test_with_cursor f =
   test_with_context 1000000 (fun context ->
@@ -71,7 +70,5 @@ let must_fail = function
   | Ok _ -> failwith "must fail"
   | Error _ -> ()
                  
-let save_to_dot name c = to_file name (Debug.dot_of_cursor c)
-
 let path = path_of_string
 let value = Value.of_string
