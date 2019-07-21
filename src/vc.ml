@@ -8,6 +8,8 @@ type t =
   ; context : Context.t
   }
 
+let roots { roots ; _ } = roots
+
 let create ?context_pos ?context_length ~prefix () =
   let context = 
     Context.create ?pos:context_pos ?length:context_length

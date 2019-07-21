@@ -15,6 +15,8 @@ val open_ :
   -> unit
   -> t
 
+val roots : t -> Roots.t
+
 val close : t -> unit
 
 val empty_cursor : t -> Cursor.t
