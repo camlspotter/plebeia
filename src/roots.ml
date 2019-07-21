@@ -105,6 +105,7 @@ let add t ?parent hash index ~meta1 ~meta2 =
   assert (String.length meta1 = 20);
   assert (String.length meta2 = 32);
   let ent = { index ; parent ; meta1 ; meta2 } in
+  (* XXX hash collision check *)
   Hashtbl.replace t.tbl hash ent;
   write_commit t ?parent index ~meta1 ~meta2;
   Format.eprintf "Added root %a@." pp_entry (hash, ent)
