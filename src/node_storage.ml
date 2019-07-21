@@ -100,6 +100,7 @@ let load_node context (index : Index.t) (ewit:extender_witness) : view =
 
 let () = load_node_ref := load_node
 
+(* XXX non tail recursive *)
 let rec load_node_fully context n =
   let v = match n with
     | Disk (i, ewit) -> load_node context i ewit
@@ -190,26 +191,28 @@ let write_internal context nl nr lh =
   (* internal  |<- first 222 of hash -------->|D|0| |<- the index of one of the child ----->| *)
   let storage = context.Context.storage in
   let h = Node_hash.shorten lh in
-  let i = Storage.new_index storage in
-  let buf = make_buf storage i in
 
   let hstr = Hash.to_string h in
   let il = index nl in
   let ir = index nr in
 
-  let refer_to_left, i =
+  let i = Storage.new_index storage in
+
+  let must_refer_to, i =
     if i = Index.succ il then
       (* the following index refers to the right *)
-      false, i
-    else if i = Index.succ ir then true, i
+      `Right, i
+    else if i = Index.succ ir then `Left, i
     else begin
       (* Fat internal *)
       (* Write the link to the right at i *)
       write_link context i ir;
-      let i = Index.succ i in
-      true, i
+      let i = Storage.new_index storage in
+      `Left, i
     end 
   in
+
+  let buf = make_buf storage i in
 
   (* 0 to 215 bits *)
   C.blit_from_string hstr 0 buf 0 27;
@@ -218,10 +221,10 @@ let write_internal context nl nr lh =
   C.set_char buf 27
     (let c = Char.code @@ String.unsafe_get hstr 27 in
      let c = c land 0xfc in
-     Char.chr (if refer_to_left then c else c lor 2));
+     Char.chr (if must_refer_to = `Left then c else c lor 2));
 
   (* next 32bits *)
-  C.set_index buf 28 (if refer_to_left then il else ir);
+  C.set_index buf 28 (if must_refer_to = `Left then il else ir);
 
   Stat.incr_written_internals context.Context.stat;
   _Internal (nl, nr, Indexed i, Hashed h), i, lh
@@ -262,11 +265,32 @@ let write_extender context seg n lh =
   Stat.incr_written_extenders context.Context.stat;
   _Extender (seg, n, Indexed i, Hashed h), i, lh
 
-(* XXX Operations are NOT atomic at all 
-   
-   XXX This is complicated because this function hashes + commits 
-   at the same time. 
-*)
+let equal context n1 n2 =
+  let rec aux = function
+    | [] -> Ok ()
+    | (n1,n2)::rest ->
+        match n1, n2 with
+        | Disk (i1, ew1), Disk (i2, ew2) when i1 = i2 && ew1 = ew2 -> aux rest
+        | Disk _, Disk _ -> Error (n1,n2)
+        | Disk (i, ew), n2 ->
+            let n1 = View (load_node context i ew) in
+            aux @@ (n1,n2)::rest
+        | n1, Disk (i, ew) ->
+            let n2 = View (load_node context i ew) in
+            aux @@ (n1,n2)::rest
+        | View v1, View v2 ->
+            match v1, v2 with
+            | Internal (n11, n12, _, _), Internal (n21, n22, _, _) ->
+                aux @@ (n11,n21)::(n12,n22)::rest
+            | Bud (None, _, _), Bud (None, _, _) -> aux rest
+            | Bud (Some n1, _, _), Bud (Some n2, _, _) -> aux @@ (n1,n2) :: rest
+            | Leaf (v1, _, _), Leaf (v2, _, _) when v1 = v2 -> aux rest
+            | Extender (seg1, n1, _, _), Extender (seg2, n2, _, _) when seg1 = seg2 ->
+                aux @@ (n1,n2)::rest
+            | _ -> Error (n1,n2)
+  in
+  aux [(n1, n2)]
+
 let commit_node context node =
   let check_hash h lh = match h with
     | Hashed h -> assert (h = Node_hash.shorten lh)
@@ -275,13 +299,14 @@ let commit_node context node =
   let storage = context.Context.storage in
   let rec commit_aux : node -> (node * Index.t * Node_hash.t) = function
     | Disk (index, wit) ->
-        (* Need to get the hash from the disk *)
-        let v, i, h = commit_aux' (load_node context index wit) in
-        assert (index = i);
-        View v, i, h
+        (* Need to get the hash from the disk 
+        *)
+        let v = load_node context index wit in
+        let lh = snd @@ Node_hash.long_hash context (View v) in
+        View v, index, lh
     | View v -> 
-        let v, i, h = commit_aux' v in
-        View v, i, h
+        let v, i, lh = commit_aux' v in
+        View v, i, lh
 
   and commit_aux' : view -> (view * Index.t * Node_hash.t) = fun v -> 
     match v with
@@ -302,7 +327,7 @@ let commit_node context node =
            to the previous index of the leaf *)
         let len = Value.length value in
 
-  if len <> 0 then Stat.incr_written_leaf_sizes' context.Context.stat len;
+        if len <> 0 then Stat.incr_written_leaf_sizes' context.Context.stat len;
 
         let create_new () =
           if len = 0 then begin
