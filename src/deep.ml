@@ -77,7 +77,7 @@ let copy ~create_subtrees cur segs1 segs2 =
          | Reached (cur, (Bud _ as bud)) -> Ok (cur, bud)
          | res -> error_access res) >>= fun (_, bud) ->
     (* bud is copied. Therefore this will not break the internal node's
-       invariant.  (If we share the bud for further optmizatoin, 
+       invariant.  (If we share the bud for further optmization, 
        then it breaks the invariant.)
     *)
     deep ~go_up:true ~create_subtrees cur segs2
