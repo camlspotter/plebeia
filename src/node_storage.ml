@@ -65,7 +65,10 @@ let rec parse_cell storage i =
           let seg_code = s_224 in
           let seg = Segment_encoding.decode seg_code in
           let i' = C.get_index buf 28 in
-          (* We must load the child for the hash *)
+          (* We must load the child for the hash.
+             The subnode of an Extender is always loaded together with the Extender,
+             which also checks there is no Extender-Extender.
+          *)
           let v = parse_cell storage i' in
           let h = match hash_of_view v with
             | None -> assert false

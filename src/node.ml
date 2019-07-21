@@ -204,7 +204,9 @@ let new_extend : Segment.segment -> node -> node = fun segment node ->
     | View (Extender (seg, n, _, _)) ->
         View (_Extender (Segment.concat segment seg, n, Not_Indexed, Not_Hashed))
     | _ ->
+        (* XXXX If the subnode is Disk, we have to make sure merging *)
         View (_Extender (segment, node, Not_Indexed, Not_Hashed))
+
 let new_bud no = View (_Bud (no, Not_Indexed, Not_Hashed))
 
 let new_internal n1 n2 i = 
