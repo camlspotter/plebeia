@@ -36,15 +36,15 @@ module Dot = struct
     | None -> Printf.sprintf "%s -> %s;" n1 n2
     | Some l -> Printf.sprintf "%s -> %s [label=\"%s\"];" n1 n2 l
 
-  let indexing_rule = function
+  let indexed = function
     | Left_Not_Indexed -> "i?"
     | Right_Not_Indexed -> "?i"
-    | Indexed _ -> "I"
+    | Indexed i -> Int64.to_string @@ Index.to_int64 i
     | Not_Indexed -> "i"
       
-  let modified_rule = function
+  let modified = function
     | Modified -> "*"
-    | Unmodified (ir, _) -> indexing_rule ir
+    | Unmodified (ir, _) -> indexed ir
       
   let disk n = Printf.sprintf "%s [shape=box];" n
   let leaf n value ir = Printf.sprintf "%s [label=\"%s%s\"];" n (Value.to_string value) ir
@@ -59,26 +59,26 @@ module Dot = struct
           (n, [disk n], cntr)
       | View (Leaf (value, ir, _)) ->
           let n = Printf.sprintf "Leaf%d\n" cntr in
-          (n, [leaf n value (indexing_rule ir)], cntr+1)
+          (n, [leaf n value (indexed ir)], cntr+1)
       | View (Bud  (Some node , ir, _)) ->
           let n', s, cntr = aux cntr node in
           let n = Printf.sprintf "Bud%d" cntr in
           (n, 
-           [bud n (indexing_rule ir);
+           [bud n (indexed ir);
             link n n'
            ] @ s,
            cntr + 1)
       | View (Bud  (None , ir, _)) ->
           let n = Printf.sprintf "Bud%d" cntr in
           (n, 
-           [bud n (indexing_rule ir)], 
+           [bud n (indexed ir)], 
            cntr + 1)
       | View (Internal (left, right, ir, _)) ->
           let ln, ls, cntr = aux cntr left in 
           let rn, rs, cntr = aux cntr right in 
           let n = Printf.sprintf "Internal%d" cntr in
           (n,
-           [ internal n (indexing_rule ir);
+           [ internal n (indexed ir);
              link n ln ~label:"L";
              link n rn ~label:"R" ]
            @ ls @ rs,
@@ -87,7 +87,7 @@ module Dot = struct
           let n', s, cntr = aux cntr node in
           let n = Printf.sprintf "Extender%d" cntr in
           (n,
-           extender n (indexing_rule ir)
+           extender n (indexed ir)
            :: link n n' ~label:(Segment.to_string segment)
            :: s,
            cntr + 1)
@@ -101,7 +101,7 @@ module Dot = struct
         let cntr = cntr + 1 in
         let r, ss, cntr = of_node_aux cntr r in
         let (ss', cntr) = of_trail n cntr trail in
-        ([ internal n (modified_rule mr);
+        ([ internal n (modified mr);
            link n dst ~label:"L";
            link n r ~label:"R" ]
          @ ss @ ss',
@@ -111,7 +111,7 @@ module Dot = struct
         let cntr = cntr + 1 in
         let l, ss, cntr = of_node_aux cntr l in
         let (ss', cntr) = of_trail n cntr trail in
-        ([ internal n (modified_rule mr);
+        ([ internal n (modified mr);
            link n l ~label:"L";
            link n dst ~label:"R" ]
          @ ss @ ss',
@@ -120,7 +120,7 @@ module Dot = struct
         let n = Printf.sprintf "Bud%d" cntr in
         let cntr = cntr + 1 in
         let (ss, cntr) = of_trail n cntr trail in
-        ([ bud n (modified_rule mr);
+        ([ bud n (modified mr);
            link n dst ]
          @ ss,
          cntr)
@@ -128,7 +128,7 @@ module Dot = struct
         let n = Printf.sprintf "Extender%d" cntr in
         let cntr = cntr + 1 in
         let (ss, cntr) = of_trail n cntr trail in
-        ([ extender n (modified_rule mr);
+        ([ extender n (modified mr);
            link n dst ~label:(Segment.to_string segment) ]
          @ ss,
          cntr)
@@ -155,7 +155,7 @@ let () = Cursor.dot_of_cursor_ref := dot_of_cursor
 let validate_node context (node : node) =
   let rec aux : node -> (view, string) Result.t = 
     fun node ->
-      let indexing_rule : view -> bool = function
+      let indexed : view -> bool = function
         | Internal (_, _, Indexed _, _) -> true
         | Bud (_, Indexed _, _) -> true
         | Leaf (_, Indexed _, _) -> true
@@ -181,10 +181,10 @@ let validate_node context (node : node) =
                 | Bud _ -> Error "Bud cannot carry Bud"
                 | Leaf _ -> Error "Bud cannot carry Leaf"
                 | v' ->
-                    (match ir, indexing_rule v' with
+                    (match ir, indexed v' with
                      | _, true -> Ok ()
                      | Not_Indexed, _ -> Ok ()
-                     | _ -> Error "Bud: Strange indexing_rule") >>= fun () ->
+                     | _ -> Error "Bud: Strange indexed") >>= fun () ->
                     (match hit, hashed_is_transitive v' with
                      | _, true -> Ok v
                      | Not_Hashed, _ -> Ok v
@@ -194,14 +194,14 @@ let validate_node context (node : node) =
               begin
                 aux l >>= fun l ->
                 aux r >>= fun r -> 
-                (match ir, indexing_rule l, indexing_rule r with
+                (match ir, indexed l, indexed r with
                  | _, true, true -> Ok ()
                  | Left_Not_Indexed, false, _ -> Ok ()
                  | Right_Not_Indexed, _, false -> Ok ()
                  | Not_Indexed, _, _ -> Ok ()
-                 | Indexed _, _, _ -> Error "Internal: Strange indexing_rule"
-                 | Right_Not_Indexed, _, _ -> Error "Internal: Strange indexing_rule"
-                 | Left_Not_Indexed, _, _ -> Error "Internal: Strange indexing_rule") >>= fun () ->
+                 | Indexed _, _, _ -> Error "Internal: Strange indexed"
+                 | Right_Not_Indexed, _, _ -> Error "Internal: Strange indexed"
+                 | Left_Not_Indexed, _, _ -> Error "Internal: Strange indexed") >>= fun () ->
                 (match hit, hashed_is_transitive l, hashed_is_transitive r with
                  | _, true, true -> Ok v
                  | Not_Hashed, _, _ -> Ok v
@@ -214,7 +214,7 @@ let validate_node context (node : node) =
                   if List.length seg > 223 then 
                     Error "segment too long"
                   else 
-                    (match ir, indexing_rule v' with
+                    (match ir, indexed v' with
                      | _, true -> Ok ()
                      | Not_Indexed, _ -> Ok ()
                      | _ -> Error "Extender: Strange hashed_is_transitive") >>= fun () ->
@@ -226,3 +226,6 @@ let validate_node context (node : node) =
   aux node >>= function
   | Bud _ -> Ok ()
   | _ -> Error "Tree must start with a Bud"
+
+let save_to_dot name c = Utils.to_file name @@ dot_of_cursor c
+let save_node_to_dot name n = Utils.to_file name @@ dot_of_node n
