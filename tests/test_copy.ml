@@ -45,7 +45,7 @@ let () = test_with_cursor @@ fun c ->
   in
   assert (v = (value "x"));
   
-  let c, i, _ = Cursor_storage.commit_cursor c in
+  let c, i, _ = Cursor_storage.commit_top_cursor c in
 
   let Cursor (trail, node, context) = c in
   let node = match Node.may_forget node with

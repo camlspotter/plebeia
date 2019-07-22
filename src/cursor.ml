@@ -144,7 +144,9 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Hashed _ -> Error "Cursor: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Left (_, _, Modified) -> Ok ()
+  | Left (_, _, Modified) -> 
+      if indexed n then Error "Cursor (Left (Modifeid), indexed)"
+      else Ok ()
   | Right (_, _, Unmodified (ir, hit)) ->
       begin match ir with
         | Left_Not_Indexed -> Ok ()
@@ -159,7 +161,9 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Hashed _ -> Error "Cursor: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Right (_, _, Modified) -> Ok ()
+  | Right (_, _, Modified) ->
+      if indexed n then Error "Cursor (Right (Modifeid), indexed)"
+      else Ok ()
   | Budded (_, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ when indexed n -> Ok ()
@@ -167,7 +171,9 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Not_Indexed -> Ok ()
         | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
       end
-  | Budded (_, Modified) -> Ok () 
+  | Budded (_, Modified) -> 
+      if indexed n then Error "Cursor (Budded (Modified), indexed)"
+      else Ok ()
   | Extended (_, _, Unmodified (ir, hit)) ->
       begin match ir with
         | Indexed _ when indexed n -> Ok ()
@@ -180,7 +186,9 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Hashed _ -> Error "Extended: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Extended (_, _, Modified) -> Ok () 
+  | Extended (_, _, Modified) -> 
+      if indexed n then Error "Cursor (Extended (Modified), indexed)"
+      else Ok ()
 
 let check_cursor c = 
   match cursor_invariant c with
@@ -215,6 +223,11 @@ let dot_of_cursor_ref = ref (fun _ -> assert false)
 let attach trail node context =
   (* Attaches a node to a trail even if the indexing type and hashing type is incompatible with
      the trail by tagging the modification. Extender types still have to match. *)
+  if indexed node <> false then begin
+    let open Printexc in
+    prerr_endline ("ERROR ERROR ERROR\n" ^ raw_backtrace_to_string (get_callstack 10));
+    assert false
+  end;
   match trail with
   | Top -> _Cursor (_Top, node, context)
   | Left (prev_trail, right, _) ->
@@ -297,11 +310,23 @@ let go_up (Cursor (trail, node, context))  = match trail with
   (* Modified cases. *)
 
   | Left (prev_trail, right, Modified) ->
-      let internal = new_internal node right Left_Not_Indexed in
+      let i = match indexed node, indexed right with
+        | true, true -> assert false (* XXX *)
+        | false, true -> Left_Not_Indexed
+        | true, false -> Right_Not_Indexed
+        | false, false -> Left_Not_Indexed 
+      in
+      let internal = new_internal node right i in
       Ok (attach prev_trail internal context)
 
   | Right (left, prev_trail, Modified) ->
-      let internal = new_internal left node Right_Not_Indexed in
+      let i = match indexed left, indexed node with
+        | true, true -> assert false (* XXX *)
+        | false, true -> Left_Not_Indexed
+        | true, false -> Right_Not_Indexed
+        | false, false -> Left_Not_Indexed 
+      in
+      let internal = new_internal left node i in
       Ok (attach prev_trail internal context)
 
   | Budded (prev_trail, Modified) ->

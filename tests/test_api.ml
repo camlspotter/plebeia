@@ -31,7 +31,7 @@ let equal_check context n1 n2 =
       
     
 let commit_check c =
-  let Cursor (_tr, n, context) as c, i, _ = Cursor_storage.commit_cursor c in
+  let Cursor (_tr, n, context) as c, i, _ = Cursor_storage.commit_top_cursor c in
   save_to_dot "commit_check.dot" c;
   let n' = View (load_node context i Not_Extender) in
   equal_check context n n';
@@ -39,9 +39,9 @@ let commit_check c =
 
 let () = 
   test_with_cursor @@ fun c ->
-  save_to_dot "test_1.dot" c;
+  save_to_dot "api1.dot" c;
   let c = ok_or_fail @@ upsert c (path "LR") (value "fooLR") in
-  save_to_dot "test_2.dot" c;
+  save_to_dot "api2.dot" c;
   let c = ok_or_fail @@ upsert c (path "LL") (value "fooLL") in
   let c = from_Some @@ ok_or_fail @@ go_below_bud c in
   let c = ok_or_fail @@ go_down_extender c in

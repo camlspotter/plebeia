@@ -77,7 +77,7 @@ let doit st (rev_hist, stat_subdirs, stat_inserts, stat_deletes, stat_commits) c
     let (cur, _, _) = 
       incr stat_commits; 
       add_hist `commit;
-      Cursor_storage.commit_cursor cur 
+      Cursor_storage.commit_top_cursor cur 
     in cur
   else cur
 
@@ -115,7 +115,7 @@ let () =
   let rec f acc = function
     | 0 -> if acc then assert false else ()
     | n ->
-        match test st 10000 with
+        match test st 1000 with
         | Ok () -> f acc (n - 1)
         | Error (e, hist) ->
             (* if fails, we try until finding a short example *)

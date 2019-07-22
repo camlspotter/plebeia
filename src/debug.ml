@@ -36,6 +36,11 @@ module Dot = struct
     | None -> Printf.sprintf "%s -> %s;" n1 n2
     | Some l -> Printf.sprintf "%s -> %s [label=\"%s\"];" n1 n2 l
 
+  let linkX ?label n1 n2 =
+    match label with
+    | None -> Printf.sprintf "%s -> %s [color=red];" n1 n2
+    | Some l -> Printf.sprintf "%s -> %s [label=\"%s\", color=red];" n1 n2 l
+
   let indexed = function
     | Left_Not_Indexed -> "i?"
     | Right_Not_Indexed -> "?i"
@@ -88,7 +93,7 @@ module Dot = struct
           let n = Printf.sprintf "Extender%d" cntr in
           (n,
            extender n (indexed ir)
-           :: link n n' ~label:(Segment.to_string segment)
+           :: linkX n n' ~label:(Segment.to_string segment)
            :: s,
            cntr + 1)
     in

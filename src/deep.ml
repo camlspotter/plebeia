@@ -83,7 +83,13 @@ let copy ~create_subtrees cur segs1 segs2 =
     deep ~go_up:true ~create_subtrees cur segs2
       (fun cur seg -> 
          alter cur seg (function
-             | None -> Ok (View bud)
+             | None -> 
+                 (* Ok (View bud) (* XXX bad because this bud is indexed *) *)
+                 Ok (new_bud 
+                       (match bud with
+                        | Bud (no, _, _) -> no
+                        | _ -> assert false))
+                               
              | Some _ -> Error "a node already presents for this segment") >>= fun cur ->
          Ok (cur, ())) >>| fst
       
@@ -103,12 +109,8 @@ type position = where_from list * cursor
    against the result of the function, we can traverse all the nodes.
    Note that this loads all the nodes in the memory in the end.
 *)
-let traverse (log, Cursor (trail, n, context)) = 
-  let v = match n with
-    | Disk (i, ewit) -> load_node context i ewit
-    | View v -> v
-  in
-  let c = _Cursor (trail, View v, context) in
+let traverse (log, c) = 
+  let c, v = Cursor.view_cursor c in
   match v, log with
   | _, From_below _ :: From_below _ :: _ -> assert false
 
