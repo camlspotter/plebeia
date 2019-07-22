@@ -54,7 +54,7 @@ let delete cur segs =
   
 let create_subtree ~create_subtrees cur segs = 
   deep ~go_up:true ~create_subtrees cur segs (fun cur seg ->
-      subtree_or_create cur seg >>| fun cur -> (cur, ())) >>| fst
+      create_subtree cur seg >>| fun cur -> (cur, ())) >>| fst
 
 let subtree cur segs =
   deep ~go_up:false ~create_subtrees:false cur segs (fun cur seg ->
