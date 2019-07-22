@@ -41,7 +41,7 @@ let commit { roots ; context } ~parent ~meta1 ~meta2 (Cursor (_, _, context') as
         | None -> Utils.failwithf "No such parent: %S@." (Hash.to_string h)
         | Some { Roots.index ; _ } -> Some index
   in
-  let (cur, i, h) = Cursor_storage.commit_cursor c in
+  let (c, i, h) = Cursor_storage.commit_top_cursor c in
 (*
   Format.eprintf "XXXXX COMMIT meta2:%S  hash:%S@." 
     meta2
@@ -51,7 +51,7 @@ let commit { roots ; context } ~parent ~meta1 ~meta2 (Cursor (_, _, context') as
   | None ->
       Roots.add roots ?parent h i ~meta1 ~meta2;
       Storage.Header.check context.Context.storage;
-      (cur, h)
+      (c, h)
   | Some _i' -> Utils.failwithf "hash collision %S" (Hash.to_string h)
 
 let checkout { roots ; context ; _ } hash =
