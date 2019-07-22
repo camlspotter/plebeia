@@ -34,3 +34,10 @@ module Option = struct
     | None -> d
     | Some v -> v
 end
+
+let xassert b =
+  let open Printexc in
+  if not b then begin
+    prerr_endline ("*****************************************************\n" ^ raw_backtrace_to_string (get_callstack 10));
+    assert false
+  end
