@@ -155,6 +155,10 @@ let rec parse_cell context i =
           let seg = Segment_encoding.decode seg_code in
           let i' = get_index buf in
           (* We must load the child for the hash *)
+          (* We must load the child for the hash.
+             The subnode of an Extender is always loaded together with the Extender,
+             which also checks there is no Extender-Extender.
+          *)
           let v = parse_cell context i' in
           let h = match hash_of_view v with
             | None -> assert false

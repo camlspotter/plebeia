@@ -346,9 +346,25 @@ let rec remove_up trail context = match trail with
   | Extended (prev_trail, _, _) -> remove_up prev_trail context
   (* for Left and Right, we may need to squash Extenders in prev_trail *)
   | Left (prev_trail, right, _) ->
+      (*
+               /
+              /\
+         --> *  r
+
+         We must load r because r can be an extender!
+      *)
+      let right = View (view context right) in
       let n = new_extend Segment.(of_side_list [Right]) right in
       unify_extenders prev_trail n context
   | Right (left, prev_trail, _) ->
+      (*
+               /
+              /\
+             l  * <--
+
+         We must load l because l can be an extender!
+      *)
+      let left = View (view context left) in
       let n = new_extend Segment.(of_side_list [Left]) left in
       unify_extenders prev_trail n context
 

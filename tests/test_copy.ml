@@ -29,5 +29,39 @@ let () = test_with_cursor @@ fun c ->
   
   ignore c
     
+let () = test_with_cursor @@ fun c ->
+  let path_key k = match Key.to_segments k with Ok [seg] -> seg | _ -> assert false in
+  let c = ok_or_fail @@ Deep.insert c
+      (List.map path_key ["data"; "rolls"; "owner"; "current"; "69"; "56"; "14405"])
+      (value "x")
+  in
+  let c = ok_or_fail @@ Deep.copy ~create_subtrees:true c 
+      (List.map path_key ["data"; "rolls"; "owner"; "current"])
+      (List.map path_key ["data"; "rolls"; "owner"; "snapshot"; "0"; "0"])
+  in
+  save_to_dot "copy3.dot" c;
+  let v = ok_or_fail @@ Deep.get c 
+      (List.map path_key ["data"; "rolls"; "owner"; "snapshot"; "0"; "0"; "69"; "56"; "14405"])
+  in
+  assert (v = (value "x"));
+  
+  let c, i, _ = Cursor_storage.commit_cursor c in
 
-   
+  let Cursor (trail, node, context) = c in
+  let node = match Node.may_forget node with
+    | None -> assert false
+    | Some n -> n
+  in
+  let c = _Cursor (trail, node , context) in
+  let v = ok_or_fail @@ Deep.get c 
+      (List.map path_key ["data"; "rolls"; "owner"; "snapshot"; "0"; "0"; "69"; "56"; "14405"])
+  in
+  assert (v = (value "x"));
+  
+  let c = _Cursor (trail, Disk (i, Not_Extender), context) in
+  let v = ok_or_fail @@ Deep.get c 
+      (List.map path_key ["data"; "rolls"; "owner"; "snapshot"; "0"; "0"; "69"; "56"; "14405"])
+  in
+  assert (v = (value "x"));
+  
+

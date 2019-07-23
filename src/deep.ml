@@ -83,7 +83,21 @@ let copy ~create_subtrees cur segs1 segs2 =
     deep ~go_up:true ~create_subtrees cur segs2
       (fun cur seg -> 
          alter cur seg (function
-             | None -> Ok (View bud)
+             | None -> 
+                 (* This attaches an already indexed node to Modified trail,
+                    which ends breaking the invariant of Internal node:
+                    both subnodes can be indexed even though the internal 
+                    is not indexed.
+
+                    Ok (View bud)
+                    
+                    We must create a new node for this bud not to break
+                    the invariant.
+                 *)
+                 begin match bud with
+                   | Bud (nop, _, _) -> Ok (new_bud nop)
+                   | _ -> assert false
+                 end
              | Some _ -> Error "a node already presents for this segment") >>= fun cur ->
          Ok (cur, ())) >>| fst
       

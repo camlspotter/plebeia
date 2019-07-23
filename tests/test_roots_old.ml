@@ -1,11 +1,10 @@
 open Plebeia.Impl
-open Roots
+open Roots_old
 open Test_utils
 open Stdint
     
-let tempfile = Filename.temp_file "plebeia" ".roots"
-
-let test_with_roots f = f tempfile
+let test_with_roots f =
+  with_temp_file ~postfix:"root" f
 
 module RS = Random.State
               
