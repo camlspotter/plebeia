@@ -57,9 +57,9 @@ let random_write_parse st =
       in
       let n =
         if right_referred then
-          new_internal n2 n1 Left_Not_Indexed
+          new_internal n2 n1
         else
-          new_internal n1 n2 Right_Not_Indexed
+          new_internal n1 n2
       in
       let n, _, _ = Node_storage.commit_node context n in
       parse_test context n

@@ -42,10 +42,8 @@ module Dot = struct
     | Some l -> Printf.sprintf "%s -> %s [label=\"%s\", color=red];" n1 n2 l
 
   let indexed = function
-    | Left_Not_Indexed -> "i?"
-    | Right_Not_Indexed -> "?i"
     | Indexed i -> Int64.to_string @@ Index.to_int64 i
-    | Not_Indexed -> "i"
+    | Not_Indexed -> "n/i"
       
   let modified = function
     | Modified -> "*"
@@ -201,12 +199,8 @@ let validate_node context (node : node) =
                 aux r >>= fun r -> 
                 (match ir, indexed l, indexed r with
                  | _, true, true -> Ok ()
-                 | Left_Not_Indexed, false, _ -> Ok ()
-                 | Right_Not_Indexed, _, false -> Ok ()
                  | Not_Indexed, _, _ -> Ok ()
-                 | Indexed _, _, _ -> Error "Internal: Strange indexed"
-                 | Right_Not_Indexed, _, _ -> Error "Internal: Strange indexed"
-                 | Left_Not_Indexed, _, _ -> Error "Internal: Strange indexed") >>= fun () ->
+                 | Indexed _, _, _ -> Error "Internal: Strange indexed") >>= fun () ->
                 (match hit, hashed_is_transitive l, hashed_is_transitive r with
                  | _, true, true -> Ok v
                  | Not_Hashed, _, _ -> Ok v

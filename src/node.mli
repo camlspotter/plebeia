@@ -6,8 +6,6 @@ type hashed =
 
 type indexed =
   | Indexed of Index.t
-  | Left_Not_Indexed (* For Internal: Right may not be indexed either *)
-  | Right_Not_Indexed (* For Internal: Left may not be indexed either *)
   | Not_Indexed (* For non Internals *) 
   (** This rule expresses the following invariant : if a node is indexed, then
       its children are necessarily indexed. Less trivially, if an internal node is not
@@ -107,7 +105,7 @@ val _Extender : Segment.t
 val new_leaf : Value.t -> node
 val new_extend : Segment.t -> node -> node
 val new_bud : node option -> node
-val new_internal : node -> node -> indexed -> node
+val new_internal : node -> node -> node
 
 (** Loading of nodes *)
 

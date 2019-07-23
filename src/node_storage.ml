@@ -375,16 +375,9 @@ let commit_node context node =
         check_hash h lh;
         write_empty_bud context
 
-    | Internal (left, right, Left_Not_Indexed, h) ->
-        let (right, _ir, lhr) = commit_aux right in
-        let (left, _il, lhl) = commit_aux left in (* This one must be the latter *)
-        let lh = Node_hash.of_internal lhl lhr in
-        check_hash h lh;
-        write_internal context left right lh
-
-    | Internal (left, right, Right_Not_Indexed, h) ->
+    | Internal (left, right, Not_Indexed, h) ->
         let (left, _il, lhl) = commit_aux left in
-        let (right, _ir, lhr) = commit_aux right in (* This one must be the latter *)
+        let (right, _ir, lhr) = commit_aux right in
         let lh = Node_hash.of_internal lhl lhr in
         check_hash h lh;
         write_internal context left right lh
@@ -394,16 +387,6 @@ let commit_node context node =
         let lh = Node_hash.of_extender segment lh' in
         check_hash h lh;
         write_extender context segment underneath lh
-
-    | (Leaf (_, Left_Not_Indexed, _)|
-       Leaf (_, Right_Not_Indexed, _)|
-       Bud (Some _, Left_Not_Indexed, _)|
-       Bud (Some _, Right_Not_Indexed, _)|
-       Bud (None, Left_Not_Indexed, _)|
-       Bud (None, Right_Not_Indexed, _)|
-       Internal (_, _, Not_Indexed, _)|
-       Extender (_, _, Left_Not_Indexed, _)|
-       Extender (_, _, Right_Not_Indexed, _)) -> assert false
 
     | (Leaf (_, Indexed _, Not_Hashed)|Bud (None, Indexed _, Not_Hashed)|
        Bud (Some _, Indexed _, Not_Hashed)|

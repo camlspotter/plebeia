@@ -41,10 +41,7 @@ let trail_modified_invariant = function
   | Top -> Ok ()
   | Left (_, n, Unmodified (ir, hit)) -> 
       begin match ir with
-        | Left_Not_Indexed -> Ok ()
-        | Right_Not_Indexed when not @@ indexed n -> Ok ()
-        | Right_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Left: invalid Not_Indexed"
+        | Not_Indexed -> Ok ()
         | Indexed _ when indexed n -> Ok ()
         | Indexed _ -> Error "Left: invalid Indexed"
       end >>= fun () ->
@@ -56,11 +53,7 @@ let trail_modified_invariant = function
   | Left (_, _, Modified) -> Ok ()
   | Right (n, _, Unmodified (ir, hit)) ->
       begin match ir with
-        | Right_Not_Indexed -> Ok ()
-        | Left_Not_Indexed when not @@ indexed n -> Ok ()
-        | Left_Not_Indexed when indexed n -> Ok () (* XXX *)
-        | Left_Not_Indexed -> Error "Right: invalid Left_Not_Indexed"
-        | Not_Indexed -> Error "Right: invalid Not_Indexed"
+        | Not_Indexed -> Ok ()
         | Indexed _ when indexed n -> Ok ()
         | Indexed _ -> Error "Right: invalid Indexed"
       end >>= fun () ->
@@ -73,13 +66,11 @@ let trail_modified_invariant = function
   | Budded (_, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
       end
   | Budded (_, Modified) -> Ok () 
   | Extended (_, _, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexed"
       end
   | Extended (_, _, Modified) -> Ok () 
 
@@ -129,12 +120,8 @@ let cursor_invariant (Cursor (trail, n, c)) =
       end
   | Left (_, n', Unmodified (ir, hit)) -> 
       begin match ir with
-        | Left_Not_Indexed when not @@ indexed n -> Ok ()
-        | Left_Not_Indexed when indexed n && indexed n' -> Ok () (* XXX *)
-        | Left_Not_Indexed -> Error "Cursor: invalid Left_Not_Indexed"
-        | Right_Not_Indexed -> Ok ()
-        | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
-        | Indexed _ when indexed n -> Ok ()
+        | Not_Indexed -> Ok ()
+        | Indexed _ when indexed n && indexed n' -> Ok ()
         | Indexed _ -> Error "Cursor: invalid Indexed"
       end >>= fun () ->
       begin match hit with
@@ -145,12 +132,8 @@ let cursor_invariant (Cursor (trail, n, c)) =
   | Left (_, _, Modified) -> Ok ()
   | Right (n', _, Unmodified (ir, hit)) ->
       begin match ir with
-        | Left_Not_Indexed -> Ok ()
-        | Right_Not_Indexed when not @@ indexed n -> Ok ()
-        | Right_Not_Indexed when indexed n && indexed n' -> Ok () (* XXX *)
-        | Right_Not_Indexed -> Error "Cursor: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
-        | Indexed _ when indexed n -> Ok ()
+        | Not_Indexed -> Ok ()
+        | Indexed _ when indexed n && indexed n' -> Ok ()
         | Indexed _ -> Error "Cursor: invalid Indexed"
       end >>= fun () ->
       begin match hit with
@@ -164,7 +147,6 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Indexed _ when indexed n -> Ok ()
         | Indexed _ -> Error "Budded: invalid Indexed"
         | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
       end
   | Budded (_, Modified) -> Ok ()
   | Extended (_, _, Unmodified (ir, hit)) ->
@@ -172,7 +154,6 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Indexed _ when indexed n -> Ok ()
         | Indexed _ -> Error "Extended: invalid Indexed"
         | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexed"
       end >>= fun () ->
       begin match hit with
         | Hashed _ when hashed n -> Ok ()
@@ -297,23 +278,11 @@ let go_up (Cursor (trail, node, context))  = match trail with
   (* Modified cases. *)
 
   | Left (prev_trail, right, Modified) ->
-      let i = match indexed node, indexed right with
-        | true, true -> Left_Not_Indexed (* XXX not correct.  this is just a workaround. with node sharing, non-indexed internals now can have two already indexed sub-nodes. *)
-        | false, true -> Left_Not_Indexed
-        | true, false -> Right_Not_Indexed
-        | false, false -> Left_Not_Indexed 
-      in
-      let internal = new_internal node right i in
+      let internal = new_internal node right in
       Ok (attach prev_trail internal context)
 
   | Right (left, prev_trail, Modified) ->
-      let i = match indexed left, indexed node with
-        | true, true -> Left_Not_Indexed (* XXX not correct.  this is just a workaround. with node sharing, non-indexed internals now can have two already indexed sub-nodes. *)
-        | false, true -> Left_Not_Indexed
-        | true, false -> Right_Not_Indexed
-        | false, false -> Left_Not_Indexed 
-      in
-      let internal = new_internal left node i in
+      let internal = new_internal left node in
       Ok (attach prev_trail internal context)
 
   | Budded (prev_trail, Modified) ->

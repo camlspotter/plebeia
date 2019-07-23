@@ -8,8 +8,6 @@ type hashed =
 
 type indexed =
   | Indexed of Index.t
-  | Left_Not_Indexed (* Right may not be indexed either *)
-  | Right_Not_Indexed (* Left may not be indexed either *)
   | Not_Indexed
   (** This rule expresses the following invariant : if a node is indexed, then
       its children are necessarily indexed. Less trivially, if an internal node is not
@@ -106,35 +104,25 @@ let index = function
 let view_indexed_invariant : view -> (unit, Error.t) Result.t = function
   | Bud (None, Indexed _, _) -> Ok ()
   | Bud (Some n, Indexed _, _) when indexed n -> Ok ()
-  | Bud (_, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Bud: invalid indexed"
   | Bud (_, Not_Indexed, _) -> Ok ()
   | Leaf (_, Indexed _, _) -> Ok ()
   | Leaf (_, Not_Indexed, _) -> Ok ()
-  | Leaf (_, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Leaf: invalid indexed"
   | Internal (l, r, Indexed _i, _) ->
       begin match index l, index r with
         | None, _ -> Error "Internal: invalid Indexed"
         | _, None -> Error "Internal: invalid Indeced"
-(*
+(* We abandoned this strict invariant on internals.
         | Some li, Some ri -> 
             if Index.(i - li = one || i - ri = one) then Ok ()
             else Error "Internal: invalid indices"
 *)
         | _ -> Ok () (* we now use fat internals *)
       end
-  | Internal (l, _r, Left_Not_Indexed, _) when not @@ indexed l -> Ok ()
-  | Internal (l, r, Left_Not_Indexed, _) when indexed l && indexed r -> 
-      (* XXX workaround for node sharing *)
-      Ok ()
-  | Internal (_l, r, Right_Not_Indexed, _) when not @@ indexed r -> Ok ()
-  | Internal (_l, _r, Not_Indexed, _) -> Error "Internal: invalid indexed"
+  | Internal (_l, _r, Not_Indexed, _) -> Ok ()
   | Extender (_, n, Indexed _, _) when indexed n -> Ok ()
   | Extender (_, _, Not_Indexed, _) -> Ok ()
-  | Extender (_, _, (Left_Not_Indexed | Right_Not_Indexed), _) -> Error "Bud: invalid indexed"
   | Bud (_, Indexed _, _)  
   | Extender (_, _, Indexed _, _)  -> Error "Invalid Indexed"
-  | Internal (_, _, Left_Not_Indexed, _) -> Error "Internal: invalid Left_Not_Indexed"
-  | Internal (_, _, Right_Not_Indexed, _) -> Error "Internal: invalid Right_Not_Indexed"
 
 let hashed = function
   | Disk _ -> true
@@ -212,8 +200,7 @@ let new_extend : Segment.segment -> node -> node = fun segment node ->
 
 let new_bud no = View (_Bud (no, Not_Indexed, Not_Hashed))
 
-let new_internal n1 n2 i = 
-  View (_Internal (n1, n2, i, Not_Hashed))
+let new_internal n1 n2 = View (_Internal (n1, n2, Not_Indexed, Not_Hashed))
 
 
 

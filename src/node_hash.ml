@@ -81,22 +81,12 @@ let long_hash context node : (view * t) =
         let h = shorten lh in
         (_Bud (None, Not_Indexed, Hashed h), lh)
 
-    | Internal (left, right, Left_Not_Indexed, Not_Hashed) -> 
+    | Internal (left, right, Not_Indexed, Not_Hashed) -> 
         let (left, lhl) = aux left
         and (right, lhr) = aux right in
         let lh = of_internal lhl lhr in
         let h = shorten lh in
-        assert (indexed (View left) = false);
-        (_Internal (View left, View right, Left_Not_Indexed, Hashed h), lh)
-
-    | Internal (left, right, Right_Not_Indexed, Not_Hashed) ->
-        (* XXX dupe of the above *)
-        let (left, lhl) = aux left
-        and (right, lhr) = aux right in
-        let lh = of_internal lhl lhr in
-        let h = shorten lh in
-        assert (indexed (View right) = false);
-        (_Internal (View left, View right, Right_Not_Indexed, Hashed h), lh)
+        (_Internal (View left, View right, Not_Indexed, Hashed h), lh)
 
     | Extender (segment, underneath, _, Not_Hashed)  ->
         let (underneath, lh) = aux underneath in
@@ -104,7 +94,7 @@ let long_hash context node : (view * t) =
         let h = shorten lh in
         (_Extender (segment, View underneath, Not_Indexed, Hashed h), lh)
 
-    | Internal (_, _, (Not_Indexed|Indexed _), Not_Hashed) -> assert false
+    | Internal (_, _, Indexed _, Not_Hashed) -> assert false
   in 
   aux node
 
