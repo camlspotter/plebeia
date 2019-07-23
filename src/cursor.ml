@@ -58,7 +58,8 @@ let trail_modified_invariant = function
       begin match ir with
         | Right_Not_Indexed -> Ok ()
         | Left_Not_Indexed when not @@ indexed n -> Ok ()
-        | Left_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
+        | Left_Not_Indexed when indexed n -> Ok () (* XXX *)
+        | Left_Not_Indexed -> Error "Right: invalid Left_Not_Indexed"
         | Not_Indexed -> Error "Right: invalid Not_Indexed"
         | Indexed _ when indexed n -> Ok ()
         | Indexed _ -> Error "Right: invalid Indexed"
@@ -101,14 +102,10 @@ let check_trail t =
   | Error s -> failwith s
 
 let _Top = Top
-let _Left (t, n, mr) = 
-  check_trail @@ Left (t, n, mr)
-let _Right (n, t, mr) =
-  check_trail @@ Right (n, t, mr)
-let _Budded (t, mr) =
-  check_trail @@ Budded (t, mr)
-let _Extended (t, s, mr) =
-  check_trail @@ Extended (t, s, mr)
+let _Left (t, n, mr)     = check_trail @@ Left (t, n, mr)
+let _Right (n, t, mr)    = check_trail @@ Right (n, t, mr)
+let _Budded (t, mr)      = check_trail @@ Budded (t, mr)
+let _Extended (t, s, mr) = check_trail @@ Extended (t, s, mr)
 
 type cursor =
     Cursor of trail
@@ -130,9 +127,10 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Bud _ -> Ok ()
         | _ -> Error "Cursor: Top has no Bud"
       end
-  | Left (_, _, Unmodified (ir, hit)) -> 
+  | Left (_, n', Unmodified (ir, hit)) -> 
       begin match ir with
         | Left_Not_Indexed when not @@ indexed n -> Ok ()
+        | Left_Not_Indexed when indexed n && indexed n' -> Ok () (* XXX *)
         | Left_Not_Indexed -> Error "Cursor: invalid Left_Not_Indexed"
         | Right_Not_Indexed -> Ok ()
         | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
@@ -144,13 +142,12 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Hashed _ -> Error "Cursor: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Left (_, _, Modified) -> 
-      if indexed n then Error "Cursor (Left (Modifeid), indexed)"
-      else Ok ()
-  | Right (_, _, Unmodified (ir, hit)) ->
+  | Left (_, _, Modified) -> Ok ()
+  | Right (n', _, Unmodified (ir, hit)) ->
       begin match ir with
         | Left_Not_Indexed -> Ok ()
         | Right_Not_Indexed when not @@ indexed n -> Ok ()
+        | Right_Not_Indexed when indexed n && indexed n' -> Ok () (* XXX *)
         | Right_Not_Indexed -> Error "Cursor: invalid Right_Not_Indexed"
         | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
         | Indexed _ when indexed n -> Ok ()
@@ -161,9 +158,7 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Hashed _ -> Error "Cursor: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Right (_, _, Modified) ->
-      if indexed n then Error "Cursor (Right (Modifeid), indexed)"
-      else Ok ()
+  | Right (_, _, Modified) -> Ok ()
   | Budded (_, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ when indexed n -> Ok ()
@@ -171,9 +166,7 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Not_Indexed -> Ok ()
         | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
       end
-  | Budded (_, Modified) -> 
-      if indexed n then Error "Cursor (Budded (Modified), indexed)"
-      else Ok ()
+  | Budded (_, Modified) -> Ok ()
   | Extended (_, _, Unmodified (ir, hit)) ->
       begin match ir with
         | Indexed _ when indexed n -> Ok ()
@@ -186,9 +179,7 @@ let cursor_invariant (Cursor (trail, n, c)) =
         | Hashed _ -> Error "Extended: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
-  | Extended (_, _, Modified) -> 
-      if indexed n then Error "Cursor (Extended (Modified), indexed)"
-      else Ok ()
+  | Extended (_, _, Modified) -> Ok ()
 
 let check_cursor c = 
   match cursor_invariant c with
@@ -221,13 +212,9 @@ let local_seg_of_trail trail =
 let dot_of_cursor_ref = ref (fun _ -> assert false)
     
 let attach trail node context =
-  (* Attaches a node to a trail even if the indexing type and hashing type is incompatible with
-     the trail by tagging the modification. Extender types still have to match. *)
-  if indexed node <> false then begin
-    let open Printexc in
-    prerr_endline ("ERROR ERROR ERROR\n" ^ raw_backtrace_to_string (get_callstack 10));
-    assert false
-  end;
+  (* Attaches a node to a trail even if the indexing type and hashing type is 
+     incompatible with the trail by tagging the modification. Extender types 
+     still have to match. *)
   match trail with
   | Top -> _Cursor (_Top, node, context)
   | Left (prev_trail, right, _) ->
@@ -311,7 +298,7 @@ let go_up (Cursor (trail, node, context))  = match trail with
 
   | Left (prev_trail, right, Modified) ->
       let i = match indexed node, indexed right with
-        | true, true -> assert false (* XXX *)
+        | true, true -> Left_Not_Indexed (* XXX not correct.  this is just a workaround. with node sharing, non-indexed internals now can have two already indexed sub-nodes. *)
         | false, true -> Left_Not_Indexed
         | true, false -> Right_Not_Indexed
         | false, false -> Left_Not_Indexed 
@@ -321,7 +308,7 @@ let go_up (Cursor (trail, node, context))  = match trail with
 
   | Right (left, prev_trail, Modified) ->
       let i = match indexed left, indexed node with
-        | true, true -> assert false (* XXX *)
+        | true, true -> Left_Not_Indexed (* XXX not correct.  this is just a workaround. with node sharing, non-indexed internals now can have two already indexed sub-nodes. *)
         | false, true -> Left_Not_Indexed
         | true, false -> Right_Not_Indexed
         | false, false -> Left_Not_Indexed 

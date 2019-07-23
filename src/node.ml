@@ -123,6 +123,9 @@ let view_indexed_invariant : view -> (unit, Error.t) Result.t = function
         | _ -> Ok () (* we now use fat internals *)
       end
   | Internal (l, _r, Left_Not_Indexed, _) when not @@ indexed l -> Ok ()
+  | Internal (l, r, Left_Not_Indexed, _) when indexed l && indexed r -> 
+      (* XXX workaround for node sharing *)
+      Ok ()
   | Internal (_l, r, Right_Not_Indexed, _) when not @@ indexed r -> Ok ()
   | Internal (_l, _r, Not_Indexed, _) -> Error "Internal: invalid indexed"
   | Extender (_, n, Indexed _, _) when indexed n -> Ok ()

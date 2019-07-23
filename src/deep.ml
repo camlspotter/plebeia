@@ -83,13 +83,7 @@ let copy ~create_subtrees cur segs1 segs2 =
     deep ~go_up:true ~create_subtrees cur segs2
       (fun cur seg -> 
          alter cur seg (function
-             | None -> 
-                 (* Ok (View bud) (* XXX bad because this bud is indexed *) *)
-                 Ok (new_bud 
-                       (match bud with
-                        | Bud (no, _, _) -> no
-                        | _ -> assert false))
-                               
+             | None -> Ok (View bud)
              | Some _ -> Error "a node already presents for this segment") >>= fun cur ->
          Ok (cur, ())) >>| fst
       
