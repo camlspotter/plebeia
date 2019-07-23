@@ -33,8 +33,8 @@ type trail =
      that two extenders cannot follow each other *)
 
 let trail_shape_invariant = function
-  | Extended (Extended _, _, _) -> Error "Extended: cannot have Extended"
-  | Extended (_, seg, _) when Segment.is_empty seg -> Error "Extended: invalid empty segment"
+  | Extended (Extended _, _, _) -> Error "Trail Extended: cannot have Extended"
+  | Extended (_, seg, _) when Segment.is_empty seg -> Error "Trail Extended: invalid empty segment"
   | _ -> Ok ()
 
 let trail_modified_invariant = function
@@ -43,14 +43,14 @@ let trail_modified_invariant = function
       begin match ir with
         | Left_Not_Indexed -> Ok ()
         | Right_Not_Indexed when not @@ indexed n -> Ok ()
-        | Right_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Left: invalid Not_Indexed"
+        | Right_Not_Indexed -> Error "Trail Left: invalid Right_Not_Indexed"
+        | Not_Indexed -> Error "Trail Left: invalid Not_Indexed"
         | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Left: invalid Indexed"
+        | Indexed _ -> Error "Trail Left: invalid Indexed"
       end >>= fun () ->
       begin match hit with
         | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Left: invalid Hashed"
+        | Hashed _ -> Error "Trail Left: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
   | Left (_, _, Modified) -> Ok ()
@@ -58,27 +58,27 @@ let trail_modified_invariant = function
       begin match ir with
         | Right_Not_Indexed -> Ok ()
         | Left_Not_Indexed when not @@ indexed n -> Ok ()
-        | Left_Not_Indexed -> Error "Left: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Right: invalid Not_Indexed"
+        | Left_Not_Indexed -> Error "Trail Right: invalid Right_Not_Indexed"
+        | Not_Indexed -> Error "Trail Right: invalid Not_Indexed"
         | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Right: invalid Indexed"
+        | Indexed _ -> Error "Trail Right: invalid Indexed"
       end >>= fun () ->
       begin match hit with
         | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Right: invalid Hashed"
+        | Hashed _ -> Error "Trail Right: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
   | Right (_, _, Modified) -> Ok ()
   | Budded (_, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
+        | Right_Not_Indexed | Left_Not_Indexed -> Error "Trail Budded: invalid indexed"
       end
   | Budded (_, Modified) -> Ok () 
   | Extended (_, _, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexed"
+        | Right_Not_Indexed | Left_Not_Indexed -> Error "Trail Extended: invalid indexed"
       end
   | Extended (_, _, Modified) -> Ok () 
 
@@ -133,15 +133,15 @@ let cursor_invariant (Cursor (trail, n, c)) =
   | Left (_, _, Unmodified (ir, hit)) -> 
       begin match ir with
         | Left_Not_Indexed when not @@ indexed n -> Ok ()
-        | Left_Not_Indexed -> Error "Cursor: invalid Left_Not_Indexed"
+        | Left_Not_Indexed -> Error "Cursor Left: invalid Left_Not_Indexed"
         | Right_Not_Indexed -> Ok ()
-        | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
+        | Not_Indexed -> Error "Cursor Left: invalid Not_Indexed"
         | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Cursor: invalid Indexed"
+        | Indexed _ -> Error "Cursor Left: invalid Indexed"
       end >>= fun () ->
       begin match hit with
         | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Cursor: invalid Hashed"
+        | Hashed _ -> Error "Cursor Left: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
   | Left (_, _, Modified) -> Ok ()
@@ -149,35 +149,35 @@ let cursor_invariant (Cursor (trail, n, c)) =
       begin match ir with
         | Left_Not_Indexed -> Ok ()
         | Right_Not_Indexed when not @@ indexed n -> Ok ()
-        | Right_Not_Indexed -> Error "Cursor: invalid Right_Not_Indexed"
-        | Not_Indexed -> Error "Cursor: invalid Not_Indexed"
+        | Right_Not_Indexed -> Error "Cursor Right: invalid Right_Not_Indexed"
+        | Not_Indexed -> Error "Cursor Right: invalid Not_Indexed"
         | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Cursor: invalid Indexed"
+        | Indexed _ -> Error "Cursor Right: invalid Indexed"
       end >>= fun () ->
       begin match hit with
         | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Cursor: invalid Hashed"
+        | Hashed _ -> Error "Cursor Right: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
   | Right (_, _, Modified) -> Ok ()
   | Budded (_, Unmodified (ir, _hit)) ->
       begin match ir with
         | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Budded: invalid Indexed"
+        | Indexed _ -> Error "Cursor: Budded: invalid Indexed"
         | Not_Indexed -> Ok ()
-        | Right_Not_Indexed | Left_Not_Indexed -> Error "Budded: invalid indexed"
+        | Right_Not_Indexed | Left_Not_Indexed -> Error "Cursor: Budded: invalid indexed"
       end
   | Budded (_, Modified) -> Ok () 
   | Extended (_, _, Unmodified (ir, hit)) ->
       begin match ir with
         | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Extended: invalid Indexed"
+        | Indexed _ -> Error "Cursor: Extended: invalid Indexed"
         | Not_Indexed -> Ok ()
         | Right_Not_Indexed | Left_Not_Indexed -> Error "Extended: invalid indexed"
       end >>= fun () ->
       begin match hit with
         | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Extended: invalid Hashed"
+        | Hashed _ -> Error "Cursor: Extended: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
   | Extended (_, _, Modified) -> Ok () 
