@@ -427,3 +427,29 @@ let rec load_node_fully context n =
   | Extender (seg, n, i, h) ->
       let n = load_node_fully context n in
       View (_Extender (seg, n, i, h))
+
+let equal context n1 n2 =
+  let rec aux = function
+    | [] -> Ok ()
+    | (n1,n2)::rest ->
+        match n1, n2 with
+        | Disk (i1, ew1), Disk (i2, ew2) when i1 = i2 && ew1 = ew2 -> aux rest
+        | Disk _, Disk _ -> Error (n1,n2)
+        | Disk (i, ew), n2 ->
+            let n1 = View (load_node context i ew) in
+            aux @@ (n1,n2)::rest
+        | n1, Disk (i, ew) ->
+            let n2 = View (load_node context i ew) in
+            aux @@ (n1,n2)::rest
+        | View v1, View v2 ->
+            match v1, v2 with
+            | Internal (n11, n12, _, _), Internal (n21, n22, _, _) ->
+                aux @@ (n11,n21)::(n12,n22)::rest
+            | Bud (None, _, _), Bud (None, _, _) -> aux rest
+            | Bud (Some n1, _, _), Bud (Some n2, _, _) -> aux @@ (n1,n2) :: rest
+            | Leaf (v1, _, _), Leaf (v2, _, _) when v1 = v2 -> aux rest
+            | Extender (seg1, n1, _, _), Extender (seg2, n2, _, _) when seg1 = seg2 ->
+                aux @@ (n1,n2)::rest
+            | _ -> Error (n1,n2)
+  in
+  aux [(n1, n2)]

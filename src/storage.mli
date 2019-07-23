@@ -21,3 +21,5 @@ val load_node_fully : Context.t -> node -> node
 (** Recusively visit and load all the subnodes in memory.
    Only for test purposes
 *)
+
+val equal : Context.t -> node -> node -> (unit, Node.node * Node.node) Result.t
