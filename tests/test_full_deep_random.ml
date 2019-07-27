@@ -8,8 +8,6 @@ module RS = Random.State
 
 module Debug = Debug
 
-module Dumb = Dumb
-
 (* We cannot compare with Dumb *)
   
 let random_seg st = random_segment ~length:3 st
@@ -153,14 +151,65 @@ let do_random st sz c =
         let c = f c 0 in
         (c, List.rev !rev_ops)
 
-      let () = 
-        let st = RS.make_self_init () in
-        for i = 0 to 1000 do
-          test_with_cursor @@ fun c ->
-          let c, ops = do_random st 1000 c in
-          if i mod 100 = 0 then begin
-            Format.eprintf "%d done (%d ops)@." i
-              (List.length ops);
-            Debug.save_to_dot (Printf.sprintf "random%d.dot" i) c
-          end
-        done
+(* check of folder *)
+let check_first_buds_and_leaves (Cursor (trail, n, context) as c) =
+  assert (trail = _Top);
+  let set1 = 
+    match Node.view context n with
+    | Bud (None, _, _) -> []
+    | Bud (Some n, _, _) ->
+        let rec aux st = function
+          | [] -> st
+          | (seg,n)::ns ->
+              match Node.view context n with
+              | Bud _ -> aux (`Bud (List.rev seg) :: st) ns
+              | Leaf _ -> aux (`Leaf (List.rev seg) :: st) ns
+              | Internal (n1, n2, _, _) ->
+                  aux st ((Segment.Left::seg,n1)::(Segment.Right::seg,n2)::ns)
+              | Extender (seg', n, _, _) ->
+                  aux st ((List.rev_append seg' seg,n)::ns)
+        in
+        List.sort compare @@ aux [] [([],n)] 
+    | _ -> assert false
+  in
+  let set2 =
+    let rec aux st (log, c) =
+      match folder (log, c) with
+      | None -> st
+      | Some (log, c) ->
+          let c, v = view_cursor c in
+          match v with
+          | Bud _ -> aux (`Bud (local_seg_of_cursor c)::st) (log, c)
+          | Leaf _ -> aux (`Leaf (local_seg_of_cursor c)::st) (log, c)
+          | _ -> assert false
+    in
+    List.sort compare @@ aux [] ([], c)
+  in
+  let print = function
+    | `Bud seg -> Format.eprintf "B %s@." (Segment.to_string seg)
+    | `Leaf seg -> Format.eprintf "L %s@." (Segment.to_string seg)
+  in
+  if set1 <> set2 then begin
+    Format.eprintf "Set1@.";
+    List.iter print set1;
+    Format.eprintf "Set2@.";
+    List.iter print set2;
+    Debug.save_to_dot "folder.dot" c;
+    assert false
+  end 
+    
+let () = 
+  let st = RS.make_self_init () in
+  for i = 0 to 1000 do
+    test_with_cursor @@ fun c ->
+    let c, ops = do_random st 1000 c in
+
+    (* check folder *)
+    check_first_buds_and_leaves c;
+
+    if i mod 100 = 0 then begin
+      Format.eprintf "%d done (%d ops)@." i
+        (List.length ops);
+      Debug.save_to_dot (Printf.sprintf "random%d.dot" i) c
+    end
+  done

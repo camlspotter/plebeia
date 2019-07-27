@@ -77,8 +77,14 @@ val view_cursor : t -> t * view
 val segs_of_trail : trail -> Segment.t list
 (** Segment side list of the given trail, splitted by buds *)
 
+val segs_of_cursor : t -> Segment.t list
+(** Segment side list of the given cursor, splitted by buds *)
+
 val local_seg_of_trail : trail -> Segment.t
 (** Segment side list of the given trail, splitted by buds *)
+
+val local_seg_of_cursor : t -> Segment.t
+(** Segment side list of the given cursor, splitted by buds *)
 
 
 
@@ -200,7 +206,12 @@ and dir =
   | Center
 
 val traverse : (where_from list * t) -> (where_from list * t) option
-val force_traverse_up : (where_from list * t) -> (where_from list * t) option
+val force_traverse_up : (where_from list * t) -> (where_from list * t)
+
+val folder : (where_from list * t) -> (where_from list * t) option
+(** Assume to start from a bud, and fold from it whthin its bud level.
+    It traverses and returns when it reaches to a bud, a leaf, or 
+    the completion of the traversal. *)
 
 val fold : init:'a -> t -> ('a -> t -> ('a, 'b) Result.t) -> (('a, 'b) Result.t, Error.t) Result.t
 (** Fold from a bud, within its bud level.  The function is called only

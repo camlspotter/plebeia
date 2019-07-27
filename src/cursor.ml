@@ -180,6 +180,8 @@ let segs_of_trail trail =
   in
   aux ([], []) trail
 
+let segs_of_cursor (Cursor (trail, _, _)) = segs_of_trail trail
+
 let local_seg_of_trail trail =
   let rec aux xs = function
     | Top -> xs
@@ -189,6 +191,8 @@ let local_seg_of_trail trail =
     | Extended (tr, seg, _) -> aux (seg @ xs) tr
   in
   aux [] trail
+
+let local_seg_of_cursor (Cursor (trail, _, _)) = local_seg_of_trail trail
 
 let dot_of_cursor_ref = ref (fun _ -> assert false)
     
@@ -544,13 +548,10 @@ and dir =
    against the result of the function, we can traverse all the nodes.
    Note that this loads all the nodes in the memory in the end.
 *)
-let traverse (log, Cursor (trail, n, context)) = 
-  let v = match n with
-    | Disk (i, ewit) -> load_node context i ewit
-    | View v -> v
-  in
-  let c = _Cursor (trail, View v, context) in
+let traverse (log, c) =
+  let c, v = view_cursor c in
   match v, log with
+  (* if going up, things below must be forgotten *)
   | _, From_below _ :: From_below _ :: _ -> assert false
 
   | Leaf _, From_below _ :: _ -> assert false
@@ -593,28 +594,49 @@ let traverse (log, Cursor (trail, n, context)) =
       let c = from_Ok @@ go_up c in
       Some (From_below d :: log, c)
 
-(* Force the traversal go up and prevent it from going down 
-   from the node *)
-let force_traverse_up (log, Cursor (trail, n, context)) =
-  let v = match n with
-    | Disk (i, ewit) -> load_node context i ewit
-    | View v -> v
-  in
-  let c = _Cursor (trail, View v, context) in
+(* Force the traversal go up and prevent it from going down from the node.
+   This function only changes the direction.  It does not traverse.
+*)
+let force_traverse_up (log, c) =
+  let c, v = view_cursor c in
   match v, log with
-  | Bud (Some _, _, _), From_above _ :: [] -> None
-  | Bud (Some _, _, _), From_above d :: log ->
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-  | Internal _, From_above _ :: [] -> None
-  | Internal _, From_above d :: log ->
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-  | Extender (_seg, _, _, _), From_above _ :: [] -> None
-  | Extender (_seg, _, _, _), From_above d :: log ->
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-  | _ -> traverse (log, c)
+  (* we finish in the next traversal *) 
+  | _, [] -> (log, c)
+
+  (* the next traversal is go up *)
+  | (Leaf _ | Bud (None, _, _)), log -> (log, c)
+  | Bud (Some _, _, _), From_below Center :: _ -> (log, c)
+  | Internal _, From_below Right :: _          -> (log, c)
+  | Extender _, From_below Center :: _         -> (log, c)
+
+  (* pretend it comes from the below *)
+  | Bud (Some _, _, _), From_above _ :: _ ->
+      (From_below Center :: log, c)
+  | Internal _, From_above _ :: _ ->
+      (* pretend it comes from the below-right *)
+      (From_below Right :: log, c)
+  | Internal _, From_below Left :: log ->
+      (* pretend it comes from the below-right *)
+      (From_below Right :: log, c)
+  | Extender _, From_above _ :: _ ->
+      (From_below Center :: log, c)
+
+  (* impossible *)
+  | Bud (Some _, _, _), From_below (Left | Right) :: _ -> assert false
+  | Internal _, From_below Center :: _ -> assert false
+  | Extender _, From_below (Left | Right) :: _ -> assert false
+
+let rec folder (log, c) =
+  (* traverse anyway *)
+  match traverse (log, c) with
+  | None -> None
+  | Some (log, c) ->
+      let c, v = view_cursor c in
+      match v, log with
+      | Bud _, From_above _ :: _ -> 
+          Some (force_traverse_up (log, c))
+      | Leaf _, _ -> Some (log, c)
+      | _ -> folder (log, c)
 
 let fold ~init c f =
   go_below_bud c >>= function
@@ -637,9 +659,8 @@ let fold ~init c f =
             begin match res with
               | Error e -> Error e
               | Ok acc ->
-                  match force_traverse_up (log, c) with
-                  | None -> Ok acc
-                  | Some (log, c) -> aux acc log c
+                  let (log, c) = force_traverse_up (log, c) in
+                  aux acc log c
             end
         | _ -> 
             begin match traverse (log, c) with
@@ -648,6 +669,6 @@ let fold ~init c f =
             end
       in
       Ok (aux init [] c)
-  
+
 let stat (Cursor (_,_,{ stat ; _ })) = stat
 
