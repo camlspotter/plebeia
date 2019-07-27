@@ -78,6 +78,7 @@ let upsert = Deep.upsert
 let update = Deep.update
 let delete = Deep.delete
 let create_subtree = Deep.create_subtree
+let subtree = Deep.subtree
 let subtree_or_create = Deep.subtree_or_create
 let deep = Deep.deep                          
 let copy = Deep.copy

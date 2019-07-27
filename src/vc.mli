@@ -30,6 +30,7 @@ val upsert : Cursor.t -> Segment.t list -> Value.t -> (Cursor.t, Error.t) Result
 val update : Cursor.t -> Segment.t list -> Value.t -> (Cursor.t, Error.t) Result.t
 val delete : Cursor.t -> Segment.t list -> (Cursor.t, Error.t) Result.t
 val create_subtree : create_subtrees: bool -> Cursor.t -> Segment.t list -> (Cursor.t, Error.t) Result.t
+val subtree : Cursor.t -> Segment.t list -> (Cursor.t, Error.t) Result.t
 val subtree_or_create : create_subtrees: bool -> Cursor.t -> Segment.t list -> (Cursor.t, Error.t) Result.t
 val deep : 
   go_up: bool (* recover the original cursor position or not *)
