@@ -74,6 +74,7 @@ let pp_entry ppf (hash, { index ; parent ; meta1 ; _ }) =
     meta1
 
 let read_commits t =
+  let cntr = ref 0 in
   let rec aux = function
     | None -> ()
     | Some i ->
@@ -89,10 +90,17 @@ let read_commits t =
                   ; meta2 = commit.commit_meta2 }
         in
         Hashtbl.add t.tbl h ent;
+(*
         Format.eprintf "read %a@." pp_entry (h,ent);
+*)
+        incr cntr;
+        if !cntr mod 1000 = 0 then begin
+          Format.eprintf "read %d commmits@." !cntr;
+        end;
         aux commit.commit_prev
   in
-  aux (Storage.get_last_root_index t.context.Context.storage)
+  aux (Storage.get_last_root_index t.context.Context.storage);
+  Format.eprintf "read %d commmits@." !cntr
   
 let write_commit t ?parent index ~meta1 ~meta2=
   let storage = t.context.Context.storage in
