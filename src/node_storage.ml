@@ -233,7 +233,7 @@ let write_internal context nl nr lh =
   _Internal (nl, nr, Indexed i, Hashed h), i, lh
 
 let write_empty_bud context =
-  (* XXX No point to store the empty bud... *)
+  (* XXX No point to store the empty bud more than once... *)
   (* empty bud |<- 1111111111111111111111111111 ->| |<- 2^32 - 256 ------------------------>| *)
   let storage = context.Context.storage in
   let i = Storage.new_index storage in

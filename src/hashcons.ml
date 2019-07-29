@@ -64,10 +64,15 @@ let read_entry t i =
   prev, parse 4
 
 let read t ~load_leaf_value =
+  let cntr = ref 0 in
   let add_index t i =
     match load_leaf_value i with
     | None -> () (* bad value. ignore it *)
     | Some v ->
+        incr cntr;
+        if !cntr mod 1000 = 0 then begin
+          Format.eprintf "Hashcons: loaded %d cached small values@." !cntr
+        end;
         let len = String.length @@ Value.to_string v in
         Hashtbl.replace t.tbl (len, v) i
   in    
@@ -78,8 +83,8 @@ let read t ~load_leaf_value =
         List.iter (add_index t) indices;
         loop prev
   in
-  loop @@ Storage.get_last_cache_index t.storage
-
+  loop @@ Storage.get_last_cache_index t.storage;
+  Format.eprintf "Hashcons: loaded %d cached small values@." !cntr
   
 let find { tbl ; _ } v =
   let s = Value.to_string v in
