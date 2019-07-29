@@ -23,6 +23,14 @@ let open_ ?shared ?context_pos ~prefix () =
     Context.open_ ?pos:context_pos ?shared
       (prefix ^ ".context")
   in
+  (* XXX strange place to load the hashcons *)
+  Hashcons.read context.Context.hashcons
+    ~load_leaf_value:(fun i -> 
+        match Node_storage.load_node context i Node.Not_Extender with
+        | Leaf (v, _, _) -> Some v
+        | _ -> 
+            prerr_endline "Hashcons.read, not a value";
+            None);
   let roots = Roots.create context in
   { roots ; context }
 
