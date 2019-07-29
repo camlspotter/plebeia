@@ -42,7 +42,9 @@ let set_last_root_index t x       = t.last_root_index <- x
 let set_last_cache_index t x      = t.last_cache_index <- x
 let get_last_root_index t         = t.last_root_index
 let get_last_cache_index t        = t.last_cache_index
-    
+
+let get_current_length t = t.current_length
+
 (* Constants *)
 
 (* 2^32 - 256 .. 2^32 - 1 are used for tags for nodes

@@ -11,6 +11,8 @@ val get_last_cache_index      : t -> Index.t option
 val set_last_root_index       : t -> Index.t option -> unit
 val set_last_cache_index      : t -> Index.t option -> unit
 
+val get_current_length : t -> Index.t
+
 val get_cell : t -> Index.t -> Cstruct.t
 val get_bytes : t -> Index.t -> int -> Cstruct.t
 
