@@ -36,3 +36,6 @@ val open_ :
 *)
 
 val close : t -> unit
+
+val ref_load_leaf_value : (t -> Index.t -> Value.t option) ref
+(* Forward declaration to load a leaf value from context *)
