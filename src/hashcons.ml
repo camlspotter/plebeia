@@ -70,7 +70,7 @@ let read t ~load_leaf_value =
     | None -> () (* bad value. ignore it *)
     | Some v ->
         incr cntr;
-        if !cntr mod 1000 = 0 then begin
+        if !cntr mod 1000000 = 0 then begin
           Format.eprintf "Hashcons: loaded %d cached small values@." !cntr
         end;
         let len = String.length @@ Value.to_string v in
