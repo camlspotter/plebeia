@@ -1,6 +1,4 @@
-(*
 open Plebeia.Impl
-open Utils
 
 let (//) = Filename.concat
 
@@ -15,7 +13,6 @@ let () =
   in
 
   let nhashes = Hashtbl.length roots.tbl in
-  let buds = ref 0 in
 
   let _ = Hashtbl.fold (fun hash { Roots.index=_; _} ->
       fun (seen, nseen, pointed, ncopied, nhashes_done) -> 
@@ -23,63 +20,42 @@ let () =
         match Vc.checkout ctxt hash with
         | None -> assert false
         | Some c ->
-            let rec loop seen = function
-              | [] -> seen
-              | c::cs ->
-                  let c, i = 
-                    let c, view = Cursor.view_cursor c in
-                    c, 
-                    from_Some @@ Node.index (View view) 
-                  in
-                    | None -> a
-                    match view with
-                    | Bud (
-                    
-                    
-                  incr buds;
-                  if !buds mod 1000 = 0 then Format.eprintf "done %d buds@." !buds; 
-                  let seen = IS.add c seen in
-                  let nseen = nseen + 1 in
-                  let pointed, ncopied, continue = 
-                    let c, view = Cursor.view_cursor c in
-                    match view with
-                    | Bud (Some n, _, _) ->
-                        begin match Node.index n with
-                        | None -> pointed, ncopied, true
-                        | Some i ->
-                            if IS.mem i pointed then pointed, ncopied + 1, false
-                            else IS.add i pointed, ncopied, true
+            let rec loop log_c_opt (seen, nseen, pointed, ncopied) =
+              match log_c_opt with
+              | None -> (seen, nseen, pointed, ncopied)
+              | Some (log, c) ->
+                  match Cursor.view_cursor c with
+                  | _, Bud (_, Not_Indexed, _) -> assert false
+                  | c, Bud (nopt, Indexed i, _) ->
+                      if IS.mem i seen then
+                        loop (Cursor.traverse (Cursor.force_traverse_up (log, c))) 
+                          (seen, nseen, pointed, ncopied)
+                      else begin
+                        let seen = IS.add i seen in
+                        let nseen = nseen + 1 in
+                        if nseen mod 1000 = 0 then Format.eprintf "%d bud seen@." nseen;
+                        begin match nopt with
+                        | None -> 
+                            loop (Cursor.traverse (log, c))
+                              (seen, nseen, pointed, ncopied)
+                        | Some n ->
+                            match Node.index n with
+                            | None -> assert false
+                            | Some j ->
+                                if IS.mem j pointed then begin
+                                  let ncopied = ncopied + 1 in
+                                  if ncopied mod 100 = 0 then Format.eprintf "%d copies seen@." ncopied;
+                                  loop (Cursor.traverse (Cursor.force_traverse_up (log, c)))
+                                    (seen, nseen, pointed, ncopied)
+                                end else
+                                  loop (Cursor.traverse (log, c)) (seen, nseen, IS.add j pointed, ncopied)
                         end
-                    | _ -> pointed, ncopied, true
-                  in
-                  if not continue then
-                    (seen, nseen, pointed, ncopied)
-                  else
-                    match
-                      Cursor.fold ~init:(seen, []) c (fun (seen, new_) c ->
-                          match Cursor.view_cursor c with
-                          | _, (Bud _ as v) -> 
-                              let i = from_Some (Node.index (View v)) in
-                              if IS.mem i seen then begin
-                                Ok (seen, new_)
-                              end else begin
-                                  Ok (IS.add i seen, c :: new_)
-                                end
-                          | _, Leaf _ -> 
-                              Ok (seen, new_)
-                              | _ -> assert false
-                        )
-
-                    with
-                    | Error _e -> assert false
-                    | Ok (Error _) -> assert false
-                    | Ok (Ok (seen, new_)) -> 
-                        loop seen (cs @ new_)
+                      end
+                  | _ -> 
+                      loop (Cursor.traverse (log,c)) (seen, nseen, pointed, ncopied)
             in
-            let seen = loop seen [c] in
-            Format.eprintf "buds: %d@." (IS.cardinal seen);
-            seen, nhashes_done + 1) roots.tbl (IS.empty, 0)
+            let (seen, nseen, pointed, ncopied) = loop (Some ([], c)) (seen, nseen, pointed, ncopied) in
+            (seen, nseen, pointed, ncopied, nhashes_done + 1)) 
+      roots.tbl (IS.empty, 0, IS.empty, 0, 0)
   in
   ()
-
-*)
