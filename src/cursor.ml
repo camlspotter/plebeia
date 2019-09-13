@@ -660,7 +660,9 @@ let fold ~init c f =
               | Error e -> Error e
               | Ok acc ->
                   let (log, c) = force_traverse_up (log, c) in
-                  aux acc log c
+                  match traverse (log, c) with
+                  | None -> Ok acc
+                  | Some (log, c) -> aux acc log c
             end
         | _ -> 
             begin match traverse (log, c) with
