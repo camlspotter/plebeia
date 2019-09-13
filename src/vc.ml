@@ -9,6 +9,7 @@ type t =
   }
 
 let roots { roots ; _ } = roots
+let context { context ; _ } = context
 
 let create ?context_pos ?context_length ~prefix () =
   let context = 

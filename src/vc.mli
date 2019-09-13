@@ -16,6 +16,7 @@ val open_ :
   -> t
 
 val roots : t -> Roots.t
+val context : t -> Context.t
 
 val close : t -> unit
 
