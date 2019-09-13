@@ -70,7 +70,7 @@ let read t ~load_leaf_value =
     | None -> () (* bad value. ignore it *)
     | Some v ->
         incr cntr;
-        if !cntr mod 1000000 = 0 then begin
+        if !cntr mod 100000 = 0 then begin
           Format.eprintf "Hashcons: loaded %d cached small values@." !cntr
         end;
         let len = String.length @@ Value.to_string v in
@@ -107,4 +107,10 @@ let add t v index =
         may_flush_journal t;
         Ok ()
 
-   
+let stat t =
+  let counts = Array.make 37 0 in
+  Hashtbl.iter (fun (i, _) _ -> 
+      counts.(i) <- counts.(i) + 1) t.tbl;
+  for i = 1 to 36 do
+    Format.eprintf "%d, %d@." i counts.(i)
+  done
