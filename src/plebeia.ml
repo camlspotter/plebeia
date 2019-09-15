@@ -27,7 +27,6 @@ module Impl = struct
   module Cursor_hash      = Cursor_hash
 
   (* Storage *)
-  module Segment_encoding = Segment_encoding
   module Storage          = Storage
   module Node_storage     = Node_storage
   module Cursor_storage   = Cursor_storage

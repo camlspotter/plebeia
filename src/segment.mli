@@ -42,3 +42,16 @@ val append : segment -> segment -> segment
 val concat : segment list -> segment
 val to_side_list : segment -> side list
 val cons : side -> segment -> segment
+
+(** Segment encoding in storage *)
+(*
+   |<-------- 224 bits = 28 bytes ------->|
+   |0*1|<- segment bits upto 222 bits ->|1|
+*)
+
+val encode : t -> string
+(** The length of the segment must be <= 222.  Otherwise the funciton fails. *)
+
+val decode : string -> t
+
+  
