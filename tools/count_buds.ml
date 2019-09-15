@@ -15,9 +15,9 @@ let () =
   let nhashes = Hashtbl.length roots.tbl in
 
   (* Cursor.traversal can be too slow *)
+  let t1 = Unix.gettimeofday () in
   let _ = Hashtbl.fold (fun hash { Roots.index=_; _} ->
       fun (seen, nseen, pointed, ncopied, nhashes_done) -> 
-        let t1 = Unix.gettimeofday () in
         Format.eprintf "Checkout %S %d/%d@." (Hash.to_string hash) nhashes_done nhashes;
         match Vc.checkout ctxt hash with
         | None -> assert false
