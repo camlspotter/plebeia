@@ -37,7 +37,8 @@ let doit st (rev_hist, stat_subdirs, stat_inserts, stat_deletes, stat_commits) c
               add_hist @@ `subtree sub;
               let cur = ok_or_fail @@ subtree cur sub in
               f cur subs
-          | Empty_bud | Middle_of_extender (_, _, _, _::_) ->
+          | Middle_of_extender (_, _, _, x) when Segment.is_empty x -> cur (* skip *)
+          | Empty_bud | Middle_of_extender (_, _, _, _) ->
               add_hist @@ `create_subtree sub;
               let cur = ok_or_fail @@ create_subtree cur sub in
               incr stat_subdirs;
@@ -64,7 +65,8 @@ let doit st (rev_hist, stat_subdirs, stat_inserts, stat_deletes, stat_commits) c
         | Reached (_, Bud _) ->
             add_hist @@ `delete seg;
             ok_or_fail @@ delete cur seg
-        | Empty_bud | Middle_of_extender (_, _, _, _::_) ->
+        | Middle_of_extender (_, _, _, x) when Segment.is_empty x -> cur (* skip *)
+        | Empty_bud | Middle_of_extender (_, _, _, _) ->
             incr stat_inserts;
             add_hist @@ `insert seg;
             ok_or_fail @@ insert cur seg @@ random_value st

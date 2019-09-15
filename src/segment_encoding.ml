@@ -25,7 +25,7 @@ let decode h =
   of_side_list @@ clean @@ f 0
 
 let encode seg =
-  let len = List.length seg in
+  let len = Segment.length seg in
   if len > 222 then failwith (Printf.sprintf "segment is too long (%d)" len);
   let head_zero_bits = 224 - len - 2 in
   let head_zero_bytes = head_zero_bits / 8 in
@@ -62,4 +62,8 @@ let encode seg =
         if byte_pos' > 28 then assert false; (* segment is too long *)
         fill_bytes byte_pos' seg
   in
-  fill_bytes byte_pos (List.init bit_pos (fun _ -> Left) @ Right :: seg @ [ Right ]) (* XXX inefficient! *)
+  fill_bytes byte_pos (
+    (List.init bit_pos (fun _ -> Left))
+    @ Right :: Segment.to_side_list seg
+    @ [ Right ]
+  ) (* XXX inefficient! *)

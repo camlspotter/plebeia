@@ -12,8 +12,10 @@ let cut = function
 
 let empty = []
 
-let concat = (@)
-
+let append = (@)
+let concat = List.concat
+let length = List.length
+  
 let string_of_side = function
   | Left -> "L"
   | Right -> "R"
@@ -43,3 +45,5 @@ let rec common_prefix seg1 seg2 = match (seg1, seg2) with
   | (_, []) -> ([], seg1, [])
 
 let of_side_list l = l
+let to_side_list x = x
+let cons x xs = x :: xs

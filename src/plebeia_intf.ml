@@ -21,7 +21,7 @@ module type S = sig
       to the root of a sub-tree. *)
   module Segment : sig
     type side = Segment.side = Left | Right
-    type t = side list
+    type t
 
     val to_string : t -> string 
     (** LLRRLL *)

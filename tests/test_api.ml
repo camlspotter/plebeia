@@ -140,9 +140,9 @@ let () =
 let test_segs_of_trail c seg = 
   match access_gen c seg with
   | Ok (Reached (Cursor (trail, _, _), _v)) ->
-      if List.flatten @@ segs_of_trail trail <> seg then begin
+      if Segment.concat @@ segs_of_trail trail <> seg then begin
         failwith
-          (String.concat "/" (List.map (fun x -> Segment.of_side_list x |> Segment.to_string) (segs_of_trail trail))
+          (String.concat "/" (List.map Segment.to_string (segs_of_trail trail))
         ^ "  /= " ^ Segment.to_string seg)
       end
   | Ok (Middle_of_extender _) ->
@@ -324,7 +324,7 @@ let random_insertions st sz =
   let rec loop (log, Cursor (trail, n, context) as pos) =
     begin match log, view context n with
     | ([] | From_above _ :: _), Leaf _ ->
-        let s = match segs_of_trail trail with [[]; s] -> s | _ -> assert false in
+        let s = match segs_of_trail trail with [x; s] when Segment.is_empty x -> s | _ -> assert false in
         (* Format.eprintf "value seg: %s@." @@ Segment.to_string s; *)
         begin match Hashtbl.find_opt bindings' s with
           | Some `Value _ -> Hashtbl.remove bindings' s
@@ -332,8 +332,8 @@ let random_insertions st sz =
         end
     | ([] | From_above _ :: _), Bud _ ->
         begin match segs_of_trail trail with 
-          | [[]] -> ()
-          | [[]; s] ->
+          | [x] when Segment.is_empty x -> ()
+          | [x; s] when Segment.is_empty x ->
               begin
                 (* Format.eprintf "subtree seg: %s@." @@ Segment.to_string s; *)
                 match Hashtbl.find_opt bindings' s with

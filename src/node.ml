@@ -193,7 +193,7 @@ let new_extend : Segment.segment -> node -> node = fun segment node ->
   else 
     match node with
     | View (Extender (seg, n, _, _)) ->
-        View (_Extender (Segment.concat segment seg, n, Not_Indexed, Not_Hashed))
+        View (_Extender (Segment.append segment seg, n, Not_Indexed, Not_Hashed))
     | _ ->
         (* XXXX If the subnode is Disk, we have to make sure merging *)
         View (_Extender (segment, node, Not_Indexed, Not_Hashed))

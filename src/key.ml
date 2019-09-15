@@ -340,7 +340,7 @@ let of_segment seg = match seg with
       decode_length seg >>= fun (len, seg) ->
       decode_binary len seg
 
-  | _ -> Error ("strange header: " ^ Segment.to_string seg)
+  | _ -> Error ("strange header: " ^ Segment.(to_string @@ of_side_list seg))
 
 let take n xs =
   let rec take n st xs = match n, xs with
@@ -359,11 +359,11 @@ let to_segments key =
   to_segment key >>= fun seg ->
   let length = List.length seg in
   let rec f rev_segs length seg =
-    if length <= 220 then List.rev (seg :: rev_segs)
-    else if length = 221 then List.rev ((seg @ [Left]) :: rev_segs)
+    if length <= 220 then List.rev (Segment.of_side_list seg :: rev_segs)
+    else if length = 221 then List.rev (Segment.of_side_list (seg @ [Left]) :: rev_segs)
     else 
       let seg221, rest = take 221 seg in
-      f (seg221 :: rev_segs) (length - 221) rest
+      f (Segment.of_side_list seg221 :: rev_segs) (length - 221) rest
   in
   Ok (f [] length seg)
 
@@ -371,11 +371,13 @@ let of_segments segs =
   let rec check = function
     | [] -> Error "empty"
     | [seg] -> 
+        let seg = Segment.to_side_list seg in
         let len = List.length seg in
         if len = 222 then Ok [fst @@ take 221 seg]
         else if len <= 220 then Ok [seg]
         else Error "invalid terminal"
     | seg::segs ->
+        let seg = Segment.to_side_list seg in
         if List.length seg <> 221 then Error "invalid init"
         else check segs >>= fun segs -> Ok (seg :: segs)
   in

@@ -3,6 +3,7 @@ open Test_utils
 
 let bit_slow_encode_segment seg =
   let open Segment in
+  let seg = to_side_list seg in
   let len = List.length seg in
   if len > 222 then failwith "segment is too long";
   let head_zero_bits = 224 - len - 2 in
@@ -31,6 +32,7 @@ let bit_slow_encode_segment seg =
 
 let slow_encode_segment seg =
   let open Segment in
+  let seg = to_side_list seg in
   let len = List.length seg in
   if len > 222 then failwith "segment is too long";
   let head_zero_bits = 224 - len - 2 in

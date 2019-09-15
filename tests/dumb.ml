@@ -66,7 +66,7 @@ let subtree ntrail seg =
         | Node (l, r) -> aux (r, Right (l, trail)) seg'
         end
   in
-  check_node ntrail >>= fun ntrail -> aux ntrail seg
+  check_node ntrail >>= fun ntrail -> aux ntrail (P.Segment.to_side_list seg)
 
 (* Find the Tree above, cleaning Node (Null, Null) *)
 let rec go_up_tree (n, trail) =
@@ -107,11 +107,13 @@ let get_node_seg ntrail seg =
   aux ntrail seg
 
 let get ntrail seg =
+  let seg = P.Segment.to_side_list seg in
   get_node_seg ntrail seg >>= function
   | (Leaf v, _) -> Ok v
   | _ -> Error "Not Leaf"
 
 let alter ntrail seg f =
+  let seg = P.Segment.to_side_list seg in
   let rec aux (n, trail) = function
     | [] -> f n >>= fun v -> Ok (v, trail)
     | P.Segment.Left :: seg' ->
@@ -154,6 +156,7 @@ let create_subtree ntrail seg =
   alter ntrail seg f 
 
 let delete ntrail seg = 
+  let seg = P.Segment.to_side_list seg in
   get_node_seg ntrail seg >>= function
   | ((Leaf _ | Tree _), trail) -> go_up_tree (Null, trail)
   | _ -> Error "Not Leaf nor Tree"

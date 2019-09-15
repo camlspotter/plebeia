@@ -173,12 +173,12 @@ let _Cursor (t, n, c) =
 let segs_of_trail trail =
   let rec aux (xs, xss) = function
     | Top -> xs :: xss
-    | Budded (tr, _) -> aux ([], xs::xss) tr
-    | Left (tr, _, _) -> aux (Segment.Left :: xs, xss) tr
-    | Right (_, tr, _) -> aux (Segment.Right :: xs, xss) tr
-    | Extended (tr, seg, _) -> aux (seg @ xs, xss) tr
+    | Budded (tr, _) -> aux (Segment.empty, xs::xss) tr
+    | Left (tr, _, _) -> aux (Segment.(cons Left xs), xss) tr
+    | Right (_, tr, _) -> aux (Segment.(cons Right xs), xss) tr
+    | Extended (tr, seg, _) -> aux (Segment.append seg xs, xss) tr
   in
-  aux ([], []) trail
+  aux (Segment.empty, []) trail
 
 let segs_of_cursor (Cursor (trail, _, _)) = segs_of_trail trail
 
@@ -186,11 +186,11 @@ let local_seg_of_trail trail =
   let rec aux xs = function
     | Top -> xs
     | Budded (_, _) -> xs
-    | Left (tr, _, _) -> aux (Segment.Left :: xs) tr
-    | Right (_, tr, _) -> aux (Segment.Right :: xs) tr
-    | Extended (tr, seg, _) -> aux (seg @ xs) tr
+    | Left (tr, _, _) -> aux (Segment.cons Left xs) tr
+    | Right (_, tr, _) -> aux (Segment.cons Right xs) tr
+    | Extended (tr, seg, _) -> aux (Segment.append seg xs) tr
   in
-  aux [] trail
+  aux Segment.empty trail
 
 let local_seg_of_cursor (Cursor (trail, _, _)) = local_seg_of_trail trail
 
@@ -320,7 +320,7 @@ let unify_extenders prev_trail node context = match node with
   | View (Extender (seg, n, _, _)) ->
       begin match prev_trail with
         | Extended (prev_trail', seg', _mr) ->
-            Ok (attach prev_trail' (new_extend (Segment.concat seg' seg) n) context)
+            Ok (attach prev_trail' (new_extend (Segment.append seg' seg) n) context)
         | _ -> Ok (attach prev_trail node context)
       end
   | _ -> Ok (attach prev_trail node context)
@@ -436,7 +436,7 @@ let access_gen cur seg =
 let error_access = function
   | Empty_bud -> Error "Nothing beneath this bud"
   | Collide _ -> Error "Reached to a leaf or bud before finishing"
-  | Middle_of_extender (_, _, _, []) -> 
+  | Middle_of_extender (_, _, _, seg) when Segment.is_empty seg -> 
       Error "Finished at the middle of an Extender"
   | Middle_of_extender (_, _, _, _) -> 
       Error "Diverged in the middle of an Extender"
@@ -480,7 +480,8 @@ let alter (Cursor (trail, _, context) as cur) segment alteration =
       let n' = new_extend segment n' in
       let n' = new_bud (Some n') in
       Ok (attach trail n' context)
-  | (Reached (c, _) | Middle_of_extender (c, _, _, _::_) as res) ->
+  | (Middle_of_extender (_, _, _, seg) as res) when Segment.is_empty seg -> error_access res
+  | (Reached (c, _) | Middle_of_extender (c, _, _, _) as res) ->
       (* XXX cleanup required *)
       let segsopt = match res with
         | Reached _ -> None
