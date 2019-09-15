@@ -206,7 +206,7 @@ and dir =
   | Center
 
 val traverse : (where_from list * t) -> (where_from list * t) option
-val force_traverse_up : (where_from list * t) -> (where_from list * t)
+val traverse_up : (where_from list * t) -> (where_from list * t) option
 
 val folder : (where_from list * t) -> (where_from list * t) option
 (** Assume to start from a bud, and fold from it whthin its bud level.

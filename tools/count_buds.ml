@@ -14,8 +14,10 @@ let () =
 
   let nhashes = Hashtbl.length roots.tbl in
 
+  (* Cursor.traversal can be too slow *)
   let _ = Hashtbl.fold (fun hash { Roots.index=_; _} ->
       fun (seen, nseen, pointed, ncopied, nhashes_done) -> 
+        let t1 = Unix.gettimeofday () in
         Format.eprintf "Checkout %S %d/%d@." (Hash.to_string hash) nhashes_done nhashes;
         match Vc.checkout ctxt hash with
         | None -> assert false
@@ -28,12 +30,14 @@ let () =
                   | _, Bud (_, Not_Indexed, _) -> assert false
                   | c, Bud (nopt, Indexed i, _) ->
                       if IS.mem i seen then
-                        loop (Cursor.traverse (Cursor.force_traverse_up (log, c))) 
+                        loop (Cursor.traverse_up (log, c))
                           (seen, nseen, pointed, ncopied)
                       else begin
                         let seen = IS.add i seen in
                         let nseen = nseen + 1 in
-                        if nseen mod 1000 = 0 then Format.eprintf "%d bud seen@." nseen;
+                        if nseen mod 1000 = 0 then begin 
+                          Format.eprintf "%d bud seen@." nseen;
+                        end;
                         begin match nopt with
                         | None -> 
                             loop (Cursor.traverse (log, c))
@@ -45,7 +49,7 @@ let () =
                                 if IS.mem j pointed then begin
                                   let ncopied = ncopied + 1 in
                                   if ncopied mod 100 = 0 then Format.eprintf "%d copies seen@." ncopied;
-                                  loop (Cursor.traverse (Cursor.force_traverse_up (log, c)))
+                                  loop (Cursor.traverse_up (log, c))
                                     (seen, nseen, pointed, ncopied)
                                 end else
                                   loop (Cursor.traverse (log, c)) (seen, nseen, IS.add j pointed, ncopied)
@@ -55,7 +59,14 @@ let () =
                       loop (Cursor.traverse (log,c)) (seen, nseen, pointed, ncopied)
             in
             let (seen, nseen, pointed, ncopied) = loop (Some ([], c)) (seen, nseen, pointed, ncopied) in
-            (seen, nseen, pointed, ncopied, nhashes_done + 1)) 
+
+            let nhashes_done = nhashes_done + 1 in
+            
+            let t2 = Unix.gettimeofday () in
+            Format.eprintf "%.2f sec / 10000 bud@." ((t2 -. t1) /. float (nseen / 10000));
+            Format.eprintf "%d bud / commit@." (nseen / nhashes_done);
+
+            (seen, nseen, pointed, ncopied, nhashes_done)) 
       roots.tbl (IS.empty, 0, IS.empty, 0, 0)
   in
   ()

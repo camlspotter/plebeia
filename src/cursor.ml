@@ -626,6 +626,10 @@ let force_traverse_up (log, c) =
   | Internal _, From_below Center :: _ -> assert false
   | Extender _, From_below (Left | Right) :: _ -> assert false
 
+(* force_traverse_up + traverse *)
+let traverse_up (log, c) =
+  traverse @@ force_traverse_up (log,c)
+
 let rec folder (log, c) =
   (* traverse anyway *)
   match traverse (log, c) with
