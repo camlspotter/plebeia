@@ -94,13 +94,13 @@ let read_commits t =
         Format.eprintf "read %a@." pp_entry (h,ent);
 *)
         incr cntr;
-        if !cntr mod 1000 = 0 then begin
-          Format.eprintf "read %d commmits@." !cntr;
+        if !cntr mod 10000 = 0 then begin
+          Format.eprintf "read %d commits@." !cntr;
         end;
         aux commit.commit_prev
   in
   aux (Storage.get_last_root_index t.context.Context.storage);
-  Format.eprintf "read %d commmits@." !cntr
+  Format.eprintf "read %d commits@." !cntr
   
 let write_commit t ?parent index ~meta1 ~meta2=
   let storage = t.context.Context.storage in
