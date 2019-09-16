@@ -80,7 +80,7 @@ let read_commit storage i =
 
 let pp_entry ppf (hash, { index ; parent ; meta1 ; _ }) =
   let f fmt = Format.fprintf ppf fmt in
-  f "%S at %Ld (parent=%a) %S" 
+  f "%S at %Ld (parent=%a) meta1:%S" 
     (Hash.to_string hash) 
     (Index.to_int64 index)
     (fun _ppf -> function
