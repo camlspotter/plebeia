@@ -7,21 +7,36 @@ storage format
 
 |0        7|8            31|
 |<- prev ->|<- 7 indexes ->|
-   
+
 *)
 
 module C = Xcstruct
 
+let max_size = 36
+
+type score = int
+let max_score = 255
+
+(* score
+   
+   0 : Only in the memory.  Wiped out in the next clean-up. Another +1 score changes it to 3.
+   1 : Just added.  Never in the file.  Another +1 score changes it to 3.
+   2 : In the file.  Wiped out in the next clean-up.
+   3 or more : In the file.
+*)
+   
 type t = 
-  { tbl : (int * Value.t, Index.t) Hashtbl.t
+  { tbl : (Value.t, Index.t * score) Hashtbl.t array
   ; mutable journal : Index.t list
   ; storage : Storage.t
+  ; mutable count : int
   }
 
 let create storage = 
-  { tbl = Hashtbl.create 101 
+  { tbl = Array.init max_size (fun _ -> Hashtbl.create 101)
   ; journal = []
   ; storage
+  ; count = 0
   }
   
 let zero_28 = String.make 28 '\000'
@@ -74,7 +89,8 @@ let read t ~load_leaf_value =
           Format.eprintf "Hashcons: loaded %d cached small values@." !cntr
         end;
         let len = String.length @@ Value.to_string v in
-        Hashtbl.replace t.tbl (len, v) i
+        if len <= max_size then
+          Hashtbl.replace (Array.unsafe_get t.tbl (len-1)) v (i, 3)
   in    
   let rec loop = function
     | None -> ()
@@ -89,28 +105,62 @@ let read t ~load_leaf_value =
 let find { tbl ; _ } v =
   let s = Value.to_string v in
   let len = String.length s in
-  if len > 36 then Error "hashcons: too large"
+  if len > max_size then Error "hashcons: too large"
   else
-    Ok (Hashtbl.find_opt tbl (len, v))
+    Ok (
+      match Hashtbl.find_opt (Array.unsafe_get tbl (len-1)) v with
+      | None -> None
+      | Some (idx, _) -> Some idx
+    )
 
+let weight tbl =
+  (* high score : low weight *)
+  Hashtbl.fold (fun _k (_,score) acc -> 
+      let weight = match score with
+        | 0 | 1 | 2 | 3 -> 10
+        | n -> max 0 (13 - n)
+      in
+      weight + acc) tbl 0
+  
+let _age tbl =
+  let keys = Hashtbl.fold (fun k _ acc -> k :: acc) tbl [] in
+  List.iter (fun key ->
+      match Hashtbl.find tbl key with
+      | (_, (0|2)) -> Hashtbl.remove tbl key
+      | (idx, score) -> Hashtbl.replace tbl key (idx, score-1)
+    ) keys
+  
+let stat t =
+  for i = 1 to max_size do
+    let counts = ref 0 in
+    let tbl = Array.unsafe_get t.tbl (i-1) in
+    Hashtbl.iter (fun _ _ -> incr counts) tbl;
+    let w = weight tbl in
+    Format.eprintf "%d, %d, %d@." i !counts w
+  done
 
 let add t v index =
+  t.count <- t.count + 1;
+  if t.count mod 10000 = 0 then stat t;
   let s = Value.to_string v in
   let len = String.length s in
-  if len > 36 then Error "hashcons: too large"
+  if len > max_size then Error "hashcons: too large"
   else 
-    match Hashtbl.find_opt t.tbl (len, v) with
-    | Some _ -> Error "hashcons: registered"
+    let tbl = Array.unsafe_get t.tbl (len-1) in
+    match Hashtbl.find_opt tbl v with
+    | Some (idx,score) -> 
+        let score, need_to_write = 
+          match score with
+          | 0 | 1 -> 3, true
+          | x -> x + 1, false
+        in
+        Hashtbl.replace tbl v (idx, min max_score score);
+        if need_to_write then begin
+          t.journal <- index :: t.journal;
+          may_flush_journal t;
+        end;
+        Error "hashcons: registered" (* XXX ok ? *)
     | None ->
-        Hashtbl.replace t.tbl (len, v) index;
-        t.journal <- index :: t.journal;
-        may_flush_journal t;
+        Hashtbl.replace tbl  v (index, 1);
+        (* too early to save into the disk *)
         Ok ()
-
-let stat t =
-  let counts = Array.make 37 0 in
-  Hashtbl.iter (fun (i, _) _ -> 
-      counts.(i) <- counts.(i) + 1) t.tbl;
-  for i = 1 to 36 do
-    Format.eprintf "%d, %d@." i counts.(i)
-  done
