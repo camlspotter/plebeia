@@ -8,17 +8,32 @@ module C = Xcstruct
 let zero_then_none x = if x = Index.zero then None else Some x
 
 type entry = 
-  { index : Index.t
+  { index  : Index.t
   ; parent : Index.t option
-  ; meta1 : string
-  ; meta2 : string
+  ; meta1  : string
+  ; meta2  : string
   }
   
 type t = 
-  { tbl : (Hash.t, entry) Hashtbl.t  (* all are in the memory *)
-  ; context : Context.t
+  { tbl      : (Hash.t, entry) Hashtbl.t  (* all are in the memory *)
+  ; context  : Context.t (* where to store *)
+  ; by_index : (Index.t, entry) Hashtbl.t
+  ; children : (Index.t, entry list) Hashtbl.t
   }
 
+let add_entry t h ent = 
+  Hashtbl.replace t.tbl h ent;
+  Hashtbl.replace t.by_index ent.index ent;
+  match ent.parent with
+  | None -> ()
+  | Some i ->
+      let entries = 
+        match Hashtbl.find_opt t.children i with
+        | None -> []
+        | Some entries -> entries
+      in
+      Hashtbl.replace t.children i (ent::entries)
+    
 (* commits
 
 |0        19|20      23|24        27|28      31|
@@ -33,11 +48,11 @@ The intention for meta2 is to store Irmin context hash.
 *)
 
 type commit = 
-  { commit_meta : string (* 20 bytes *)
-  ; commit_prev : Index.t option
+  { commit_meta   : string (* 20 bytes *)
+  ; commit_prev   : Index.t option
   ; commit_parent : Index.t option
-  ; commit_index : Index.t
-  ; commit_meta2 : string (* 32 bytes *)
+  ; commit_index  : Index.t
+  ; commit_meta2  : string (* 32 bytes *)
   }
 
 let write_commit storage commit =
@@ -89,7 +104,7 @@ let read_commits t =
                   ; meta1 = commit.commit_meta
                   ; meta2 = commit.commit_meta2 }
         in
-        Hashtbl.add t.tbl h ent;
+        add_entry t h ent;
 (*
         Format.eprintf "read %a@." pp_entry (h,ent);
 *)
@@ -114,7 +129,7 @@ let add t ?parent hash index ~meta1 ~meta2 =
   assert (String.length meta2 = 32);
   let ent = { index ; parent ; meta1 ; meta2 } in
   (* XXX hash collision check *)
-  Hashtbl.replace t.tbl hash ent;
+  add_entry t hash ent;
   write_commit t ?parent index ~meta1 ~meta2;
   Format.eprintf "Added root %a@." pp_entry (hash, ent)
 
@@ -123,7 +138,12 @@ let mem { tbl ; _ } = Hashtbl.mem tbl
 let find { tbl ; _ } = Hashtbl.find_opt tbl
 
 let create context = 
-  let t = { tbl = Hashtbl.create 101 ; context } in
+  let t = 
+    { tbl = Hashtbl.create 101 
+    ; context
+    ; by_index = Hashtbl.create 101
+    ; children = Hashtbl.create 101
+    }
+  in
   read_commits t;
   t
-
