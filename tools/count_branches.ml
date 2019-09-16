@@ -22,10 +22,11 @@ let () =
             loop f (es @ es')
       in
       loop (fun e -> 
-          match Hashtbl.find roots.children e.index with
-          | [] -> ()
-          | [_] -> ()
-          | children  ->
+          match Hashtbl.find_opt roots.children e.index with
+          | None -> ()
+          | Some [] -> ()
+          | Some [_] -> ()
+          | Some children  ->
               let h, _ = Hashtbl.find roots.by_index e.index in
               Format.eprintf "%d children: %S@." 
                 (List.length children) 
