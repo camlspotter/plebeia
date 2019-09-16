@@ -4,7 +4,7 @@ let (//) = Filename.concat
 
 let () =
   let dir = Sys.argv.(1) in
-  let ctxt = Vc.open_ ~shared:false ~prefix:(dir // "plebeia") () in
+  let ctxt = Vc.open_ ~shared:false ~load_hashcons:false ~prefix:(dir // "plebeia") () in
   let roots = Vc.roots ctxt in
   let module IS = Set.Make(struct 
       type t = Index.t 
