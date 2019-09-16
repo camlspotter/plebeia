@@ -57,15 +57,10 @@ let commit { roots ; context } ~parent ~meta1 ~meta2 (Cursor (_, _, context') as
 let checkout { roots ; context ; _ } hash =
   match Roots.find roots hash with
   | None -> None
-  | Some { Roots.index ; parent ; _ } ->
-      let parent = match parent with
-        | None -> None
-        | Some i -> Some (fst (Hashtbl.find roots.Roots.by_index i))
-      in
+  | Some { Roots.index ; _ } ->
       Some (_Cursor (_Top, 
                      Disk (index, Not_Extender),
-                     context),
-            parent)
+                     context))
 
 let fold ~init c f =
   Cursor.fold ~init c (fun acc c ->
