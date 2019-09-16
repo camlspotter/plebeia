@@ -19,9 +19,9 @@ let create ?context_pos ?context_length ~prefix () =
   let roots = Roots.create context in
   { roots ; context }
 
-let open_ ?shared ?context_pos ~prefix () =
+let open_ ?shared ?load_hashcons ?context_pos ~prefix () =
   let context = 
-    Context.open_ ?pos:context_pos ?shared
+    Context.open_ ?pos:context_pos ?load_hashcons ?shared
       (prefix ^ ".context")
   in
   let roots = Roots.create context in
