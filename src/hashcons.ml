@@ -102,17 +102,6 @@ let read t ~load_leaf_value =
   loop @@ Storage.get_last_cache_index t.storage;
   Format.eprintf "Hashcons: loaded %d cached small values@." !cntr
   
-let find { tbl ; _ } v =
-  let s = Value.to_string v in
-  let len = String.length s in
-  if len > max_size then Error "hashcons: too large"
-  else
-    Ok (
-      match Hashtbl.find_opt (Array.unsafe_get tbl (len-1)) v with
-      | None -> None
-      | Some (idx, _) -> Some idx
-    )
-
 let weight tbl =
   (* high score : low weight *)
   Hashtbl.fold (fun _k (_,score) acc -> 
@@ -131,6 +120,7 @@ let _age tbl =
     ) keys
   
 let stat t =
+  Format.eprintf "Memory cache status@.";
   for i = 1 to max_size do
     let counts = ref 0 in
     let tbl = Array.unsafe_get t.tbl (i-1) in
@@ -148,19 +138,32 @@ let add t v index =
   else 
     let tbl = Array.unsafe_get t.tbl (len-1) in
     match Hashtbl.find_opt tbl v with
-    | Some (idx,score) -> 
-        let score, need_to_write = 
-          match score with
-          | 0 | 1 -> 3, true
-          | x -> x + 1, false
-        in
-        Hashtbl.replace tbl v (idx, min max_score score);
-        if need_to_write then begin
-          t.journal <- index :: t.journal;
-          may_flush_journal t;
-        end;
-        Error "hashcons: registered" (* XXX ok ? *)
+    | Some _ -> assert false
     | None ->
         Hashtbl.replace tbl  v (index, 1);
         (* too early to save into the disk *)
         Ok ()
+
+let find t v =
+  let s = Value.to_string v in
+  let len = String.length s in
+  if len > max_size then Error "hashcons: too large"
+  else
+    Ok (
+      match Hashtbl.find_opt (Array.unsafe_get t.tbl (len-1)) v with
+      | None -> None
+      | Some (idx, score) -> 
+          let score, need_to_write = 
+            match score with
+            | 0 | 1 -> 3, true
+            | x -> x + 1, false
+          in
+          let tbl = Array.unsafe_get t.tbl (len-1) in
+          Hashtbl.replace tbl v (idx, min max_score score);
+          if need_to_write then begin
+            t.journal <- idx :: t.journal;
+            may_flush_journal t;
+          end;
+          Some idx
+    )
+
