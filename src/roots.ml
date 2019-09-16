@@ -147,3 +147,8 @@ let create context =
   in
   read_commits t;
   t
+
+let genesis t =
+  Hashtbl.fold (fun hash entry acc ->
+      if entry.parent = None then hash::acc
+      else acc) t.tbl []

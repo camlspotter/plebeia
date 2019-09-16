@@ -30,3 +30,6 @@ val mem : t -> Hash.t -> bool
 
 val find : t -> Hash.t -> entry option
 (** Find a root of the given hash *)
+
+val genesis : t -> Hash.t list
+(** Returns the hashes which have no parents *)
