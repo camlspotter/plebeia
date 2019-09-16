@@ -35,21 +35,20 @@ let hash = Cursor_hash.hash
 
 let commit { roots ; context } ~parent ~meta1 ~meta2 (Cursor (_, _, context') as c) =
   assert (context == context');
-  let parent = match parent with
-    | None -> None
-    | Some h -> 
-        match Roots.find roots h with
-        | None -> Utils.failwithf "No such parent: %S@." (Hash.to_string h)
-        | Some { Roots.index ; _ } -> Some index
-  in
   let (c, i, h) = Cursor_storage.commit_top_cursor c in
-(*
-  Format.eprintf "XXXXX COMMIT meta2:%S  hash:%S@." 
+  Format.eprintf "Vc.commit meta2:%S  hash:%S  parent:%S@." 
     meta2
-    (Hash.to_string h);
-*)
+    (Hash.to_string h)
+    (match parent with None -> "none" | Some h -> Hash.to_string h);
   match Roots.find roots h with
   | None ->
+      let parent = match parent with
+        | None -> None
+        | Some h -> 
+            match Roots.find roots h with
+            | None -> Utils.failwithf "No such parent: %S@." (Hash.to_string h)
+            | Some { Roots.index ; _ } -> Some index
+      in
       Roots.add roots ?parent h i ~meta1 ~meta2;
       Storage.Header.check context.Context.storage;
       (c, h)
