@@ -29,7 +29,6 @@ let equal_check context n1 n2 =
       save_node_to_dot "debug_equal_check_detail2.dot" n2';
       assert false
       
-    
 let commit_check c =
   let Cursor (_tr, n, context) as c, i, _ = Cursor_storage.commit_top_cursor c in
   save_to_dot "commit_check.dot" c;
@@ -140,7 +139,7 @@ let () =
 let test_segs_of_trail c seg = 
   match access_gen c seg with
   | Ok (Reached (Cursor (trail, _, _), _v)) ->
-      if Segment.concat @@ segs_of_trail trail <> seg then begin
+      if not @@ Segment.equal (Segment.concat @@ segs_of_trail trail) seg then begin
         failwith
           (String.concat "/" (List.map Segment.to_string (segs_of_trail trail))
         ^ "  /= " ^ Segment.to_string seg)
@@ -244,7 +243,7 @@ let add_random st sz c dumb =
                 validate context n;
 
                 (* record the insertion *)
-                Hashtbl.replace bindings seg (`Value v);
+                Hashtbl.replace bindings (Segment.to_side_list seg) (`Value v);
                 test_segs_of_trail c seg;
                 (c, dumb)
             | Error _, Error _ -> (c, dumb)
@@ -265,7 +264,7 @@ let add_random st sz c dumb =
                 compare_trees dumb c;
                 let Cursor (_, n, context) = c in
                 validate context n;
-                Hashtbl.replace bindings seg (`Value v);
+                Hashtbl.replace bindings (Segment.to_side_list seg) (`Value v);
                 test_segs_of_trail c seg;
                 (c, dumb)
             | Error _, Error _ -> (c, dumb)
@@ -286,7 +285,7 @@ let add_random st sz c dumb =
                 compare_trees dumb c;
                 let Cursor (_, n, context) = c in
                 validate context n;
-                Hashtbl.replace bindings seg `Subtree;
+                Hashtbl.replace bindings (Segment.to_side_list seg) `Subtree;
                 (c, dumb)
             | Error _, Error _ -> (c, dumb)
             | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
@@ -301,7 +300,8 @@ let add_random st sz c dumb =
   in
   let c, dumb = f c dumb 0 in
   to_file "random_insertions.dot" @@ Debug.dot_of_cursor c;
-  Hashtbl.iter (fun seg x -> 
+  Hashtbl.iter (fun ss x -> 
+      let seg = Segment.of_side_list ss in
       match x with
       | `Value v -> assert (get c seg = Ok v)
       | `Subtree -> assert (match subtree c seg with Ok _ -> true | _ -> false)
@@ -326,8 +326,8 @@ let random_insertions st sz =
     | ([] | From_above _ :: _), Leaf _ ->
         let s = match segs_of_trail trail with [x; s] when Segment.is_empty x -> s | _ -> assert false in
         (* Format.eprintf "value seg: %s@." @@ Segment.to_string s; *)
-        begin match Hashtbl.find_opt bindings' s with
-          | Some `Value _ -> Hashtbl.remove bindings' s
+        begin match Hashtbl.find_opt bindings' (Segment.to_side_list s) with
+          | Some `Value _ -> Hashtbl.remove bindings' (Segment.to_side_list s)
           | _ -> assert false
         end
     | ([] | From_above _ :: _), Bud _ ->
@@ -336,8 +336,8 @@ let random_insertions st sz =
           | [x; s] when Segment.is_empty x ->
               begin
                 (* Format.eprintf "subtree seg: %s@." @@ Segment.to_string s; *)
-                match Hashtbl.find_opt bindings' s with
-                | Some `Subtree -> Hashtbl.remove bindings' s
+                match Hashtbl.find_opt bindings' (Segment.to_side_list s) with
+                | Some `Subtree -> Hashtbl.remove bindings' (Segment.to_side_list s)
                 | _ -> assert false
               end
           | _ -> assert false
@@ -354,7 +354,8 @@ let random_insertions st sz =
   (* deletions to the empty *)
   let bindings = shuffle st @@ Hashtbl.fold (fun k v st -> (k,v)::st) bindings [] in
   let Cursor (_, n, _), _ = 
-    List.fold_left (fun (c, dumb) (seg, _) ->
+    List.fold_left (fun (c, dumb) (ss, _) ->
+        let seg = Segment.of_side_list ss in
         let Cursor (_, n, context) as c = match delete c seg with 
           | Ok c -> 
               (* hash and commit *)

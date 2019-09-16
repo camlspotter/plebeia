@@ -71,3 +71,20 @@ let must_fail = function
                  
 let path = path_of_string
 let value = Value.of_string
+
+open Node
+
+(* only for test *)
+let rec normalize n = match n with
+  | Disk _ -> n
+  | View v -> View (normalize_view v)
+
+and normalize_view v = match v with
+  | Internal (n1, n2, i, h) -> _Internal (normalize n1, normalize n2, i, h)
+  | Bud (None, _, _) -> v
+  | Bud (Some n, i, h) -> _Bud (Some (normalize n), i, h)
+  | Leaf _ -> v
+  | Extender (seg, n, i, h) -> _Extender (Segment.(of_side_list @@ to_side_list seg), n, i, h)
+
+let equal_nodes n1 n2 = normalize n1 = normalize n2 
+  

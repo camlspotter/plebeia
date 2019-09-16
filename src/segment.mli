@@ -13,9 +13,10 @@ val string_of_side : side -> string
   
 type segment
 type t = segment
-(** A segment is always just a list of sides. TODO: use bit arithmetic for
-  speed and memory footprint.*)
 
+val equal : t -> t -> bool
+(** Normal (=) does not work *)
+  
 val empty : segment
 (** The empty segment. *)
 
@@ -53,5 +54,3 @@ val encode : t -> string
 (** The length of the segment must be <= 222.  Otherwise the funciton fails. *)
 
 val decode : string -> t
-
-  

@@ -70,7 +70,7 @@ let encoding_test seg =
   let h'' = bit_slow_encode_segment seg in
   assert (h = h');
   assert (h = h'');
-  assert (Segment.decode h = seg)
+  assert (Segment.(equal (decode h) seg))
 
 let test_correctness st =
   for _ = 1 to 1000000 do

@@ -202,8 +202,6 @@ let new_bud no = View (_Bud (no, Not_Indexed, Not_Hashed))
 
 let new_internal n1 n2 = View (_Internal (n1, n2, Not_Indexed, Not_Hashed))
 
-
-
 let load_node_ref = ref (fun _ _ _ -> assert false)
 
 let load_node context index ewit = !load_node_ref context index ewit

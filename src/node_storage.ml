@@ -288,7 +288,7 @@ let equal context n1 n2 =
             | Bud (None, _, _), Bud (None, _, _) -> aux rest
             | Bud (Some n1, _, _), Bud (Some n2, _, _) -> aux @@ (n1,n2) :: rest
             | Leaf (v1, _, _), Leaf (v2, _, _) when v1 = v2 -> aux rest
-            | Extender (seg1, n1, _, _), Extender (seg2, n2, _, _) when seg1 = seg2 ->
+            | Extender (seg1, n1, _, _), Extender (seg2, n2, _, _) when Segment.equal seg1 seg2 ->
                 aux @@ (n1,n2)::rest
             | _ -> Error (n1,n2)
   in
