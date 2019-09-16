@@ -18,7 +18,11 @@ let () =
         | [] -> ()
         | e::es ->
             f e;
-            let es' = Hashtbl.find roots.children e.index in
+            let es' = 
+              match Hashtbl.find_opt roots.children e.index with
+              | None -> []
+              | Some es' -> es'
+            in
             loop f (es @ es')
       in
       loop (fun e -> 
