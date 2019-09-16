@@ -131,7 +131,7 @@ let stat t =
 
 let add t v index =
   t.count <- t.count + 1;
-  if t.count mod 10000 = 0 then stat t;
+  if t.count mod 1000 = 0 then stat t;
   let s = Value.to_string v in
   let len = String.length s in
   if len > max_size then Error "hashcons: too large"
