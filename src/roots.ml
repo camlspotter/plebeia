@@ -17,13 +17,13 @@ type entry =
 type t = 
   { tbl      : (Hash.t, entry) Hashtbl.t  (* all are in the memory *)
   ; context  : Context.t (* where to store *)
-  ; by_index : (Index.t, entry) Hashtbl.t
+  ; by_index : (Index.t, Hash.t * entry) Hashtbl.t
   ; children : (Index.t, entry list) Hashtbl.t
   }
 
 let add_entry t h ent = 
   Hashtbl.replace t.tbl h ent;
-  Hashtbl.replace t.by_index ent.index ent;
+  Hashtbl.replace t.by_index ent.index (h,ent);
   match ent.parent with
   | None -> ()
   | Some i ->
