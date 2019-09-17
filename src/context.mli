@@ -23,12 +23,17 @@ val create :
 val open_ : 
   ?pos:int64 
   -> ?shared:bool 
+  -> ?load_hashcons:bool
   -> string (* path *)
   -> t
 (** Open an existing context storage.
 
-    pos: the start position in the file
-    shared: if false, read only.
+    pos: The start position in the file
+    shared: If false, read only.  Default: false.
+    load_hashcons: If false, do not load the small value cache.  Default: true.
 *)
 
 val close : t -> unit
+
+val ref_load_leaf_value : (t -> Index.t -> Value.t option) ref
+(* Forward declaration to load a leaf value from context *)

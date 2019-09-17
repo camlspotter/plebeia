@@ -396,3 +396,8 @@ let commit_node context node =
   in 
   let (node, i, lh) =  commit_aux node in
   node, i, Node_hash.shorten lh
+
+let () = Context.ref_load_leaf_value := fun ctxt i ->
+    match load_node ctxt i Node.Not_Extender with
+    | Leaf (v, _, _) -> Some v
+    | _ -> None

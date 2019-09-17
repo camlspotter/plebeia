@@ -12,12 +12,14 @@ val create :
 
 val open_ : 
   ?shared: bool
+  -> ?load_hashcons:bool
   -> ?context_pos:int64 
   -> prefix:string
   -> unit
   -> t
 
 val roots : t -> Roots.t
+val context : t -> Context.t
 
 val close : t -> unit
 

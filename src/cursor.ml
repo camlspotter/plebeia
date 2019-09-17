@@ -626,6 +626,10 @@ let force_traverse_up (log, c) =
   | Internal _, From_below Center :: _ -> assert false
   | Extender _, From_below (Left | Right) :: _ -> assert false
 
+(* force_traverse_up + traverse *)
+let traverse_up (log, c) =
+  traverse @@ force_traverse_up (log,c)
+
 let rec folder (log, c) =
   (* traverse anyway *)
   match traverse (log, c) with
@@ -660,7 +664,9 @@ let fold ~init c f =
               | Error e -> Error e
               | Ok acc ->
                   let (log, c) = force_traverse_up (log, c) in
-                  aux acc log c
+                  match traverse (log, c) with
+                  | None -> Ok acc
+                  | Some (log, c) -> aux acc log c
             end
         | _ -> 
             begin match traverse (log, c) with

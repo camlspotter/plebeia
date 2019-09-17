@@ -9,6 +9,7 @@ type t =
   }
 
 let roots { roots ; _ } = roots
+let context { context ; _ } = context
 
 let create ?context_pos ?context_length ~prefix () =
   let context = 
@@ -18,19 +19,11 @@ let create ?context_pos ?context_length ~prefix () =
   let roots = Roots.create context in
   { roots ; context }
 
-let open_ ?shared ?context_pos ~prefix () =
+let open_ ?shared ?load_hashcons ?context_pos ~prefix () =
   let context = 
-    Context.open_ ?pos:context_pos ?shared
+    Context.open_ ?pos:context_pos ?load_hashcons ?shared
       (prefix ^ ".context")
   in
-  (* XXX strange place to load the hashcons *)
-  Hashcons.read context.Context.hashcons
-    ~load_leaf_value:(fun i -> 
-        match Node_storage.load_node context i Node.Not_Extender with
-        | Leaf (v, _, _) -> Some v
-        | _ -> 
-            prerr_endline "Hashcons.read, not a value";
-            None);
   let roots = Roots.create context in
   { roots ; context }
 
@@ -42,21 +35,20 @@ let hash = Cursor_hash.hash
 
 let commit { roots ; context } ~parent ~meta1 ~meta2 (Cursor (_, _, context') as c) =
   assert (context == context');
-  let parent = match parent with
-    | None -> None
-    | Some h -> 
-        match Roots.find roots h with
-        | None -> Utils.failwithf "No such parent: %S@." (Hash.to_string h)
-        | Some { Roots.index ; _ } -> Some index
-  in
   let (c, i, h) = Cursor_storage.commit_top_cursor c in
-(*
-  Format.eprintf "XXXXX COMMIT meta2:%S  hash:%S@." 
+  Format.eprintf "Vc.commit meta2:%S  hash:%S  parent:%S@." 
     meta2
-    (Hash.to_string h);
-*)
+    (Hash.to_string h)
+    (match parent with None -> "none" | Some h -> Hash.to_string h);
   match Roots.find roots h with
   | None ->
+      let parent = match parent with
+        | None -> None
+        | Some h -> 
+            match Roots.find roots h with
+            | None -> Utils.failwithf "No such parent: %S@." (Hash.to_string h)
+            | Some { Roots.index ; _ } -> Some index
+      in
       Roots.add roots ?parent h i ~meta1 ~meta2;
       Storage.Header.commit context.Context.storage;
       (c, h)

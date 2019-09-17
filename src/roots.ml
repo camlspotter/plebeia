@@ -17,13 +17,13 @@ type entry =
 type t = 
   { tbl      : (Hash.t, entry) Hashtbl.t       (* all are in the memory *)
   ; context  : Context.t                       (* where to store *)
-  ; by_index : (Index.t, entry) Hashtbl.t
+  ; by_index : (Index.t, Hash.t * entry) Hashtbl.t
   ; children : (Index.t, entry list) Hashtbl.t
   }
 
 let add_entry t h ent = 
   Hashtbl.replace t.tbl h ent;
-  Hashtbl.replace t.by_index ent.index ent;
+  Hashtbl.replace t.by_index ent.index (h,ent);
   match ent.parent with
   | None -> ()
   | Some i ->
@@ -80,7 +80,7 @@ let read_commit storage i =
 
 let pp_entry ppf (hash, { index ; parent ; meta1 ; _ }) =
   let f fmt = Format.fprintf ppf fmt in
-  f "%S at %Ld (parent=%a) %S" 
+  f "%S at %Ld (parent=%a) meta1:%S" 
     (Hash.to_string hash) 
     (Index.to_int64 index)
     (fun _ppf -> function
@@ -109,13 +109,13 @@ let read_commits t =
         Format.eprintf "read %a@." pp_entry (h,ent);
 *)
         incr cntr;
-        if !cntr mod 1000 = 0 then begin
-          Format.eprintf "read %d commmits@." !cntr;
+        if !cntr mod 10000 = 0 then begin
+          Format.eprintf "read %d commits@." !cntr;
         end;
         aux commit.commit_prev
   in
   aux (Storage.get_last_root_index t.context.Context.storage);
-  Format.eprintf "read %d commmits@." !cntr
+  Format.eprintf "read %d commits@." !cntr
   
 let write_commit t ?parent index ~meta1 ~meta2=
   let storage = t.context.Context.storage in

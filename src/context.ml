@@ -27,12 +27,17 @@ let create ?(pos=0L) ?length fn =
     stat = Stat.create ()
   }
 
-let open_ ?(pos=0L) ?(shared=false) fn =
+let ref_load_leaf_value : (t -> Index.t -> Value.t option) ref = ref (fun _ -> assert false)
+
+let open_ ?(pos=0L) ?(shared=false) ?(load_hashcons=true) fn =
   let storage = Storage.open_ ~pos ~shared fn in
   let hashcons = Hashcons.create storage in
-  { storage ;
-    hashcons ;
-    stat = Stat.create () 
-  }
+  let t = { storage ;
+            hashcons ;
+            stat = Stat.create () 
+          }
+  in
+  if load_hashcons then Hashcons.read t.hashcons  ~load_leaf_value:(!ref_load_leaf_value t);
+  t
 
 let close { storage ; _ } = Storage.close storage
