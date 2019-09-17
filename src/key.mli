@@ -1,3 +1,5 @@
+(** This is experimental.  Not for serious use. *)
+                
 type t = string
 (** Human readable directory name *)
 
@@ -11,3 +13,4 @@ val to_segments : t -> (Segment.t list, string) Result.t
     since one segment can have 222 bits at most. *)
 
 val of_segments : Segment.t list -> (string, string) Result.t
+(** Decode segments back to human readable directory names. *)

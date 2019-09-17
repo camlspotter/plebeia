@@ -13,5 +13,5 @@ val dot_of_cursor : cursor -> string
 val validate_node : Context.t -> node -> (unit, string) Result.t
 (** Invariant checking of node *)
 
-val save_to_dot : string -> cursor -> unit
+val save_cursor_to_dot : string -> cursor -> unit
 val save_node_to_dot : string -> node -> unit

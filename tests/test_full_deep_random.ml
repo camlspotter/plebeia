@@ -194,7 +194,7 @@ let check_first_buds_and_leaves (Cursor (trail, n, context) as c) =
     List.iter print set1;
     Format.eprintf "Set2@.";
     List.iter print set2;
-    Debug.save_to_dot "folder.dot" c;
+    Debug.save_cursor_to_dot "folder.dot" c;
     assert false
   end 
     
@@ -210,6 +210,6 @@ let () =
     if i mod 100 = 0 then begin
       Format.eprintf "%d done (%d ops)@." i
         (List.length ops);
-      Debug.save_to_dot (Printf.sprintf "random%d.dot" i) c
+      Debug.save_cursor_to_dot (Printf.sprintf "random%d.dot" i) c
     end
   done

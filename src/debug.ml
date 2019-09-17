@@ -226,5 +226,5 @@ let validate_node context (node : node) =
   | Bud _ -> Ok ()
   | _ -> Error "Tree must start with a Bud"
 
-let save_to_dot name c = Utils.to_file name @@ dot_of_cursor c
+let save_cursor_to_dot name c = Utils.to_file name @@ dot_of_cursor c
 let save_node_to_dot name n = Utils.to_file name @@ dot_of_node n

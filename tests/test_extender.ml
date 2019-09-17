@@ -20,9 +20,9 @@ let () =
   let c = ok_or_fail @@ upsert c (path "LLRR") (value "LLRR") in
   let c = ok_or_fail @@ upsert c (path "LLLLLL") (value "LLLLLL") in
   let c = ok_or_fail @@ upsert c (path "LLLLRR") (value "LLLLRR") in
-  save_to_dot "ext1.dot" c;
+  save_cursor_to_dot "ext1.dot" c;
   let c = commit_and_load c in
-  save_to_dot "ext2.dot" c;
+  save_cursor_to_dot "ext2.dot" c;
   let c = ok_or_fail @@ delete c (path "LLRR") in (* We got here Fatal error: exception (Failure "Extender: cannot have Disk with Maybe_Extender"), because of a bug of remove_up *)
-  save_to_dot "ext3.dot" c;
+  save_cursor_to_dot "ext3.dot" c;
   ignore c
