@@ -58,7 +58,7 @@ let commit { roots ; context } ~parent ~meta1 ~meta2 (Cursor (_, _, context') as
   match Roots.find roots h with
   | None ->
       Roots.add roots ?parent h i ~meta1 ~meta2;
-      Storage.Header.check context.Context.storage;
+      Storage.Header.commit context.Context.storage;
       (c, h)
   | Some _i' -> Utils.failwithf "hash collision %S" (Hash.to_string h)
 

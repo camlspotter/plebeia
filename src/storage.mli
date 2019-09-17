@@ -1,8 +1,14 @@
+(** Storage system *)
+
 type storage
 type t = storage
 
 module Header : sig
-  val check : t -> unit
+  val commit : t -> unit
+  (** Write the current state of the storage to the header.
+      Any updates to the storage after the last commit will be lost
+      if the system crashes, even if they are written to a file.
+  *)
 end
 
 val get_last_root_index       : t -> Index.t option

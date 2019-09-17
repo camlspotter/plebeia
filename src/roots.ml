@@ -15,8 +15,8 @@ type entry =
   }
   
 type t = 
-  { tbl      : (Hash.t, entry) Hashtbl.t  (* all are in the memory *)
-  ; context  : Context.t (* where to store *)
+  { tbl      : (Hash.t, entry) Hashtbl.t       (* all are in the memory *)
+  ; context  : Context.t                       (* where to store *)
   ; by_index : (Index.t, entry) Hashtbl.t
   ; children : (Index.t, entry list) Hashtbl.t
   }

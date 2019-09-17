@@ -4,12 +4,8 @@
 
 type t = {
   storage : Storage.t ;
-
-  hashcons : Hashcons.t ;
-  (* Hashcons tbl *)
-
-  stat : Stat.t ;
-  (* Statistics *)
+  hashcons : Hashcons.t ; (* Hashcons tbl *)
+  stat : Stat.t ;         (* Statistics *)
 }
 
 val create : 
