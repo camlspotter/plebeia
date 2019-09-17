@@ -111,13 +111,25 @@ let weight tbl =
       in
       weight + acc) tbl 0
   
-let _age tbl =
+let age_ tbl =
   let keys = Hashtbl.fold (fun k _ acc -> k :: acc) tbl [] in
   List.iter (fun key ->
       match Hashtbl.find tbl key with
       | (_, (0|2)) -> Hashtbl.remove tbl key
       | (idx, score) -> Hashtbl.replace tbl key (idx, score-1)
     ) keys
+
+let age t =
+  for i = 1 to max_size do
+    let tbl = Array.unsafe_get t.tbl (i-1) in
+    if weight tbl > 200_000_0 (* 33 bytes has 179_650 elems on 2019-09-17 *) then begin
+      Format.eprintf "Aging size %d...@." i;
+      let t1 = Unix.gettimeofday () in
+      age_ tbl;
+      let t2 = Unix.gettimeofday () in
+      Format.eprintf "Aging size %d done in %.2f secs@." i (t2 -. t1);
+    end
+  done
   
 let stat t =
   Format.eprintf "Memory cache status@.";
@@ -131,7 +143,11 @@ let stat t =
 
 let add t v index =
   t.count <- t.count + 1;
-  if t.count mod 1000 = 0 then stat t;
+  if t.count mod 1000 = 0 then begin
+    stat t;
+    age t;
+    stat t;
+  end;
   let s = Value.to_string v in
   let len = String.length s in
   if len > max_size then Error "hashcons: too large"
