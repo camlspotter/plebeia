@@ -15,3 +15,4 @@ val add : t -> Value.t -> Index.t -> (unit, Error.t) Result.t
 (** Register a value from the table *)
 
 val stat : t -> unit
+(** Print out statistics to stderr *)

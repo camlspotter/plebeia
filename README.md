@@ -295,3 +295,97 @@ The other tags between 2^32-256 and 2^32-1 are reserved for future extension.
 ----------------------------------------------------------------------------------------
 empty bud |<- 1111111111111111111111111111 ->| |<- Unused tag between -1 and -256 ---->|
 ```
+
+## Header
+
+The header of Plebeia data file consists of 3 cells:
+
+* The cell #0 is for identification of the file format.
+* The cell #1 and #2 are to record the state of Plebeia tree.  These two cells are the sole cells which are overwritten.
+
+### The cell #0: identifier
+
+```
+       |< ----   224 bits --------------->| |<------- 32 bits --------------------->|
+-------------------------------------------------------------------------------------
+Cell #0|PLEBEIA\000...................\000| |<-            version                ->|
+```
+
+The current version is `1`.
+
+### The cells #1 and #2: header
+
+The cells #1 and #2 are to store the same contents: the current state of Plebeia tree storage.
+These cells are the only cells modified during the operation.  The state is written together with its hash:
+
+```
+              |0                   19|20         23|24        27|28        31|
+--------------|---------------------------------------------------------------
+Cell #1 and #2|< hash of the right ->|<- i-cache ->|<- i-root ->|<- i-next ->|
+```
+
+The first 20 bytes of the cell #1 and #2 are the hash of the rest of the cell.
+The rest of the cell consists of the 3 indices:
+
+* The last index of the cache record (from bytes 20)
+* The last index of the root hash record (from bytes 24)
+* The index for the next fresh cell (from bytes 28)
+
+The system writes the same contents to these header cells to the Cell #1 and #2 for crash recovery.
+If the system restarts from a crash, it checks the header cells and if:
+
+* The both cells are valid (the hashes are correct with respect to the rest of the cells) and equal:
+  the header information is valid.
+* The both cells are valid but not equal: the system has crashed after finishing the write to the Cell #1
+  and before writing the Cell #2.  We recover using the indices recorded in Cell #1.
+* If the Cell #1 is valid but #2 is invalid, then the system has crashed during the write to the Cell #2.
+  We recover using the indices recorded in Cell #1.
+* If the Cell #1 is invalid but #2 is valid, then the system has crashed during the write to the Cell #1.
+  We recover using the indicves recorded in Cell #2.
+* If the both cells are invalid, there is no way to recover.  The system must refuse to restart.
+
+For the performance, the header should not be updated for each DB write.  If the system crashes, then
+the updates to the DB after the last valid header write are lost, even though they are properly written to
+the file.
+
+## Root hash records
+
+Plebeia data file keeps the commits together with the tree data.  The information of commits are called "root records".
+A root record consists of 2 contiguous cells:
+
+```
+Node pointed by i-root or prev:
+|0        19|20      23|24        27|28      31|
+|<- meta  ->|<- prev ->|<- parent ->|<- idx  ->|
+
+Previous cell:
+|0                                           31|
+|<------------------- meta2 ------------------>|
+```
+
+* Meta is to store information about the commit, such as log message or timestamp.  The format is not specified. 
+* Prev is the index to the previous root on the file.
+* Parent is the index to the top bud of the parent commit, if exists.  If not, it is filled with 0's.
+     Note that this is NOT the index for the parent's root record.
+* Idx is the index to the top bud of this commit.
+* Meta2 is to store the context hash of the commit.   Currently, the contex hash commit is NOT the Merkle hash of the committed tree but given from the outside.
+
+The index of the last root hash record is recorded in the i-root field of the header.
+
+## Cache record
+
+Plebeia has a cache for small data (<= 36 bytes) to share leaves with the same data to reduce the size of the data file.
+
+```
+            |0        7|8            31|
+------------|---------------------------
+Cache record|<- prev ->|<- 7 indexes ->|
+```
+
+* `prev` is the index points to the previous cache record.  If it does not exist, it is 0-filled.
+* The rest of the cell stores 7 indices to leaves of small sized data.
+
+The index of the last cache record is recorded in the i-cache field of the header.
+
+The format of the cache record is fixed, but how to use it to provide caching is still under heavy development.
+
