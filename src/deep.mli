@@ -42,34 +42,3 @@ val copy : create_subtrees: bool -> t -> Segment.t list -> Segment.t list -> (t,
     
     Copy attempts which introduce loops are rejected. 
 *)
-  
-type where_from =
-  | From_above of dir
-  | From_below of dir
-
-and dir =
-  | Left
-  | Right
-  | Center
-
-type position = 
-  where_from list (* Where the traversal comes from *)
-  * t (* The cursor *)
-  
-val traverse : position -> position option
-(** Traverse the entire tree 
-
-    let f cursor =
-      let rec loop acc (_, cursor as pos) =
-        (* do something over cursor *)
-        let acc = ... in
-        (* update the position and loop *)
-        match traverse pos with
-        | None -> acc
-        | Some pos -> loop acc pos
-      in
-      loop ([], cursor)
-    
-    * For huge trees, you may want to [forget] on memory nodes.
-*)
-

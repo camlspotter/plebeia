@@ -1,3 +1,5 @@
+(** Result monad *)
+
 type ('a, 'b) t = ('a, 'b) result
 
 val return : 'a -> ('a, 'b) t

@@ -1,3 +1,5 @@
+(** High level interface with version control *)
+
 type t
 type cursor = Cursor.t
 

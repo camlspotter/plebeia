@@ -1,6 +1,5 @@
 open Node
 open Result
-open Utils
 open Cursor
 
 (** Multi Bud level interface *)
@@ -86,67 +85,4 @@ let copy ~create_subtrees cur segs1 segs2 =
              | None -> Ok (View bud)
              | Some _ -> Error "a node already presents for this segment") >>= fun cur ->
          Ok (cur, ())) >>| fst
-      
-  
-type where_from =
-  | From_above of dir
-  | From_below of dir
 
-and dir =
-  | Left
-  | Right
-  | Center
-
-type position = where_from list * cursor
-  
-(* Traversal step.  By calling this function repeatedly
-   against the result of the function, we can traverse all the nodes.
-   Note that this loads all the nodes in the memory in the end.
-*)
-let traverse (log, c) = 
-  let c, v = Cursor.view_cursor c in
-  match v, log with
-  | _, From_below _ :: From_below _ :: _ -> assert false
-
-  | Leaf _, From_below _ :: _ -> assert false
-  | Leaf _, [] -> None
-  | Leaf _, From_above d :: log -> 
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-
-  | Bud (None, _, _), From_below _ :: _ -> assert false
-  | Bud (None, _, _), [] -> None
-  | Bud (None, _, _), From_above d :: log -> 
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-
-  | Bud (Some _, _, _), From_below _ :: [] -> None
-  | Bud (Some _, _, _), From_below _ :: From_above d :: log ->
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-  | Bud (Some _, _, _), (From_above _ :: _ | []) ->
-      let c = from_Some @@ from_Ok @@ go_below_bud c in
-      Some (From_above Center :: log, c)
-
-  | Internal _, From_below Center :: _ -> assert false
-  | Internal _, (From_above _ :: _ | []) ->
-      let c = from_Ok @@ go_side Segment.Left c in
-      Some (From_above Left :: log, c)
-  | Internal _, From_below Left :: log ->
-      let c = from_Ok @@ go_side Segment.Right c in
-      Some (From_above Right :: log, c)
-  | Internal _, From_below Right :: [] -> None
-  | Internal _, From_below Right :: From_above d :: log ->
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-
-  | Extender (_seg, _, _, _), (From_above _ :: _ | []) ->
-      let c = from_Ok @@ go_down_extender c in
-      Some (From_above Center :: log, c)
-  | Extender (_, _, _, _), From_below _ :: [] -> None
-  | Extender (_seg, _, _, _), From_below _ :: From_above d :: log ->
-      let c = from_Ok @@ go_up c in
-      Some (From_below d :: log, c)
-
-  
-  

@@ -36,19 +36,23 @@ type trail = private
 (** Constructors with invariant checks *)
 
 val _Top : trail
+
 val _Left : trail
     * node
     * modified
     -> trail
+
 val _Right : 
     node
     * trail
     * modified
     -> trail
+
 val _Budded :
     trail
     * modified
     -> trail
+
 val _Extended :
     trail
     * Segment.t
@@ -73,6 +77,8 @@ type t = cursor
 val _Cursor : (trail * node * Context.t) -> cursor
 
 val view_cursor : t -> t * view
+(** Get the view of the cursor.  Returns also the updated cursor with
+    the view. *)
 
 val segs_of_trail : trail -> Segment.t list
 (** Segment side list of the given trail, splitted by buds *)
@@ -85,8 +91,6 @@ val local_seg_of_trail : trail -> Segment.t
 
 val local_seg_of_cursor : t -> Segment.t
 (** Segment side list of the given cursor, splitted by buds *)
-
-
 
 val empty : Context.t -> t
 (** Creates a cursor to a new, empty tree. *)
