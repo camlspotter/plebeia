@@ -89,7 +89,7 @@ let read t ~load_leaf_value =
           Format.eprintf "Hashcons: loaded %d cached small values@." !cntr
         end;
         let len = String.length @@ Value.to_string v in
-        if len <= max_size then
+        if 0 < len && len <= max_size then
           Hashtbl.replace (Array.unsafe_get t.tbl (len-1)) v (i, 3)
   in    
   let rec loop = function
@@ -120,6 +120,7 @@ let age_ tbl =
     ) keys
 
 let age t =
+  let changed = ref false in
   for i = 1 to max_size do
     let tbl = Array.unsafe_get t.tbl (i-1) in
     if weight tbl > 200_000_0 (* 33 bytes has 179_650 elems on 2019-09-17 *) then begin
@@ -128,8 +129,10 @@ let age t =
       age_ tbl;
       let t2 = Unix.gettimeofday () in
       Format.eprintf "Aging size %d done in %.2f secs@." i (t2 -. t1);
+      changed := true;
     end
-  done
+  done;
+  !changed
   
 let stat t =
   Format.eprintf "Memory cache status@.";
@@ -145,12 +148,11 @@ let add t v index =
   t.count <- t.count + 1;
   if t.count mod 1000 = 0 then begin
     stat t;
-    age t;
-    stat t;
+    if age t then stat t;
   end;
   let s = Value.to_string v in
   let len = String.length s in
-  if len > max_size then Error "hashcons: too large"
+  if len = 0 || len > max_size then Error "hashcons: too large or 0"
   else 
     let tbl = Array.unsafe_get t.tbl (len-1) in
     match Hashtbl.find_opt tbl v with
@@ -163,7 +165,7 @@ let add t v index =
 let find t v =
   let s = Value.to_string v in
   let len = String.length s in
-  if len > max_size then Error "hashcons: too large"
+  if len = 0 || len > max_size then Error "hashcons: too large or 0"
   else
     Ok (
       match Hashtbl.find_opt (Array.unsafe_get t.tbl (len-1)) v with
@@ -171,7 +173,7 @@ let find t v =
       | Some (idx, score) -> 
           let score, need_to_write = 
             match score with
-            | 0 | 1 -> 3, true
+            | 0 | 1 -> 3, true (* Second appearance.  Let's write it to the disk *)
             | x -> x + 1, false
           in
           let tbl = Array.unsafe_get t.tbl (len-1) in
