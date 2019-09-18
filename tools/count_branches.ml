@@ -2,14 +2,15 @@
 
    Scan the root hashes and prints out branches.
 
+   count_branches ~/.tezos-node/plebeia.context
 *)
 open Plebeia.Impl
 
 let (//) = Filename.concat
 
 let () =
-  let dir = Sys.argv.(1) in
-  let ctxt = Vc.open_ ~shared:false ~load_hashcons:false ~prefix:(dir // "plebeia") () in
+  let path = Sys.argv.(1) in
+  let ctxt = Vc.open_ ~shared:false ~load_hashcons:false path in
   let roots = Vc.roots ctxt in
   let open Roots in
   match genesis roots with

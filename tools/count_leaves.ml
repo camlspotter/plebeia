@@ -1,5 +1,7 @@
 (*
    Print the stats of leaves of the last commit.
+   
+   count_leaves ~/.tezos-node/plebeia.contexrt
 *)
 
 open Plebeia.Impl
@@ -7,8 +9,8 @@ open Plebeia.Impl
 let (//) = Filename.concat
 
 let () =
-  let dir = Sys.argv.(1) in
-  let vc = Vc.open_ ~shared:false ~load_hashcons:false ~prefix:(dir // "plebeia") () in
+  let path = Sys.argv.(1) in
+  let vc = Vc.open_ ~shared:false ~load_hashcons:false path in
   let roots = Vc.roots vc in
   
   let new_roots = 

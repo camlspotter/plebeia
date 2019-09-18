@@ -1,3 +1,4 @@
 (executables
+ (public_names count_buds count_cache count_branches count_leaves)
  (names count_buds count_cache count_branches count_leaves)
  (libraries plebeia))

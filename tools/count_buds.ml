@@ -3,6 +3,8 @@
    Counts the buds of all the roots.  It does not visit the buds already seen.
    Warning: it takes super long time for a big plebeia context.
 
+   count_buds ~/.tezos-node/plebeia.context
+
 *)
 open Plebeia.Impl
 
@@ -14,8 +16,8 @@ module IS = Set.Make(struct
   end) 
 
 let () =
-  let dir = Sys.argv.(1) in
-  let ctxt = Vc.open_ ~shared:false ~load_hashcons:false ~prefix:(dir // "plebeia") () in
+  let path = Sys.argv.(1) in
+  let ctxt = Vc.open_ ~shared:false ~load_hashcons:false path in
   let roots = Vc.roots ctxt in
 
   let nhashes = Hashtbl.length roots.tbl in
