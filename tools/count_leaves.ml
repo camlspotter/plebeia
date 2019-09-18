@@ -14,7 +14,7 @@ let () =
         | _ -> acc) roots.tbl []
   in
 
-  let leaves = Array.init 35 (fun _ -> Hashtbl.create 0) in
+  let leaves = Array.init 36 (fun _ -> Hashtbl.create 0) in
 
   match new_roots with
   | [] -> assert false
@@ -75,5 +75,4 @@ let () =
       in
       let uniq, copied = loop (0,0) ([],c) in
       Format.eprintf "%d uniq buds,  %d copied@." uniq copied
-      
       
