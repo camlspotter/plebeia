@@ -1,16 +1,22 @@
+(*
+   
+   Counts the buds of all the roots.  It does not visit the buds already seen.
+   Warning: it takes super long time for a big plebeia context.
+
+*)
 open Plebeia.Impl
 
 let (//) = Filename.concat
+
+module IS = Set.Make(struct 
+    type t = Index.t 
+    let compare = compare 
+  end) 
 
 let () =
   let dir = Sys.argv.(1) in
   let ctxt = Vc.open_ ~shared:false ~load_hashcons:false ~prefix:(dir // "plebeia") () in
   let roots = Vc.roots ctxt in
-  let module IS = Set.Make(struct 
-      type t = Index.t 
-      let compare = compare 
-    end) 
-  in
 
   let nhashes = Hashtbl.length roots.tbl in
 
@@ -26,9 +32,9 @@ let () =
               match log_c_opt with
               | None -> (seen, nseen, pointed, ncopied)
               | Some (log, c) ->
-                  match Cursor.view_cursor c with
-                  | _, Bud (_, Not_Indexed, _) -> assert false
-                  | c, Bud (nopt, Indexed i, _) ->
+                  match log, Cursor.view_cursor c with
+                  | _, (_, Bud (_, Not_Indexed, _)) -> assert false
+                  | Cursor.From_above _ :: _, (c, Bud (nopt, Indexed i, _)) ->
                       if IS.mem i seen then
                         loop (Cursor.traverse_up (log, c))
                           (seen, nseen, pointed, ncopied)
