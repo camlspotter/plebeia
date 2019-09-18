@@ -25,7 +25,7 @@ let () =
         let ls = match v with
           | Leaf (v, _, _) ->
               let len = Value.length v in
-              if  len > 36 then ()
+              if  len = 0 || len > 36 then ()
               else begin
                 let n = match Hashtbl.find_opt leaves.(len-1) v with
                   | None -> 1
