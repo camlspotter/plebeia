@@ -1,3 +1,8 @@
+(*
+
+   Scan the root hashes and prints out branches.
+
+*)
 open Plebeia.Impl
 
 let (//) = Filename.concat

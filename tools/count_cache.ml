@@ -1,3 +1,9 @@
+(*
+   
+   Show the hashcons cache status
+
+*)
+
 open Plebeia.Impl
 
 let (//) = Filename.concat

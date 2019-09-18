@@ -1,3 +1,7 @@
+(*
+   Print the stats of leaves of the last commit.
+*)
+
 open Plebeia.Impl
 
 let (//) = Filename.concat
