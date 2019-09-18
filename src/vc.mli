@@ -6,16 +6,14 @@ type cursor = Cursor.t
 val create : 
   ?context_pos:int64 
   -> ?context_length:int 
-  -> prefix:string
-  -> unit
+  -> string
   -> t
 
 val open_ : 
   ?shared: bool
   -> ?load_hashcons:bool
   -> ?context_pos:int64 
-  -> prefix:string
-  -> unit
+  -> string
   -> t
 
 val roots : t -> Roots.t

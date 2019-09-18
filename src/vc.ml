@@ -11,18 +11,17 @@ type t =
 let roots { roots ; _ } = roots
 let context { context ; _ } = context
 
-let create ?context_pos ?context_length ~prefix () =
+let create ?context_pos ?context_length path =
   let context = 
     Context.create ?pos:context_pos ?length:context_length
-      (prefix ^ ".context")
+      path
   in
   let roots = Roots.create context in
   { roots ; context }
 
-let open_ ?shared ?load_hashcons ?context_pos ~prefix () =
+let open_ ?shared ?load_hashcons ?context_pos path =
   let context = 
-    Context.open_ ?pos:context_pos ?load_hashcons ?shared
-      (prefix ^ ".context")
+    Context.open_ ?pos:context_pos ?load_hashcons ?shared path
   in
   let roots = Roots.create context in
   { roots ; context }
