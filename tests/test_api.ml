@@ -23,24 +23,24 @@ let equal_check context n1 n2 =
       prerr_endline "ouch";
       let n1 = Node_storage.load_node_fully context n1 in
       let n2 = Node_storage.load_node_fully context n2 in
-      save_to_dot "debug_equal_check_1.dot" @@ _Cursor (_Top, n1, context);
-      save_to_dot "debug_equal_check_2.dot" @@ _Cursor (_Top, n2, context);
+      save_cursor_to_dot "debug_equal_check_1.dot" @@ _Cursor (_Top, n1, context);
+      save_cursor_to_dot "debug_equal_check_2.dot" @@ _Cursor (_Top, n2, context);
       save_node_to_dot "debug_equal_check_detail1.dot" n1';
       save_node_to_dot "debug_equal_check_detail2.dot" n2';
       assert false
       
 let commit_check c =
   let Cursor (_tr, n, context) as c, i, _ = Cursor_storage.commit_top_cursor c in
-  save_to_dot "commit_check.dot" c;
+  save_cursor_to_dot "commit_check.dot" c;
   let n' = View (load_node context i Not_Extender) in
   equal_check context n n';
   c
 
 let () = 
   test_with_cursor @@ fun c ->
-  save_to_dot "api1.dot" c;
+  save_cursor_to_dot "api1.dot" c;
   let c = ok_or_fail @@ upsert c (path "LR") (value "fooLR") in
-  save_to_dot "api2.dot" c;
+  save_cursor_to_dot "api2.dot" c;
   let c = ok_or_fail @@ upsert c (path "LL") (value "fooLL") in
   let c = from_Some @@ ok_or_fail @@ go_below_bud c in
   let c = ok_or_fail @@ go_down_extender c in
@@ -61,7 +61,7 @@ let () = test_with_cursor @@ fun c ->
   let c = ok_or_fail @@ upsert c (path "LRL") (value "LRL") in 
   let c = ok_or_fail @@ upsert c (path "RLR") (value "RLR") in 
   let c = ok_or_fail @@ upsert c (path "LRR") (value "LRR") in
-  save_to_dot "debug2.dot" c;
+  save_cursor_to_dot "debug2.dot" c;
   let c = commit_check c in
   ignore c
 
@@ -70,7 +70,7 @@ let () =
   let c = ok_or_fail @@ insert c (path "RRRL") (value "RRRL") in
   let c = ok_or_fail @@ insert c (path "RLLR") (value "RLLR") in
   let c = ok_or_fail @@ insert c (path "RRRR") (value "RRRR") in
-  save_to_dot "debug3.dot" c;
+  save_cursor_to_dot "debug3.dot" c;
   let v = ok_or_fail @@ get c (path "RRRR") in
   assert (v = value "RRRR");
   let c = commit_check c in
@@ -123,7 +123,7 @@ let () =
   let c = ok_or_fail @@ go_top c in
   let c = commit_check c in
   let c = ok_or_fail @@ subtree c (path "RRR") in
-  save_to_dot "debug.dot" c;
+  save_cursor_to_dot "debug.dot" c;
   let c = ok_or_fail @@ delete c (path "RRL") in (* Once failed here *)
   ignore c
     

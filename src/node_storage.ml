@@ -26,6 +26,15 @@ let rec parse_cell storage i =
             end
       end
 
+  | -255l -> (* leaf whose value is in Plebeia *)
+      let h = C.get_hash buf 0 in
+      let v = Value.of_string @@ Chunk.read storage @@ Index.pred i in
+      _Leaf (v, Indexed i, Hashed h)
+
+  | -254l -> (* linked *)
+      let i' = C.get_index buf 24 in
+      parse_cell storage i'
+      
   | -65l -> (* zero size leaf *)
       let h = C.get_hash buf 0 in
       let v = Value.of_string "" in
@@ -43,15 +52,6 @@ let rec parse_cell storage i =
       let h = C.get_hash buf 0 in
       let buf = make_buf2 storage (Index.pred @@ Index.pred i) in
       let v = Value.of_string @@ C.copy buf 0 l in
-      _Leaf (v, Indexed i, Hashed h)
-
-  | -254l -> (* linked *)
-      let i' = C.get_index buf 24 in
-      parse_cell storage i'
-      
-  | -255l -> (* leaf whose value is in Plebeia *)
-      let h = C.get_hash buf 0 in
-      let v = Value.of_string @@ Chunk.read storage @@ Index.pred i in
       _Leaf (v, Indexed i, Hashed h)
 
   | x when -256l <= x && x <= -1l -> assert false

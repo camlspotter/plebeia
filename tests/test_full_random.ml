@@ -154,7 +154,7 @@ let () =
       Format.eprintf "%d done (%d ops)@." i
         (List.length ops);
 (*
-      Debug.save_to_dot (Printf.sprintf "random%d.dot" i) c
+      Debug.save_cursor_to_dot (Printf.sprintf "random%d.dot" i) c
 *)
     end
   done

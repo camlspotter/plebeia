@@ -21,7 +21,7 @@ let () = test_with_cursor @@ fun c ->
     assert false
   end;
   let c = ok_or_fail @@ Deep.copy ~create_subtrees:true c [path "LLL"] [path "RRR"] in
-  save_to_dot "copy.dot" c;
+  save_cursor_to_dot "copy.dot" c;
   let v = ok_or_fail @@ Deep.get c [path "RRR"; path "RRR"] in
   assert (v = (value "LLL/RRR"));
   (* try to create a loop *)
@@ -39,7 +39,7 @@ let () = test_with_cursor @@ fun c ->
       (List.map path_key ["data"; "rolls"; "owner"; "current"])
       (List.map path_key ["data"; "rolls"; "owner"; "snapshot"; "0"; "0"])
   in
-  save_to_dot "copy3.dot" c;
+  save_cursor_to_dot "copy3.dot" c;
   let v = ok_or_fail @@ Deep.get c 
       (List.map path_key ["data"; "rolls"; "owner"; "snapshot"; "0"; "0"; "69"; "56"; "14405"])
   in

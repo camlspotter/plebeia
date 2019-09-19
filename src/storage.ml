@@ -181,7 +181,7 @@ module Header = struct
     write' t 1 x;
     write' t 2 x
   
-  let check t =
+  let commit t =
     let cp = { last_next_index = t.current_length
              ; last_root_index = t.last_root_index
              ; last_cache_index = t.last_cache_index } 
@@ -191,7 +191,7 @@ module Header = struct
 end
 
 let create ?(pos=0L) ?length fn =
-  let fd = Unix.openfile fn [O_CREAT; O_TRUNC; O_RDWR] 0o644 in
+  let fd = Unix.openfile fn [O_CREAT; O_EXCL; O_RDWR] 0o644 in
   let mapped_length = 
     match length with 
     | None -> resize_step 
@@ -221,7 +221,7 @@ let create ?(pos=0L) ?length fn =
       version
     }
   in
-  Header.check t;
+  Header.commit t;
   t
 
 let open_ ?(pos=0L) ?(shared=false) fn =
@@ -259,7 +259,7 @@ let open_ ?(pos=0L) ?(shared=false) fn =
   end
 
 let close ({ fd ; _ } as t) =
-  Header.check t;
+  Header.commit t;
   Unix.close fd
 
 let make_buf storage i = get_cell storage i

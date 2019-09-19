@@ -679,3 +679,4 @@ let fold ~init c f =
 
 let stat (Cursor (_,_,{ stat ; _ })) = stat
 
+let view = view_cursor
