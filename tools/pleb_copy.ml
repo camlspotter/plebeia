@@ -122,7 +122,8 @@ let () =
       | Some parent_i -> 
           let (refc, past_nodes, n, threshold) = Hashtbl.find past_nodes_tbl parent_i in
           if refc <= 1 then begin
-            Format.eprintf "Forgetting %d %0.2f@." (Index.to_int parent_i) (float cells /. float (Index.to_int parent_i) *. 100.0);
+            Format.eprintf "Forgetting %d %0.2f@." (Index.to_int parent_i) 
+              (float (Index.to_int parent_i) /. float cells  *. 100.0);
             Hashtbl.remove past_nodes_tbl parent_i;
             Format.eprintf "Forgot %d. %d entries in the table@." 
               (Index.to_int parent_i)
