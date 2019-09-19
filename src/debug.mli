@@ -15,3 +15,4 @@ val validate_node : Context.t -> node -> (unit, string) Result.t
 
 val save_cursor_to_dot : string -> cursor -> unit
 val save_node_to_dot : string -> node -> unit
+(** Graphviz visualization *)

@@ -14,7 +14,7 @@ val create :
   -> string (* path *)
   -> t
 (** Create a new context storage.  
-    Note that if the file already exists, the contents are cleaned away. 
+    Note that if the file already exists, [create] fails.
 
     pos: the start position in the file
     length: initial size of the file in bytes
