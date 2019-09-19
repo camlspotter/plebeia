@@ -1,4 +1,3 @@
-open Utils
 open Node
 open Cursor
 open Result
@@ -10,7 +9,7 @@ let rec string_of_node : node -> int -> string = fun node indent ->
   | (Disk (index, _)) -> Printf.sprintf "%sDisk %Ld" indent_string (Index.to_int64 index)
   | View (Leaf (value, Indexed i, Hashed h)) ->
       Printf.sprintf "%sLeaf %S (%Ld, %s)\n" indent_string (Value.to_string value)
-        (Index.to_int64 i) (to_hex @@ Hash.to_string h)
+        (Index.to_int64 i) (Hex.show @@ Hash.to_hex h)
   | View (Leaf (value, _, _)) ->
       Printf.sprintf "%sLeaf %s\n" indent_string (Value.to_string value)
   | View (Bud  (node , _, _)) ->

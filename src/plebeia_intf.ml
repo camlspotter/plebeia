@@ -38,11 +38,15 @@ module type S = sig
 
     val to_string : t -> string
     val of_string : string -> t
+    val to_hex : t -> Hex.t
+    val of_hex : Hex.t -> t
   end
 
   (** {2 High level} *)
 
   module Vc : module type of struct include Vc end
+
+  module Roots : module type of struct include Roots end
 
   (** {2 Helper} *)
  

@@ -4,9 +4,17 @@ type t = private string
 val to_string : t -> string
 (** Returns a binary string representation of hash *)
 
-val of_string : string -> t (* may raise exn *)
-(** Create a hash from 28 bytes binary string *)
+val of_string : string -> t
+(** Create a hash from 28 bytes binary string.
+    String with an invalid length raises [Assert_failure] *)
 
+val to_hex : t -> Hex.t
+val to_hex_string : t -> string
+
+val of_hex : Hex.t -> t
+(** Create a hash from a hexiadecimal representation of 28 bytes binary string.
+    Input with an invalid length raises [Assert_failure] *)
+  
 val hash : string -> t
 (** Compute the hash of the given binary string *)
   

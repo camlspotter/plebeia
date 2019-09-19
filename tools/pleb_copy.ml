@@ -135,7 +135,7 @@ let () =
     in
     let new_nodes = find_new_nodes vc1 past_nodes h in
     let new_n = IS.cardinal new_nodes in
-    Format.eprintf "%S: %d new nodes@." (Hash.to_string h) new_n;
+    Format.eprintf "%s: %d new nodes@." (Hash.to_hex_string h) new_n;
     let n = new_n + n in
     let past_nodes, n, threshold = 
       (* if nchildren is 0, no point to calculate *)

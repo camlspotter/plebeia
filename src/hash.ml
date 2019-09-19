@@ -18,10 +18,10 @@ module Blake2B_28 = struct
 end
 
 let _test =
-  assert (to_hex @@ Blake2B_28.of_string "Replacing SHA1 with the more secure function"
-          = "6bceca710717901183f66a78a7a9f59441c56defcff32f33f1e1b578");
-  assert (to_hex @@ Blake2B_28.of_strings ["Replacing SHA1 with the "; "more secure function" ]
-          = "6bceca710717901183f66a78a7a9f59441c56defcff32f33f1e1b578")
+  assert (Hex.of_string @@ Blake2B_28.of_string "Replacing SHA1 with the more secure function"
+          = `Hex "6bceca710717901183f66a78a7a9f59441c56defcff32f33f1e1b578");
+  assert (Hex.of_string @@ Blake2B_28.of_strings ["Replacing SHA1 with the "; "more secure function" ]
+          = `Hex "6bceca710717901183f66a78a7a9f59441c56defcff32f33f1e1b578")
 (* obtained by
 #!/usr/local/bin/python3
 
@@ -38,8 +38,15 @@ let hash_list = Blake2B_28.of_strings
 type t = string
 
 let to_string x = x
-let of_string x = assert (String.length x = 28); x
 
+let of_string x = assert (String.length x = 28); x
+(* This module is only for internal use.
+   Error recovery is not required. *) 
+
+let to_hex x = Hex.of_string x
+let to_hex_string x = Hex.show @@ Hex.of_string x
+let of_hex = Hex.to_string
+  
 let _reset_last_bit s =
   let len = String.length s in
   if len <> 28 then failwithf "reset_last_bit: len=%d <> 28" len; 
@@ -56,4 +63,4 @@ let reset_last_2bits s =
   @@ Char.chr @@ Char.code (Bytes.unsafe_get bs 27) land 0xfc;
   Bytes.to_string bs
 
-let zero = of_string @@ String.make 28 '\000'
+let zero = String.make 28 '\000'

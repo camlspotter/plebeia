@@ -34,6 +34,6 @@ let () =
               let { Roots.hash = h ; _ } = Utils.from_Some @@ Roots.find_by_index roots e.index in
               Format.eprintf "%d children: %S@." 
                 (List.length children) 
-                (Hash.to_string h)
+                (Hash.to_hex_string h)
         ) [genesis]
         

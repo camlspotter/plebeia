@@ -29,7 +29,7 @@ let () =
   let t1 = Unix.gettimeofday () in
   let _ = Roots.fold (fun { Roots.index=_; hash; _} ->
       fun (seen, nseen, pointed, ncopied, nhashes_done) -> 
-        Format.eprintf "Checkout %S %d/%d@." (Hash.to_string hash) nhashes_done nhashes;
+        Format.eprintf "Checkout %s %d/%d@." (Hash.to_hex_string hash) nhashes_done nhashes;
         match Vc.checkout ctxt hash with
         | None -> assert false
         | Some c ->

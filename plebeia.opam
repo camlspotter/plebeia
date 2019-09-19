@@ -16,5 +16,6 @@ depends: [
   "cstruct"
   "stdint"
   "res"
+  "hex"
   "dune" {build & >= "1.0"}
 ]
