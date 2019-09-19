@@ -57,26 +57,25 @@ let find_new_nodes vc past_nodes rh =
     | None -> new_nodes
     | Some ((Cursor.From_above _ :: _ as log),c) ->
         let (c,v) = Cursor.view_cursor c in
-        let i = Utils.from_Some @@ Node.index (View v) in
-        if i > parent_i then begin
-          (* This is a new node, which cannot appear in past_nodes *)
-          assert (not @@ IS.mem i past_nodes);
-          if IS.mem i new_nodes then begin
-            (* quite surprising to have shared node in one commit *)
-            Format.eprintf "Shared node found in one commit! %d@." (Index.to_int i)
-          end;
-          let new_nodes = IS.add i new_nodes in
-          loop new_nodes (Cursor.traverse (log,c))
-        end else begin
-          (* This is an old node, which was written before rh *)
-          match v with
-          | Leaf (v, _, _) when Value.length v <= 36 (* XXX hard coded *) ->
-              (* This is a small leaf *)
-              loop new_nodes (Cursor.traverse_up (log,c))
-          | _ ->
-              (* This is not a target of caching. Therefore it is in past_nodes *)
+        begin match v with
+        | Leaf (v, _, _) when Value.length v <= 36 (* XXX hard coded *) ->
+            (* This is a small leaf *)
+            loop new_nodes (Cursor.traverse_up (log,c))
+        | _ ->
+            let i = Utils.from_Some @@ Node.index (View v) in
+            if i > parent_i then begin
+              (* This is a new node, which cannot appear in past_nodes *)
+              assert (not @@ IS.mem i past_nodes);
+              if IS.mem i new_nodes then begin
+                (* quite surprising to have shared node in one commit *)
+                Format.eprintf "Shared node found in one commit! %d@." (Index.to_int i)
+              end;
+              let new_nodes = IS.add i new_nodes in
+              loop new_nodes (Cursor.traverse (log,c))
+            end else begin
               assert (IS.mem i past_nodes);
               loop new_nodes (Cursor.traverse_up (log,c))
+            end
         end
     | Some logc -> loop new_nodes (Cursor.traverse logc)
   in
@@ -108,6 +107,8 @@ let () =
   let roots = Vc.roots vc1 in
   let _nhashes = Hashtbl.length roots.tbl in
 
+  let cells = Index.to_int @@ Storage.get_current_length (Vc.context vc1).Context.storage in
+
   (* Cursor.traversal can be too slow *)
   let _t1 = Unix.gettimeofday () in
 
@@ -121,8 +122,11 @@ let () =
       | Some parent_i -> 
           let (refc, past_nodes, n, threshold) = Hashtbl.find past_nodes_tbl parent_i in
           if refc <= 1 then begin
-            Format.eprintf "Forgetting %d@." (Index.to_int parent_i);
-            Hashtbl.remove past_nodes_tbl parent_i
+            Format.eprintf "Forgetting %d %0.2f@." (Index.to_int parent_i) (float cells /. float (Index.to_int parent_i) *. 100.0);
+            Hashtbl.remove past_nodes_tbl parent_i;
+            Format.eprintf "Forgot %d. %d entries in the table@." 
+              (Index.to_int parent_i)
+              (Hashtbl.length past_nodes_tbl);
           end else Hashtbl.replace past_nodes_tbl parent_i (refc-1, past_nodes, n, threshold);
           (past_nodes, n, threshold)
     in
