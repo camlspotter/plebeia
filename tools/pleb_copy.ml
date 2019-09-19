@@ -105,16 +105,25 @@ let () =
   (* let path2 = Sys.argv.(2) in *)
   (* let _vc2 = Vc.create path2 in *)
   let roots = Vc.roots vc1 in
-  let _nhashes = Hashtbl.length roots.tbl in
 
   let cells = Index.to_int @@ Storage.get_current_length (Vc.context vc1).Context.storage in
 
-  (* Cursor.traversal can be too slow *)
-  let _t1 = Unix.gettimeofday () in
+  let t1 = Unix.gettimeofday () in
 
   (* past node table *)
   let past_nodes_tbl = Hashtbl.create 0 in
-  
+
+  let report i =
+    let i = Index.to_int i in
+    let t2 = Unix.gettimeofday () in
+    let ratio = float i /. float cells in
+    Format.eprintf "index %d, %.02f, %.0f, %.0f@."
+      i
+      (ratio *. 100.0)
+      (t2 -. t1)
+      ((t2 -. t1) /. ratio)
+  in
+
   let f () e = 
     let h,_ = Hashtbl.find roots.Roots.by_index e.Roots.index in
     let (past_nodes, n, threshold) = match e.Roots.parent with
@@ -122,8 +131,6 @@ let () =
       | Some parent_i -> 
           let (refc, past_nodes, n, threshold) = Hashtbl.find past_nodes_tbl parent_i in
           if refc <= 1 then begin
-            Format.eprintf "Forgetting %d %0.2f@." (Index.to_int parent_i) 
-              (float (Index.to_int parent_i) /. float cells  *. 100.0);
             Hashtbl.remove past_nodes_tbl parent_i;
             Format.eprintf "Forgot %d. %d entries in the table@." 
               (Index.to_int parent_i)
@@ -142,6 +149,7 @@ let () =
         let c = Utils.from_Some @@ Vc.checkout vc1 h in
         let past_nodes = get_non_small_nodes c in
         let n = IS.cardinal past_nodes in
+        report e.Roots.index;
         (past_nodes, n, n * 8)
       else
         (IS.union past_nodes new_nodes, n, threshold) 
@@ -156,4 +164,8 @@ let () =
     end
   in
 
-  fold_roots roots () f
+  fold_roots roots () f;
+  let t2 = Unix.gettimeofday () in
+  Format.eprintf "Traversed %d cells in %f secs@." cells (t2 -. t1)
+
+
