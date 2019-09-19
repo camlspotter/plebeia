@@ -28,6 +28,9 @@ module type S = sig
 
     val of_string : string -> t option
     (** LLRRLL *)
+        
+    val to_side_list : t -> side list
+    val of_side_list : side list -> t
   end
 
   (** {2 Hash } *)
