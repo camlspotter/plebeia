@@ -1,7 +1,7 @@
 (*
    Print the stats of leaves of the last commit.
    
-   count_leaves ~/.tezos-node/plebeia.contexrt
+   count_leaves ~/.tezos-node/plebeia.context
 *)
 
 open Plebeia.Impl

@@ -1,6 +1,9 @@
 (*
-   
-   Counts the buds of all the roots.  It does not visit the buds already seen.
+  
+   OBSOLETE: this root hash traversal is random therefore super slow.
+   Do not use this tool.  Use the technique like Pleb_copy.
+
+   COUNTS the buds of all the roots.  It does not visit the buds already seen.
    Warning: it takes super long time for a big plebeia context.
 
    count_buds ~/.tezos-node/plebeia.context
