@@ -16,16 +16,12 @@ let fold_roots roots init f =
       Format.eprintf "Roots have %d genesis hashes@." (List.length hs);
       assert false
   | [genesis_h] ->
-      let e = Hashtbl.find roots.tbl genesis_h in
+      let e = Utils.from_Some @@ Roots.find roots genesis_h in
       let rec loop acc = function
         | [] -> ()
         | e::es ->
             let acc = f acc e in
-            let es' = 
-              match Hashtbl.find_opt roots.children e.index with
-              | None -> []
-              | Some es' -> es'
-            in
+            let es' = Roots.children roots e.index in
             loop acc (es @ es')
       in
       loop init [e]
@@ -48,7 +44,7 @@ let fold_roots roots init f =
 *)
 
 let find_new_nodes vc past_nodes rh =
-  let entry = Hashtbl.find (Vc.roots vc).Roots.tbl rh in
+  let entry = Utils.from_Some @@ Roots.find (Vc.roots vc) rh in
   let parent_i = match entry.parent with Some i -> i | None -> Index.of_int 0 in
                    
   let c = Utils.from_Some @@ Vc.checkout vc rh in
@@ -125,7 +121,7 @@ let () =
   in
 
   let f () e = 
-    let h,_ = Hashtbl.find roots.Roots.by_index e.Roots.index in
+    let { Roots.hash = h ; _ } = Utils.from_Some @@ Roots.find_by_index roots e.Roots.index in
     let (past_nodes, n, threshold) = match e.Roots.parent with
       | None -> (IS.empty, 0, 10000)
       | Some parent_i -> 
@@ -154,10 +150,7 @@ let () =
       else
         (IS.union past_nodes new_nodes, n, threshold) 
     in
-    let nchildren = match Hashtbl.find_opt roots.children e.index with
-      | None -> 0
-      | Some es -> List.length es
-    in
+    let nchildren = List.length @@ Roots.children roots e.index in
     if nchildren > 0 then begin
       Format.eprintf "Adding %d: %d %d@." (Index.to_int e.Roots.index) n threshold;
       Hashtbl.replace past_nodes_tbl e.Roots.index (nchildren, past_nodes, n, threshold)

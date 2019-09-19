@@ -14,17 +14,17 @@ let () =
   let roots = Vc.roots vc in
   
   let new_roots = 
-    Hashtbl.fold (fun h e acc ->
-        match Hashtbl.find_opt roots.children e.Roots.index with
-        | None | Some [] -> (h,e)::acc
-        | _ -> acc) roots.tbl []
+    Roots.fold (fun e acc ->
+        match Roots.children roots e.Roots.index with
+        | [] -> e::acc
+        | _ -> acc) roots []
   in
 
   let leaves = Array.init 36 (fun _ -> Hashtbl.create 0) in
 
   match new_roots with
   | [] -> assert false
-  | (h,_e) :: _ ->
+  | { hash= h ; _ } :: _ ->
       let c = Utils.from_Some @@ Vc.checkout vc h in
       let rec loop ls (log,c) =
         let (c, v) = Cursor.view_cursor c in

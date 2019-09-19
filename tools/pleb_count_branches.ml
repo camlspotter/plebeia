@@ -19,25 +19,20 @@ let () =
       Format.eprintf "Roots have %d genesis hashes@." (List.length hs);
       assert false
   | [genesis_h] ->
-      let e = Hashtbl.find roots.tbl genesis_h in
+      let e = Utils.from_Some @@ Roots.find roots genesis_h in
       let rec loop f = function
         | [] -> ()
         | e::es ->
             f e;
-            let es' = 
-              match Hashtbl.find_opt roots.children e.index with
-              | None -> []
-              | Some es' -> es'
-            in
+            let es' = Roots.children roots e.index in
             loop f (es @ es')
       in
       loop (fun e -> 
-          match Hashtbl.find_opt roots.children e.index with
-          | None -> ()
-          | Some [] -> ()
-          | Some [_] -> ()
-          | Some children  ->
-              let h, _ = Hashtbl.find roots.by_index e.index in
+          match Roots.children roots e.index with
+          | [] -> ()
+          | [_] -> ()
+          | children  ->
+              let { Roots.hash = h ; _ } = Utils.from_Some @@ Roots.find_by_index roots e.index in
               Format.eprintf "%d children: %S@." 
                 (List.length children) 
                 (Hash.to_string h)

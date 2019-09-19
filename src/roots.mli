@@ -17,14 +17,10 @@ type entry =
   ; parent : Index.t option
   ; meta1 : string (* Commit log (currently empty) *)
   ; meta2 : string (* To store Irmin's context hash *)
+  ; hash : Hash.t
   }
   
-type t = 
-  { tbl      : (Hash.t, entry) Hashtbl.t  (* all are in the memory *)
-  ; context  : Context.t (* where to store *)
-  ; by_index : (Index.t, Hash.t * entry) Hashtbl.t
-  ; children : (Index.t, entry list) Hashtbl.t
-  }
+type t
 (** Storage type *)
 
 val create : Context.t -> t
@@ -42,5 +38,17 @@ val mem : t -> Hash.t -> bool
 val find : t -> Hash.t -> entry option
 (** Find a root of the given hash *)
 
+val find_by_index : t -> Index.t -> entry option
+(** Find by index *)
+
 val genesis : t -> Hash.t list
 (** Returns the hashes which have no parents *)
+
+val children : t -> Index.t -> entry list
+
+val fold : (entry -> 'acc -> 'acc) -> t -> 'acc -> 'acc
+
+val length : t -> int
+
+val to_seq : t -> entry Seq.t
+

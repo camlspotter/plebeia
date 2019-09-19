@@ -37,5 +37,5 @@ let () =
   in
   loop [] 100;
   let t' = create c in
-  assert (List.sort compare (List.of_seq @@ Hashtbl.to_seq t.tbl)
-          = List.sort compare (List.of_seq @@ Hashtbl.to_seq t'.tbl))
+  assert (List.sort compare (List.of_seq @@ Roots.to_seq t)
+          = List.sort compare (List.of_seq @@ Roots.to_seq t'))

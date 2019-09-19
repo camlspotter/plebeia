@@ -12,18 +12,19 @@ type entry =
   ; parent : Index.t option
   ; meta1  : string
   ; meta2  : string
+  ; hash : Hash.t
   }
   
 type t = 
   { tbl      : (Hash.t, entry) Hashtbl.t       (* all are in the memory *)
   ; context  : Context.t                       (* where to store *)
-  ; by_index : (Index.t, Hash.t * entry) Hashtbl.t
+  ; by_index : (Index.t, entry) Hashtbl.t
   ; children : (Index.t, entry list) Hashtbl.t
   }
 
-let add_entry t h ent = 
-  Hashtbl.replace t.tbl h ent;
-  Hashtbl.replace t.by_index ent.index (h,ent);
+let add_entry t ent = 
+  Hashtbl.replace t.tbl ent.hash ent;
+  Hashtbl.replace t.by_index ent.index ent;
   match ent.parent with
   | None -> ()
   | Some i ->
@@ -102,9 +103,11 @@ let read_commits t =
         let ent = { index = commit.commit_index
                   ; parent = commit.commit_parent
                   ; meta1 = commit.commit_meta
-                  ; meta2 = commit.commit_meta2 }
+                  ; meta2 = commit.commit_meta2 
+                  ; hash = h
+                  }
         in
-        add_entry t h ent;
+        add_entry t ent;
 (*
         Format.eprintf "read %a@." pp_entry (h,ent);
 *)
@@ -127,15 +130,17 @@ let write_commit t ?parent index ~meta1 ~meta2=
 let add t ?parent hash index ~meta1 ~meta2 =
   assert (String.length meta1 = 20);
   assert (String.length meta2 = 32);
-  let ent = { index ; parent ; meta1 ; meta2 } in
+  let ent = { index ; parent ; meta1 ; meta2 ; hash } in
   (* XXX hash collision check *)
-  add_entry t hash ent;
+  add_entry t ent;
   write_commit t ?parent index ~meta1 ~meta2;
   Format.eprintf "Added root %a@." pp_entry (hash, ent)
 
 let mem { tbl ; _ } = Hashtbl.mem tbl
 
 let find { tbl ; _ } = Hashtbl.find_opt tbl
+
+let find_by_index { by_index ; _ } = Hashtbl.find_opt by_index
 
 let create context = 
   let t = 
@@ -152,3 +157,14 @@ let genesis t =
   Hashtbl.fold (fun hash entry acc ->
       if entry.parent = None then hash::acc
       else acc) t.tbl []
+
+let children t i =
+  match Hashtbl.find_opt t.children i with
+  | None -> []
+  | Some xs -> xs
+
+let fold f roots = Hashtbl.fold (fun _ e acc -> f e acc) roots.tbl
+
+let length roots = Hashtbl.length roots.tbl
+
+let to_seq roots = Seq.map snd @@ Hashtbl.to_seq roots.tbl

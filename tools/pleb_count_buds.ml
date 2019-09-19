@@ -23,11 +23,11 @@ let () =
   let ctxt = Vc.open_ ~shared:false ~load_hashcons:false path in
   let roots = Vc.roots ctxt in
 
-  let nhashes = Hashtbl.length roots.tbl in
+  let nhashes = Roots.length roots in
 
   (* Cursor.traversal can be too slow *)
   let t1 = Unix.gettimeofday () in
-  let _ = Hashtbl.fold (fun hash { Roots.index=_; _} ->
+  let _ = Roots.fold (fun { Roots.index=_; hash; _} ->
       fun (seen, nseen, pointed, ncopied, nhashes_done) -> 
         Format.eprintf "Checkout %S %d/%d@." (Hash.to_string hash) nhashes_done nhashes;
         match Vc.checkout ctxt hash with
@@ -78,6 +78,6 @@ let () =
             Format.eprintf "%d bud / commit@." (nseen / nhashes_done);
 
             (seen, nseen, pointed, ncopied, nhashes_done)) 
-      roots.tbl (IS.empty, 0, IS.empty, 0, 0)
+      roots (IS.empty, 0, IS.empty, 0, 0)
   in
   ()
