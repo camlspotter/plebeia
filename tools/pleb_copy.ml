@@ -55,7 +55,7 @@ let find_new_nodes vc past_nodes rh =
 
   let rec loop new_nodes = function
     | None -> new_nodes
-    | Some (log,c) ->
+    | Some ((Cursor.From_above _ :: _ as log),c) ->
         let (c,v) = Cursor.view_cursor c in
         let i = Utils.from_Some @@ Node.index (View v) in
         if i > parent_i then begin
@@ -78,76 +78,77 @@ let find_new_nodes vc past_nodes rh =
               assert (IS.mem i past_nodes);
               loop new_nodes (Cursor.traverse_up (log,c))
         end
+    | Some logc -> loop new_nodes (Cursor.traverse logc)
+  in
+  loop IS.empty (Some ([], c))
+
+let get_non_small_nodes c = 
+  let rec loop new_nodes = function
+    | None -> new_nodes
+    | Some ((Cursor.From_above _ :: _ as log),c) ->
+        let (c,v) = Cursor.view_cursor c in
+        let i = Utils.from_Some @@ Node.index (View v) in
+        begin match v with
+        | Leaf (v, _, _) when Value.length v <= 36 (* XXX hard coded *) ->
+            (* This is a small leaf *)
+            loop new_nodes (Cursor.traverse_up (log,c))
+        | _ ->
+            let new_nodes = IS.add i new_nodes in
+            loop new_nodes (Cursor.traverse (log,c))
+        end
+    | Some logc -> loop new_nodes (Cursor.traverse logc)
   in
   loop IS.empty (Some ([], c))
   
 let () =
   let path1 = Sys.argv.(1) in
-  let path2 = Sys.argv.(2) in
-  let ctxt1 = Vc.open_ ~shared:false ~load_hashcons:false path1 in
-  let _ctxt2 = Vc.create path2 in
-  let roots = Vc.roots ctxt1 in
+  let vc1 = Vc.open_ ~shared:false ~load_hashcons:false path1 in
+  (* let path2 = Sys.argv.(2) in *)
+  (* let _vc2 = Vc.create path2 in *)
+  let roots = Vc.roots vc1 in
   let _nhashes = Hashtbl.length roots.tbl in
 
   (* Cursor.traversal can be too slow *)
   let _t1 = Unix.gettimeofday () in
+
+  (* past node table *)
+  let past_nodes_tbl = Hashtbl.create 0 in
   
-  let f () _e = () in
+  let f () e = 
+    let h,_ = Hashtbl.find roots.Roots.by_index e.Roots.index in
+    let (past_nodes, n, threshold) = match e.Roots.parent with
+      | None -> (IS.empty, 0, 10000)
+      | Some parent_i -> 
+          let (refc, past_nodes, n, threshold) = Hashtbl.find past_nodes_tbl parent_i in
+          if refc <= 1 then begin
+            Format.eprintf "Forgetting %d@." (Index.to_int parent_i);
+            Hashtbl.remove past_nodes_tbl parent_i
+          end else Hashtbl.replace past_nodes_tbl parent_i (refc-1, past_nodes, n, threshold);
+          (past_nodes, n, threshold)
+    in
+    let new_nodes = find_new_nodes vc1 past_nodes h in
+    let new_n = IS.cardinal new_nodes in
+    Format.eprintf "%S: %d new nodes@." (Hash.to_string h) new_n;
+    let n = new_n + n in
+    let past_nodes, n, threshold = 
+      (* if nchildren is 0, no point to calculate *)
+      if n > threshold then
+        (* rescan the tree and refresh *)
+        let c = Utils.from_Some @@ Vc.checkout vc1 h in
+        let past_nodes = get_non_small_nodes c in
+        let n = IS.cardinal past_nodes in
+        (past_nodes, n, n * 2)
+      else
+        (IS.union past_nodes new_nodes, n, threshold) 
+    in
+    let nchildren = match Hashtbl.find_opt roots.children e.index with
+      | None -> 0
+      | Some es -> List.length es
+    in
+    if nchildren > 0 then begin
+      Format.eprintf "Adding %d: %d %d@." (Index.to_int e.Roots.index) n threshold;
+      Hashtbl.replace past_nodes_tbl e.Roots.index (nchildren, past_nodes, n, threshold)
+    end
+  in
 
   fold_roots roots () f
-(*    
-  let _ = Hashtbl.fold (fun hash { Roots.index=_; _} ->
-      fun (seen, nseen, pointed, ncopied, nhashes_done) -> 
-        Format.eprintf "Checkout %S %d/%d@." (Hash.to_string hash) nhashes_done nhashes;
-        match Vc.checkout ctxt hash with
-        | None -> assert false
-        | Some c ->
-            let rec loop log_c_opt (seen, nseen, pointed, ncopied) =
-              match log_c_opt with
-              | None -> (seen, nseen, pointed, ncopied)
-              | Some (log, c) ->
-                  match log, Cursor.view_cursor c with
-                  | _, (_, Bud (_, Not_Indexed, _)) -> assert false
-                  | Cursor.From_above _ :: _, (c, Bud (nopt, Indexed i, _)) ->
-                      if IS.mem i seen then
-                        loop (Cursor.traverse_up (log, c))
-                          (seen, nseen, pointed, ncopied)
-                      else begin
-                        let seen = IS.add i seen in
-                        let nseen = nseen + 1 in
-                        if nseen mod 1000 = 0 then begin 
-                          Format.eprintf "%d bud seen@." nseen;
-                        end;
-                        begin match nopt with
-                        | None -> 
-                            loop (Cursor.traverse (log, c))
-                              (seen, nseen, pointed, ncopied)
-                        | Some n ->
-                            match Node.index n with
-                            | None -> assert false
-                            | Some j ->
-                                if IS.mem j pointed then begin
-                                  let ncopied = ncopied + 1 in
-                                  if ncopied mod 100 = 0 then Format.eprintf "%d copies seen@." ncopied;
-                                  loop (Cursor.traverse_up (log, c))
-                                    (seen, nseen, pointed, ncopied)
-                                end else
-                                  loop (Cursor.traverse (log, c)) (seen, nseen, IS.add j pointed, ncopied)
-                        end
-                      end
-                  | _ -> 
-                      loop (Cursor.traverse (log,c)) (seen, nseen, pointed, ncopied)
-            in
-            let (seen, nseen, pointed, ncopied) = loop (Some ([], c)) (seen, nseen, pointed, ncopied) in
-
-            let nhashes_done = nhashes_done + 1 in
-            
-            let t2 = Unix.gettimeofday () in
-            Format.eprintf "%.2f sec / 10000 bud@." ((t2 -. t1) /. float (nseen / 10000));
-            Format.eprintf "%d bud / commit@." (nseen / nhashes_done);
-
-            (seen, nseen, pointed, ncopied, nhashes_done)) 
-      roots.tbl (IS.empty, 0, IS.empty, 0, 0)
-  in
-  ()
-*)
