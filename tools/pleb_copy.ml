@@ -117,7 +117,7 @@ let () =
     let i = Index.to_int i in
     let t2 = Unix.gettimeofday () in
     let ratio = float i /. float cells in
-    Format.eprintf "index %d, %.02f, %.0f, %.0f@."
+    Format.eprintf "Report: index %d, %.02f, %.0f, %.0f@."
       i
       (ratio *. 100.0)
       (t2 -. t1)

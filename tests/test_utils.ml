@@ -50,6 +50,7 @@ let tempfile = Filename.temp_file "plebeia" ".context"
 let () = Format.eprintf "Using temp file %s ...@." tempfile
 
 let test_with_context length f =
+  if Sys.file_exists tempfile then Sys.remove tempfile;
   let context = Context.create ~length tempfile in
   let res = f context in
   Context.close context;

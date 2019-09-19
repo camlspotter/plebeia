@@ -80,6 +80,9 @@ val view_cursor : t -> t * view
 (** Get the view of the cursor.  Returns also the updated cursor with
     the view. *)
 
+val view : t -> t * view
+(** Same as [view_cursor] *)
+
 val segs_of_trail : trail -> Segment.t list
 (** Segment side list of the given trail, splitted by buds *)
 
