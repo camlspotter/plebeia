@@ -15,16 +15,15 @@ let fold_roots roots init f =
   | (_::_::_ as hs) -> 
       Format.eprintf "Roots have %d genesis hashes@." (List.length hs);
       assert false
-  | [genesis_h] ->
-      let e = Utils.from_Some @@ Roots.find roots genesis_h in
+  | [genesis] ->
       let rec loop acc = function
         | [] -> ()
         | e::es ->
             let acc = f acc e in
-            let es' = Roots.children roots e.index in
+            let es' = Roots.children roots e in
             loop acc (es @ es')
       in
-      loop init [e]
+      loop init [genesis]
 
 (*
    Suppose we have 2 root hashes, rh1, rh2, where rh2's parent is rh1.
@@ -150,7 +149,7 @@ let () =
       else
         (IS.union past_nodes new_nodes, n, threshold) 
     in
-    let nchildren = List.length @@ Roots.children roots e.index in
+    let nchildren = List.length @@ Roots.children roots e in
     if nchildren > 0 then begin
       Format.eprintf "Adding %d: %d %d@." (Index.to_int e.Roots.index) n threshold;
       Hashtbl.replace past_nodes_tbl e.Roots.index (nchildren, past_nodes, n, threshold)

@@ -18,17 +18,16 @@ let () =
   | (_::_::_ as hs) -> 
       Format.eprintf "Roots have %d genesis hashes@." (List.length hs);
       assert false
-  | [genesis_h] ->
-      let e = Utils.from_Some @@ Roots.find roots genesis_h in
+  | [genesis] ->
       let rec loop f = function
         | [] -> ()
         | e::es ->
             f e;
-            let es' = Roots.children roots e.index in
+            let es' = Roots.children roots e in
             loop f (es @ es')
       in
       loop (fun e -> 
-          match Roots.children roots e.index with
+          match Roots.children roots e with
           | [] -> ()
           | [_] -> ()
           | children  ->
@@ -36,5 +35,5 @@ let () =
               Format.eprintf "%d children: %S@." 
                 (List.length children) 
                 (Hash.to_string h)
-        ) [e]
+        ) [genesis]
         

@@ -15,7 +15,7 @@ let () =
   
   let new_roots = 
     Roots.fold (fun e acc ->
-        match Roots.children roots e.Roots.index with
+        match Roots.children roots e with
         | [] -> e::acc
         | _ -> acc) roots []
   in

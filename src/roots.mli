@@ -41,14 +41,18 @@ val find : t -> Hash.t -> entry option
 val find_by_index : t -> Index.t -> entry option
 (** Find by index *)
 
-val genesis : t -> Hash.t list
+val genesis : t -> entry list
 (** Returns the hashes which have no parents *)
 
-val children : t -> Index.t -> entry list
+val children : t -> entry -> entry list
+(** Returns the childlren of the entry *)
 
 val fold : (entry -> 'acc -> 'acc) -> t -> 'acc -> 'acc
+(** folding *)
 
 val length : t -> int
+(** The number of entries in the table *)
 
 val to_seq : t -> entry Seq.t
-
+(** The entries in the table.  The ordering is not specified. *)
+    

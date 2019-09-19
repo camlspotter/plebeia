@@ -154,12 +154,12 @@ let create context =
   t
 
 let genesis t =
-  Hashtbl.fold (fun hash entry acc ->
-      if entry.parent = None then hash::acc
+  Hashtbl.fold (fun _hash entry acc ->
+      if entry.parent = None then entry::acc
       else acc) t.tbl []
 
-let children t i =
-  match Hashtbl.find_opt t.children i with
+let children t e =
+  match Hashtbl.find_opt t.children e.index with
   | None -> []
   | Some xs -> xs
 
