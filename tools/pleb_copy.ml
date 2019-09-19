@@ -141,7 +141,7 @@ let () =
         let c = Utils.from_Some @@ Vc.checkout vc1 h in
         let past_nodes = get_non_small_nodes c in
         let n = IS.cardinal past_nodes in
-        (past_nodes, n, n * 4)
+        (past_nodes, n, n * 8)
       else
         (IS.union past_nodes new_nodes, n, threshold) 
     in
