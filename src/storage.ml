@@ -191,7 +191,7 @@ module Header = struct
 end
 
 let create ?(pos=0L) ?length fn =
-  let fd = Unix.openfile fn [O_CREAT; O_TRUNC; O_RDWR] 0o644 in
+  let fd = Unix.openfile fn [O_CREAT; O_EXCL; O_RDWR] 0o644 in
   let mapped_length = 
     match length with 
     | None -> resize_step 
