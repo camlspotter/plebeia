@@ -11,11 +11,12 @@ type side = Left | Right
 val string_of_side : side -> string
 (** "L" or "R" *)
   
-type segment = side list
+type segment
 type t = segment
-(** A segment is always just a list of sides. TODO: use bit arithmetic for
-  speed and memory footprint.*)
 
+val equal : t -> t -> bool
+(** Normal (=) does not work *)
+  
 val empty : segment
 (** The empty segment. *)
 
@@ -36,4 +37,20 @@ val to_string : segment -> string
 val of_string : string -> segment option
 (** Parse the string representation of a segment, e.g. "LLRLLRL" *)
 
-val concat : segment -> segment -> segment
+val length : segment -> int
+
+val append : segment -> segment -> segment
+val concat : segment list -> segment
+val to_side_list : segment -> side list
+val cons : side -> segment -> segment
+
+(** Segment encoding in storage *)
+(*
+   |<-------- 224 bits = 28 bytes ------->|
+   |0*1|<- segment bits upto 222 bits ->|1|
+*)
+
+val encode : t -> string
+(** The length of the segment must be <= 222.  Otherwise the funciton fails. *)
+
+val decode : string -> t

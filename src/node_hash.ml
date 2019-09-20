@@ -41,9 +41,9 @@ let of_leaf v =
    |<-                       H_child                           ->|
    | The first 224bits of H_child |0......01|<- segment bits ->|1|
 *) 
-let of_extender_hash seg h = make h (Segment_encoding.encode seg)
+let of_extender_hash seg h = make h (Segment.encode seg)
 let of_extender seg lh =
-  make (shorten lh) (Segment_encoding.encode seg)
+  make (shorten lh) (Segment.encode seg)
 let of_extender' ~segment_code lh =
   make (shorten lh) segment_code
 

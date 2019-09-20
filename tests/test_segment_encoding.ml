@@ -3,6 +3,7 @@ open Test_utils
 
 let bit_slow_encode_segment seg =
   let open Segment in
+  let seg = to_side_list seg in
   let len = List.length seg in
   if len > 222 then failwith "segment is too long";
   let head_zero_bits = 224 - len - 2 in
@@ -31,11 +32,12 @@ let bit_slow_encode_segment seg =
 
 let slow_encode_segment seg =
   let open Segment in
+  let seg = to_side_list seg in
   let len = List.length seg in
   if len > 222 then failwith "segment is too long";
   let head_zero_bits = 224 - len - 2 in
   let rec make = function
-    | 0 -> Right :: seg @ [Right] (* XXX inefficient *)
+    | 0 -> Right :: seg @ [Right] (* inefficient, but it is for test. *)
     | n -> Left :: make (n-1)
   in
   let rec chars_of_seg = function
@@ -63,12 +65,12 @@ let slow_encode_segment seg =
   Buffer.contents b
 
 let encoding_test seg =
-  let h = Segment_encoding.encode seg in
+  let h = Segment.encode seg in
   let h' = slow_encode_segment seg in
   let h'' = bit_slow_encode_segment seg in
   assert (h = h');
   assert (h = h'');
-  assert (Segment_encoding.decode h = seg)
+  assert (Segment.(equal (decode h) seg))
 
 let test_correctness st =
   for _ = 1 to 1000000 do
@@ -81,10 +83,10 @@ let test_perf st =
   let segs = List.init 1000000 (fun _ -> random_segment ~length:100 st) in
   prerr_endline "done.";
   let (_, _t3) = timed (fun () -> List.iter (fun s -> ignore @@ bit_slow_encode_segment s) segs) in
-  let (_, _t1) = timed (fun () -> List.iter (fun s -> ignore @@ Segment_encoding.encode s) segs) in
+  let (_, _t1) = timed (fun () -> List.iter (fun s -> ignore @@ Segment.encode s) segs) in
   let (_, _t2) = timed (fun () -> List.iter (fun s -> ignore @@ slow_encode_segment s) segs) in
   let (_, t3) = timed (fun () -> List.iter (fun s -> ignore @@ bit_slow_encode_segment s) segs) in
-  let (_, t1) = timed (fun () -> List.iter (fun s -> ignore @@ Segment_encoding.encode s) segs) in
+  let (_, t1) = timed (fun () -> List.iter (fun s -> ignore @@ Segment.encode s) segs) in
   let (_, t2) = timed (fun () -> List.iter (fun s -> ignore @@ slow_encode_segment s) segs) in
   Format.eprintf "encode_segment           of 1000000: %f secs@." t1;
   Format.eprintf "slow_encode_segment      of 1000000: %f secs@." t2;

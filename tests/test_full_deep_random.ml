@@ -41,15 +41,12 @@ let choose_random_segs st c =
       let rec choose_random_segs rev_segs rev_seg n =
         let v = Node.view context n in
         match v with
-        | Leaf _ -> 
-            Some (List.rev (List.rev rev_seg :: rev_segs))
-        | Bud (None, _, _) ->
-            Some (List.rev (List.rev rev_seg :: rev_segs))
+        | Leaf _ -> List.rev (List.rev rev_seg :: rev_segs)
+        | Bud (None, _, _) -> List.rev (List.rev rev_seg :: rev_segs)
         | Bud (Some n, _, _) ->
             let rev_segs = List.rev rev_seg :: rev_segs in
-            if RS.int st 2 = 0 then Some (List.rev rev_segs)
-            else
-              choose_random_segs rev_segs [] n
+            if RS.int st 2 = 0 then List.rev rev_segs
+            else choose_random_segs rev_segs [] n
         | Internal (n1, n2, _, _) ->
             if RS.int st 2 = 0 then 
               let rev_seg = Segment.Left :: rev_seg in
@@ -58,10 +55,10 @@ let choose_random_segs st c =
               let rev_seg = Segment.Right :: rev_seg in
               choose_random_segs rev_segs rev_seg n2
         | Extender (seg, n, _, _) ->
-            let rev_seg = List.rev_append seg rev_seg in
+            let rev_seg = List.rev_append (Segment.to_side_list seg) rev_seg in
             choose_random_segs rev_segs rev_seg n
       in
-      choose_random_segs [] [] n
+      Some (List.map Segment.of_side_list @@ choose_random_segs [] [] n)
 
 let do_random st sz c =
   let rev_ops = ref [] in
@@ -167,7 +164,7 @@ let check_first_buds_and_leaves (Cursor (trail, n, context) as c) =
               | Internal (n1, n2, _, _) ->
                   aux st ((Segment.Left::seg,n1)::(Segment.Right::seg,n2)::ns)
               | Extender (seg', n, _, _) ->
-                  aux st ((List.rev_append seg' seg,n)::ns)
+                  aux st ((List.rev_append (Segment.to_side_list seg') seg,n)::ns)
         in
         List.sort compare @@ aux [] [([],n)] 
     | _ -> assert false
@@ -179,15 +176,15 @@ let check_first_buds_and_leaves (Cursor (trail, n, context) as c) =
       | Some (log, c) ->
           let c, v = view_cursor c in
           match v with
-          | Bud _ -> aux (`Bud (local_seg_of_cursor c)::st) (log, c)
-          | Leaf _ -> aux (`Leaf (local_seg_of_cursor c)::st) (log, c)
+          | Bud _ -> aux (`Bud (Segment.to_side_list @@ local_seg_of_cursor c)::st) (log, c)
+          | Leaf _ -> aux (`Leaf (Segment.to_side_list @@ local_seg_of_cursor c)::st) (log, c)
           | _ -> assert false
     in
     List.sort compare @@ aux [] ([], c)
   in
   let print = function
-    | `Bud seg -> Format.eprintf "B %s@." (Segment.to_string seg)
-    | `Leaf seg -> Format.eprintf "L %s@." (Segment.to_string seg)
+    | `Bud seg -> Format.eprintf "B %s@." (Segment.to_string @@ Segment.of_side_list seg)
+    | `Leaf seg -> Format.eprintf "L %s@." (Segment.to_string @@ Segment.of_side_list seg)
   in
   if set1 <> set2 then begin
     Format.eprintf "Set1@.";

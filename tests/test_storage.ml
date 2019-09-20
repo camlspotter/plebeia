@@ -11,7 +11,7 @@ let parse_test context n =
   try
     let n' = View (Node_storage.parse_cell context.Context.storage @@ from_Some @@ index n) in
     let n' = Node_storage.load_node_fully context n' in
-    if n <> n' then begin
+    if not (equal_nodes n n') then begin
       prerr_endline @@ string_of_node n 2;
       prerr_endline @@ string_of_node n' 2;
       assert false

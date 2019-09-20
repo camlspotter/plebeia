@@ -63,7 +63,7 @@ let rec parse_cell storage i =
       | 1 -> (* extender *)
           (* extender  |0*1|<- segment ---------------->|1| |<- the index of the child ------------>| *)
           let seg_code = s_224 in
-          let seg = Segment_encoding.decode seg_code in
+          let seg = Segment.decode seg_code in
           let i' = C.get_index buf 28 in
           (* We must load the child for the hash.
              The subnode of an Extender is always loaded together with the Extender,
@@ -263,7 +263,7 @@ let write_extender context seg n lh =
   let h = Node_hash.shorten lh in
   let i = Storage.new_index storage in
   let buf = make_buf storage i in
-  C.write_string (Segment_encoding.encode seg) buf 0 28;
+  C.write_string (Segment.encode seg) buf 0 28;
   C.set_index buf 28 @@ index n;
   Stat.incr_written_extenders context.Context.stat;
   _Extender (seg, n, Indexed i, Hashed h), i, lh
@@ -288,7 +288,7 @@ let equal context n1 n2 =
             | Bud (None, _, _), Bud (None, _, _) -> aux rest
             | Bud (Some n1, _, _), Bud (Some n2, _, _) -> aux @@ (n1,n2) :: rest
             | Leaf (v1, _, _), Leaf (v2, _, _) when v1 = v2 -> aux rest
-            | Extender (seg1, n1, _, _), Extender (seg2, n2, _, _) when seg1 = seg2 ->
+            | Extender (seg1, n1, _, _), Extender (seg2, n2, _, _) when Segment.equal seg1 seg2 ->
                 aux @@ (n1,n2)::rest
             | _ -> Error (n1,n2)
   in
