@@ -232,4 +232,3 @@ val stat : t -> Stat.t
                   
 val dot_of_cursor_ref : (t -> string) ref
 (** Placeholder of Graphviz rendering of cursors *)
-   
