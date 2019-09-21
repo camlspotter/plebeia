@@ -17,7 +17,7 @@ type entry =
   ; parent : Index.t option
   ; meta1 : string (* Commit log (currently empty) *)
   ; meta2 : string (* To store Irmin's context hash *)
-  ; hash : Hash.t
+  ; hash : Hash.t  (* Plebeia's hash *)
   }
   
 type t
@@ -50,6 +50,9 @@ val children : t -> entry -> entry list
 val fold : (entry -> 'acc -> 'acc) -> t -> 'acc -> 'acc
 (** folding *)
 
+val iter : (entry -> unit) -> t -> unit
+(** iteration *)
+  
 val length : t -> int
 (** The number of entries in the table *)
 

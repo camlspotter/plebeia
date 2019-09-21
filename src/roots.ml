@@ -165,6 +165,8 @@ let children t e =
 
 let fold f roots = Hashtbl.fold (fun _ e acc -> f e acc) roots.tbl
 
+let iter f roots = Hashtbl.iter (fun _ e -> f e) roots.tbl
+
 let length roots = Hashtbl.length roots.tbl
 
 let to_seq roots = Seq.map snd @@ Hashtbl.to_seq roots.tbl
