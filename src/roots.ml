@@ -165,6 +165,22 @@ let children t e =
 
 let fold f roots = Hashtbl.fold (fun _ e acc -> f e acc) roots.tbl
 
+let fold_breadth_first f roots init =
+  match genesis roots with
+  | [] -> assert false
+  | (_::_::_ as hs) -> 
+      Format.eprintf "Roots have %d genesis hashes@." (List.length hs);
+      assert false
+  | [genesis] ->
+      let rec loop acc = function
+        | [] -> acc
+        | e::es ->
+            let acc = f e acc in
+            let es' = children roots e in
+            loop acc (es @ es')
+      in
+      loop init [genesis]
+
 let iter f roots = Hashtbl.iter (fun _ e -> f e) roots.tbl
 
 let length roots = Hashtbl.length roots.tbl

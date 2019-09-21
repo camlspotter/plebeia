@@ -212,18 +212,28 @@ and dir =
   | Right
   | Center
 
+(** Very generic traversal.  Nodes can be traversed more than once.
+    For example, [Internal] nodes are visited 3 times:  coming down
+    from the parent, coming up from the left child, and coming up 
+    from the right child.
+*)
 val traverse : (where_from list * t) -> (where_from list * t) option
+
 val traverse_up : (where_from list * t) -> (where_from list * t) option
+(** stop traversing further from this point and go up *)
 
-val folder : (where_from list * t) -> (where_from list * t) option
-(** Assume to start from a bud, and fold from it whthin its bud level.
-    It traverses and returns when it reaches to a bud, a leaf, or 
-    the completion of the traversal. *)
+val traverse_directory : (where_from list * t) -> (where_from list * t) option
+(** traverse, but restricted to one directory level *)
 
-val fold : init:'a -> t -> ('a -> t -> ('a, 'b) Result.t) -> (('a, 'b) Result.t, Error.t) Result.t
-(** Fold from a bud, within its bud level.  The function is called only
-    for the leaves and the sub-buds. *)
   
+val fold : init:'a -> t -> ('a -> t -> [< `Continue of 'a | `Exit of 'a | `Up of 'a ]) -> 'a
+(** Folding on nodes using [Generic.traverse].  The function is called 
+    for each node when it visits it from the parent.
+    
+    The cursor given to the function argument is already viewed.
+    You can use [view] without any runtime cost.
+*)
+
 (** Statistics *)
 
 val stat : t -> Stat.t

@@ -61,7 +61,8 @@ let checkout { roots ; context ; _ } hash =
                      Disk (index, Not_Extender),
                      context))
 
-let fold ~init c f =
+(*
+let fold_files_in_directory ~init c f =
   Cursor.fold ~init c (fun acc c ->
       let Cursor (trail, _, _), v = Cursor.view_cursor c in
       let seg = local_seg_of_trail trail in
@@ -69,6 +70,7 @@ let fold ~init c f =
       | Leaf (v, _, _) -> f acc seg (`Leaf v)
       | Bud _ -> f acc seg `Bud
       | _ -> assert false)
+*)
  
 let get = Deep.get
 let get' = Deep.get'

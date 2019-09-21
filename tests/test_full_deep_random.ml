@@ -148,7 +148,7 @@ let do_random st sz c =
         let c = f c 0 in
         (c, List.rev !rev_ops)
 
-(* check of folder *)
+(* check of fold *)
 let check_first_buds_and_leaves (Cursor (trail, n, context) as c) =
   assert (trail = _Top);
   let set1 = 
@@ -170,17 +170,13 @@ let check_first_buds_and_leaves (Cursor (trail, n, context) as c) =
     | _ -> assert false
   in
   let set2 =
-    let rec aux st (log, c) =
-      match folder (log, c) with
-      | None -> st
-      | Some (log, c) ->
-          let c, v = view_cursor c in
-          match v with
-          | Bud _ -> aux (`Bud (Segment.to_side_list @@ local_seg_of_cursor c)::st) (log, c)
-          | Leaf _ -> aux (`Leaf (Segment.to_side_list @@ local_seg_of_cursor c)::st) (log, c)
-          | _ -> assert false
-    in
-    List.sort compare @@ aux [] ([], c)
+    List.sort compare
+    @@ Cursor.fold ~init:[] c (fun acc c ->
+        let _, v = Cursor.view c in
+        match v with
+        | Bud _ -> `Up (`Bud (Segment.to_side_list @@ local_seg_of_cursor c)::acc)
+        | Leaf _ -> `Up (`Leaf (Segment.to_side_list @@ local_seg_of_cursor c)::acc)
+        | _ -> `Continue acc)
   in
   let print = function
     | `Bud seg -> Format.eprintf "B %s@." (Segment.to_string @@ Segment.of_side_list seg)

@@ -50,6 +50,9 @@ val children : t -> entry -> entry list
 val fold : (entry -> 'acc -> 'acc) -> t -> 'acc -> 'acc
 (** folding *)
 
+val fold_breadth_first : (entry -> 'acc -> 'acc) -> t -> 'acc -> 'acc
+(** Breadth first iteration of roots from genesis to the latest *)
+
 val iter : (entry -> unit) -> t -> unit
 (** iteration *)
   

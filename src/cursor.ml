@@ -631,7 +631,7 @@ let force_traverse_up (log, c) =
 let traverse_up (log, c) =
   traverse @@ force_traverse_up (log,c)
 
-let rec folder (log, c) =
+let rec traverse_directory (log, c) =
   (* traverse anyway *)
   match traverse (log, c) with
   | None -> None
@@ -641,41 +641,23 @@ let rec folder (log, c) =
       | Bud _, From_above _ :: _ -> 
           Some (force_traverse_up (log, c))
       | Leaf _, _ -> Some (log, c)
-      | _ -> folder (log, c)
+      | _ -> traverse_directory (log, c)
 
 let fold ~init c f =
-  go_below_bud c >>= function
-  | None -> Ok (Ok init)
-  | Some c ->
-      let rec aux acc log c =
-        let c, v = view_cursor c in
-        match v, log with
-        | Leaf _, From_above _ :: _ -> 
-            let res = f acc c in
-            begin match res with
-              | Error e -> Error e
-              | Ok acc -> 
-                  match traverse (log, c) with
-                  | None -> Ok acc
-                  | Some (log, c) -> aux acc log c
-            end
-        | Bud _, From_above _ :: _ ->
-            let res = f acc c in
-            begin match res with
-              | Error e -> Error e
-              | Ok acc ->
-                  let (log, c) = force_traverse_up (log, c) in
-                  match traverse (log, c) with
-                  | None -> Ok acc
-                  | Some (log, c) -> aux acc log c
-            end
-        | _ -> 
-            begin match traverse (log, c) with
-              | None -> Ok acc
-              | Some (log, c) -> aux acc log c
-            end
-      in
-      Ok (aux init [] c)
+  let rec loop acc = function
+    | None -> acc
+    | Some ((From_above _ :: _ as log), c) ->
+        (* we force the view in fold *)
+        let c, _ = view_cursor c in
+        let loc = (log, c) in
+        begin match f acc c with
+          | `Continue acc -> loop acc (traverse loc)
+          | `Up acc -> loop acc (traverse_up loc)
+          | `Exit acc -> acc
+        end
+    | Some loc -> loop acc (traverse loc)
+  in
+  loop init (Some ([],c))
 
 let stat (Cursor (_,_,{ stat ; _ })) = stat
 
