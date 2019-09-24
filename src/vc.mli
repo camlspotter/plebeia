@@ -47,9 +47,8 @@ val deep :
 
 val copy: create_subtrees: bool -> Cursor.t -> Segment.t list -> Segment.t list -> (Cursor.t, Error.t) Result.t
 
-(*
-val fold_files_in_directory : init:'a -> Cursor.t -> ('a -> Segment.t -> [`Leaf of Value.t | `Bud] -> ('a, 'b) Result.t) -> (('a, 'b) Result.t, Error.t) Result.t
-*)
+val ls : cursor 
+  -> (([> `Dir | `File] * Segment.segment * Cursor.t) list, Error.t) result
 
 val commit : t -> parent: Hash.t option -> meta1:string -> meta2:string -> Cursor.t -> Cursor.t * Hash.t
 val checkout : t -> Hash.t -> Cursor.t option

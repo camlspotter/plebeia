@@ -61,16 +61,21 @@ let checkout { roots ; context ; _ } hash =
                      Disk (index, Not_Extender),
                      context))
 
-(*
-let fold_files_in_directory ~init c f =
-  Cursor.fold ~init c (fun acc c ->
-      let Cursor (trail, _, _), v = Cursor.view_cursor c in
-      let seg = local_seg_of_trail trail in
-      match v with
-      | Leaf (v, _, _) -> f acc seg (`Leaf v)
-      | Bud _ -> f acc seg `Bud
-      | _ -> assert false)
-*)
+let ls c =
+  let open Result in
+  go_below_bud c >>= function
+  | None -> Ok []
+  | Some c ->
+      let res = 
+        fold ~init:[] c (fun acc c ->
+            let _, v = Cursor.view c in
+            let path = Cursor.local_seg_of_cursor c in
+            match v with
+            | Bud _ -> `Up ((`Dir, path, c) :: acc)
+            | Leaf _ -> `Up ((`File, path, c) :: acc)
+            | _ -> `Continue acc)
+      in
+      Ok res
  
 let get = Deep.get
 let get' = Deep.get'
