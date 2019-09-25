@@ -10,6 +10,11 @@ storage format
 
 *)
 
+type Error.t += Hashcons of string
+let () = Error.register_printer @@ function
+  | Hashcons s -> Some ("Hashcons: " ^ s)
+  | _ -> None
+
 module C = Xcstruct
 
 let max_size = 36
@@ -152,7 +157,7 @@ let add t v index =
   end;
   let s = Value.to_string v in
   let len = String.length s in
-  if len = 0 || len > max_size then Error "hashcons: too large or 0"
+  if len = 0 || len > max_size then Error (Hashcons "hashcons: too large or 0")
   else 
     let tbl = Array.unsafe_get t.tbl (len-1) in
     match Hashtbl.find_opt tbl v with
@@ -165,7 +170,7 @@ let add t v index =
 let find t v =
   let s = Value.to_string v in
   let len = String.length s in
-  if len = 0 || len > max_size then Error "hashcons: too large or 0"
+  if len = 0 || len > max_size then Error (Hashcons "hashcons: too large or 0")
   else
     Ok (
       match Hashtbl.find_opt (Array.unsafe_get t.tbl (len-1)) v with

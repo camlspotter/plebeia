@@ -5,6 +5,7 @@
 *)
 
 open Plebeia.Impl
+open Utils
 
 let (//) = Filename.concat
 
@@ -25,7 +26,7 @@ let () =
   match new_roots with
   | [] -> assert false
   | { hash= h ; _ } :: _ ->
-      let c = Utils.from_Some @@ Vc.checkout vc h in
+      let c = from_Some @@ Vc.checkout vc h in
       let ls = Cursor.fold ~init:0 c (fun ls c ->
           let _, v = Cursor.view c in
           let ls = match v with
@@ -61,7 +62,7 @@ let () =
         let _, v = Cursor.view c in
         match v with
         | Bud _ ->
-            let index = Utils.from_Some @@ Node.index (View v) in
+            let index = from_Some @@ Node.index_of_view v in
             if Hashtbl.mem buds index then `Up (uniq, copied+1)
             else begin
               Hashtbl.add buds index ();

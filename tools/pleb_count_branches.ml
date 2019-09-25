@@ -5,6 +5,7 @@
    count_branches ~/.tezos-node/plebeia.context
 *)
 open Plebeia.Impl
+open Utils
 
 let (//) = Filename.concat
 
@@ -31,7 +32,7 @@ let () =
           | [] -> ()
           | [_] -> ()
           | children  ->
-              let { Roots.hash = h ; _ } = Utils.from_Some @@ Roots.find_by_index roots e.index in
+              let { Roots.hash = h ; _ } = from_Some @@ Roots.find_by_index roots e.index in
               Format.eprintf "%d children: %S@." 
                 (List.length children) 
                 (Hash.to_hex_string h)

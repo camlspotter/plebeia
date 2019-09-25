@@ -350,7 +350,7 @@ let commit_node context node =
           (* try hashcons *)
           let hashcons = context.Context.hashcons in
           match Hashcons.find hashcons value with
-          | Error e -> failwith e
+          | Error e -> Error.raise e
           | Ok (Some index) ->
               let lh = Node_hash.of_leaf value (* XXX inefficient! *) in
               let h = Node_hash.shorten lh in
@@ -359,7 +359,7 @@ let commit_node context node =
               let v, i, lh = create_new () in
               begin match Hashcons.add hashcons value i with
                 | Ok () -> ()
-                | Error e -> failwith e
+                | Error e -> Error.raise e
               end;
               (v, i, lh)
         end else create_new ()

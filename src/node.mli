@@ -73,6 +73,7 @@ and view = private
 
 val indexed : node -> bool
 val index : node -> Index.t option
+val index_of_view : view -> Index.t option
 val hashed : node -> bool
 val hash_of_view : view -> Hash.t option
 

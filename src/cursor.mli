@@ -1,7 +1,9 @@
 open Node
 
+type Error.t += Write of string
+
 (** Trail and cursor *)
-   
+
 type modified =
   | Modified
   | Unmodified of indexed * hashed
@@ -98,6 +100,22 @@ val local_seg_of_cursor : t -> Segment.t
 val empty : Context.t -> t
 (** Creates a cursor to a new, empty tree. *)
 
+(** Result of access_gen *)
+type access_result =
+  | Empty_bud 
+      (* The bud is empty *)
+  | Collide of cursor * view 
+      (* The segment was blocked by an existing leaf or bud *)
+  | Middle_of_extender of cursor * Segment.t * Segment.t * Segment.t 
+      (* The segment ends or deeprges at the middle of an Extender with the common prefix,
+         the remaining extender, and the rest of segment *)
+  | Reached of cursor * view 
+      (* just reached to a node *)
+
+type Error.t += 
+  | Access of access_result
+  | Move of string
+
 (** Simple 1 step cursor movement *)
   
 val go_below_bud : t -> (t option, Error.t) Result.t
@@ -115,18 +133,6 @@ val go_up : t -> (t, Error.t) Result.t
 
 (** Complex multi step cursor movement *)
     
-(** Result of access_gen *)
-type access_result =
-  | Empty_bud 
-      (* The bud is empty *)
-  | Collide of cursor * view 
-      (* The segment was blocked by an existing leaf or bud *)
-  | Middle_of_extender of cursor * Segment.t * Segment.t * Segment.t 
-      (* The segment ends or deeprges at the middle of an Extender with the common prefix,
-         the remaining extender, and the rest of segment *)
-  | Reached of cursor * view 
-      (* just reached to a node *)
-
 val error_access : access_result -> ('a, Error.t) Result.t
 (** Make an access result into an error *)
 
@@ -185,7 +191,7 @@ val delete: t -> Segment.t -> (t, Error.t) Result.t
 val alter : 
   t ->
   Segment.segment ->
-  (view option -> (node, string) Result.t) -> (t, string) Result.t
+  (view option -> (node, Error.t) Result.t) -> (t, Error.t) Result.t
 
 (*
 val hash : t -> t * Hash.t

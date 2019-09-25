@@ -69,18 +69,25 @@ and view =
    to port the code to C. The type parameters of the trail keep track of the type of each
    element on the "stack" using a product type. *)
 
+type Error.t += Node_invariant of string
+let () = Error.register_printer (function
+    | Node_invariant s -> Some ("Node invariant: " ^ s)
+    | _ -> None)
+
+let error_node_invariant s = Error (Node_invariant s)
+
 let view_shape_invariant : view -> (unit, Error.t) Result.t = function
   | Bud (None, _, _) -> Ok ()
-  | Bud (Some (Disk _), _, _) -> Error "Bud: cannot have Disk" (* or, we must load the Disk and check *)
-  | Bud (Some (View (Bud _)), _, _) -> Error "Bud: cannot have Bud"
-  | Bud (Some (View (Leaf _)), _, _) -> Error "Bud: cannot have Leaf"
+  | Bud (Some (Disk _), _, _) -> error_node_invariant "Bud: cannot have Disk" (* or, we must load the Disk and check *)
+  | Bud (Some (View (Bud _)), _, _) -> error_node_invariant "Bud: cannot have Bud"
+  | Bud (Some (View (Leaf _)), _, _) -> error_node_invariant "Bud: cannot have Leaf"
   | Bud (Some (View (Internal _)), _, _) -> Ok ()
   | Bud (Some (View (Extender _)), _, _) -> Ok ()
-  | Extender (seg, _, _, _) when Segment.is_empty seg -> Error "Extender: cannot have empty segment"
+  | Extender (seg, _, _, _) when Segment.is_empty seg -> error_node_invariant "Extender: cannot have empty segment"
   | Extender (_, Disk (_, Not_Extender), _, _) -> Ok ()
-  | Extender (_, Disk (_, Is_Extender), _, _) -> Error "Extender: cannot have Disk with Is_Extender"
-  | Extender (_, Disk (_, Maybe_Extender), _, _) -> Error "Extender: cannot have Disk with Maybe_Extender"
-  | Extender (_, View (Extender _), _, _) -> Error "Extender: cannot have Extender"
+  | Extender (_, Disk (_, Is_Extender), _, _) -> error_node_invariant "Extender: cannot have Disk with Is_Extender"
+  | Extender (_, Disk (_, Maybe_Extender), _, _) -> error_node_invariant "Extender: cannot have Disk with Maybe_Extender"
+  | Extender (_, View (Extender _), _, _) -> error_node_invariant "Extender: cannot have Extender"
   | Extender (_, View _, _, _) -> Ok ()
   | Leaf _ -> Ok ()
   | Internal _ -> Ok ()
@@ -93,13 +100,16 @@ let indexed = function
   | View (Extender (_, _, Indexed _, _)) -> true
   | View (Bud _ | Leaf _ | Internal _ | Extender _) -> false
 
+let index_of_view = function
+  | Bud (_, Indexed i, _) -> Some i
+  | Leaf (_, Indexed i, _) -> Some i
+  | Internal (_, _, Indexed i, _) -> Some i
+  | Extender (_, _, Indexed i, _) -> Some i
+  | Bud _ | Leaf _ | Internal _ | Extender _ -> None
+
 let index = function
   | Disk (i,_) -> Some i
-  | View (Bud (_, Indexed i, _)) -> Some i
-  | View (Leaf (_, Indexed i, _)) -> Some i
-  | View (Internal (_, _, Indexed i, _)) -> Some i
-  | View (Extender (_, _, Indexed i, _)) -> Some i
-  | View (Bud _ | Leaf _ | Internal _ | Extender _) -> None
+  | View v -> index_of_view v
 
 let view_indexed_invariant : view -> (unit, Error.t) Result.t = function
   | Bud (None, Indexed _, _) -> Ok ()
@@ -109,12 +119,12 @@ let view_indexed_invariant : view -> (unit, Error.t) Result.t = function
   | Leaf (_, Not_Indexed, _) -> Ok ()
   | Internal (l, r, Indexed _i, _) ->
       begin match index l, index r with
-        | None, _ -> Error "Internal: invalid Indexed"
-        | _, None -> Error "Internal: invalid Indeced"
+        | None, _ -> error_node_invariant "Internal: invalid Indexed"
+        | _, None -> error_node_invariant "Internal: invalid Indeced"
 (* We abandoned this strict invariant on internals.
         | Some li, Some ri -> 
             if Index.(i - li = one || i - ri = one) then Ok ()
-            else Error "Internal: invalid indices"
+            else error_node_invariant "Internal: invalid indices"
 *)
         | _ -> Ok () (* we now use fat internals *)
       end
@@ -122,7 +132,7 @@ let view_indexed_invariant : view -> (unit, Error.t) Result.t = function
   | Extender (_, n, Indexed _, _) when indexed n -> Ok ()
   | Extender (_, _, Not_Indexed, _) -> Ok ()
   | Bud (_, Indexed _, _)  
-  | Extender (_, _, Indexed _, _)  -> Error "Invalid Indexed"
+  | Extender (_, _, Indexed _, _)  -> error_node_invariant "Invalid Indexed"
 
 let hashed = function
   | Disk _ -> true
@@ -154,13 +164,13 @@ let view_hashed_invariant : view -> (unit, Error.t) Result.t = function
   | Internal (_, _, _, Not_Hashed) -> Ok ()
   | Extender (_, n, _, Hashed _) when hashed n -> Ok ()
   | Extender (_, _, _, Not_Hashed) -> Ok ()
-  | _ -> Error "Invalid Hashed"
+  | _ -> error_node_invariant "Invalid Hashed"
 
 let view_index_and_hash_invariant : view -> (unit, Error.t) Result.t = function
   | Bud (_, Indexed _, Not_Hashed)
   | Leaf (_, Indexed _, Not_Hashed)
   | Internal (_, _, Indexed _, Not_Hashed)
-  | Extender (_, _, Indexed _, Not_Hashed) -> Error "View: Indexed with Not_Hashed"
+  | Extender (_, _, Indexed _, Not_Hashed) -> error_node_invariant "View: Indexed with Not_Hashed"
   | _ -> Ok ()
 
 let view_invariant : view -> (unit, Error.t) Result.t = fun v ->
@@ -172,7 +182,7 @@ let view_invariant : view -> (unit, Error.t) Result.t = fun v ->
 let check_view v = 
   match view_invariant v with
   | Ok _ -> v
-  | Error s -> failwith s
+  | Error e -> failwith (Error.show e)
 
 let _Internal (n1, n2, ir, hit) =
   check_view @@ Internal (n1, n2, ir, hit)

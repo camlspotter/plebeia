@@ -32,9 +32,16 @@ type trail =
   (* not the use of the "extender" and "not extender" type to enforce
      that two extenders cannot follow each other *)
 
+type Error.t += Cursor_invariant of string
+let () = Error.register_printer @@ function
+  | Cursor_invariant s -> Some ("Cursor: " ^ s)
+  | _ -> None
+
+let error_cursor_invariant s = Error (Cursor_invariant s)
+
 let trail_shape_invariant = function
-  | Extended (Extended _, _, _) -> Error "Extended: cannot have Extended"
-  | Extended (_, seg, _) when Segment.is_empty seg -> Error "Extended: invalid empty segment"
+  | Extended (Extended _, _, _) -> error_cursor_invariant "Extended: cannot have Extended"
+  | Extended (_, seg, _) when Segment.is_empty seg -> error_cursor_invariant "Extended: invalid empty segment"
   | _ -> Ok ()
 
 let trail_modified_invariant = function
@@ -43,11 +50,11 @@ let trail_modified_invariant = function
       begin match ir with
         | Not_Indexed -> Ok ()
         | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Left: invalid Indexed"
+        | Indexed _ -> error_cursor_invariant "Left: invalid Indexed"
       end >>= fun () ->
       begin match hit with
         | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Left: invalid Hashed"
+        | Hashed _ -> error_cursor_invariant "Left: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
   | Left (_, _, Modified) -> Ok ()
@@ -55,11 +62,11 @@ let trail_modified_invariant = function
       begin match ir with
         | Not_Indexed -> Ok ()
         | Indexed _ when indexed n -> Ok ()
-        | Indexed _ -> Error "Right: invalid Indexed"
+        | Indexed _ -> error_cursor_invariant "Right: invalid Indexed"
       end >>= fun () ->
       begin match hit with
         | Hashed _ when hashed n -> Ok ()
-        | Hashed _ -> Error "Right: invalid Hashed"
+        | Hashed _ -> error_cursor_invariant "Right: invalid Hashed"
         | Not_Hashed -> Ok ()
       end
   | Right (_, _, Modified) -> Ok ()
@@ -79,7 +86,7 @@ let trail_index_and_hash_invariant = function
   | Left (_, _, Unmodified (Indexed _, Not_Hashed))
   | Right (_, _, Unmodified (Indexed _, Not_Hashed))
   | Budded (_, Unmodified (Indexed _, Not_Hashed))
-  | Extended (_, _, Unmodified (Indexed _, Not_Hashed)) -> Error "Trail: Indexed with Not_Hashed"
+  | Extended (_, _, Unmodified (Indexed _, Not_Hashed)) -> error_cursor_invariant "Trail: Indexed with Not_Hashed"
   | _ -> Ok ()
 
 let trail_invariant t = 
@@ -90,7 +97,7 @@ let trail_invariant t =
 let check_trail t = 
   match trail_invariant t with
   | Ok _ -> t
-  | Error s -> failwith s
+  | Error s -> Error.raise s
 
 let _Top = Top
 let _Left (t, n, mr)     = check_trail @@ Left (t, n, mr)
@@ -211,6 +218,39 @@ let attach trail node context =
   | Extended (prev_trail, segment, _) ->
       _Cursor (_Extended (prev_trail, segment, Modified), node, context)
 
+(* Follow the segment from the cursor. If the segment terminates 
+  or diverges in the middle of an extender, it returns the common prefix
+  information. 
+*)
+type access_result =
+  | Empty_bud (* The bud is empty *)
+  | Collide of cursor * view (* The segment was blocked by an existing leaf or bud *)
+  | Middle_of_extender of cursor * Segment.t * Segment.t * Segment.t (* The segment ends or diverges at the middle of an Extender with the common prefix, the remaining extender, and the rest of segment *)
+  | Reached of cursor * view (* just reached to a node *)
+
+type Error.t += 
+  | Access of access_result
+  | Move of string
+
+let () = Error.register_printer (function
+    | Access a -> 
+        Some (match a with
+            | Empty_bud -> "Nothing beneath this bud"
+            | Collide _ -> "Reached to a leaf or bud before finishing"
+            | Middle_of_extender (_, _, _, seg) when Segment.is_empty seg -> 
+                "Finished at the middle of an Extender"
+            | Middle_of_extender (_, _, _, _) -> 
+                "Diverged in the middle of an Extender"
+            | Reached (_, Bud _) -> "Reached to a Bud"
+            | Reached (_, Leaf _) -> "Reached to a Leaf"
+
+            | Reached (_, Internal _) -> "Reached to an Internal"
+            | Reached (_, Extender _) -> "Reached to an Extender")
+    | Move s -> Some s
+    | _ -> None)
+
+let error_access a = Error (Access a)
+  
 let view_cursor (Cursor (trail, n, context)) =
   let v = view context n in
   (_Cursor (trail, View (view context n), context), v)
@@ -222,7 +262,7 @@ let go_below_bud (Cursor (trail, n, context)) =
   | Bud (Some below, indexed, hashed) ->
       Ok (Some (_Cursor (
           _Budded (trail, Unmodified (indexed, hashed)), below,  context)))
-  | _ -> Error "Attempted to navigate below a bud, but got a different kind of node."
+  | _ -> Error (Move "Attempted to navigate below a bud, but got a different kind of node.")
 
 let go_side side (Cursor (trail, n, context)) =
   (* Move the cursor down left or down right in the tree, assuming we are on an internal node. *)
@@ -237,8 +277,8 @@ let go_side side (Cursor (trail, n, context)) =
               _Cursor (_Left (trail, r,
                             Unmodified (indexed, hashed)),
                        l, context))
-  | Extender _ -> Error "Attempted to navigate right or left of an extender"
-  | _ -> Error "Attempted to navigate right or left of a non internal node"
+  | Extender _ -> Error (Move "Attempted to navigate right or left of an extender")
+  | _ -> Error (Move "Attempted to navigate right or left of a non internal node")
 
 let go_down_extender (Cursor (trail, n, context)) =
   (* Move the cursor down the extender it points to. *)
@@ -247,14 +287,14 @@ let go_down_extender (Cursor (trail, n, context)) =
       Ok (_Cursor (_Extended (trail, segment,
                             Unmodified (indexed, hashed)),
                    below, context))
-  | _ -> Error "Attempted to go down an extender but did not find an extender"
+  | _ -> Error (Move "Attempted to go down an extender but did not find an extender")
 
 (* Go up 1 level of tree.  
    Note that this can be more than 1 levels in segments,
    because of the extenders
 *)
 let go_up (Cursor (trail, node, context))  = match trail with
-  | Top -> Error "cannot go above top"
+  | Top -> Error (Move "cannot go above top")
   | Left (prev_trail, right,
           Unmodified (indexed, hashed)) ->
       let new_node =
@@ -313,10 +353,10 @@ let parent c =
   let c, v = view_cursor c in
   match v with
   | Bud _ -> go_up c >>= go_up_to_a_bud
-  | _ -> Error "parent: cursor must be at a bud"
+  | _ -> Error (Move "parent: cursor must be at a bud")
 
 let unify_extenders prev_trail node context = match node with
-  | Disk (_, Is_Extender) -> Error "unify_exenders: Disk is not allowed"
+  | Disk (_, Is_Extender) -> Error (Move "unify_exenders: Disk is not allowed")
   | View (Extender (seg, n, _, _)) ->
       begin match prev_trail with
         | Extended (prev_trail', seg', _mr) ->
@@ -326,7 +366,7 @@ let unify_extenders prev_trail node context = match node with
   | _ -> Ok (attach prev_trail node context)
 
 let rec remove_up trail context = match trail with
-  | Top -> Error "cannot remove top"
+  | Top -> Error (Move "cannot remove top") (* XXX *)
   | Budded (prev_trail, _) ->
       Ok (attach prev_trail (new_bud None) context)
   | Extended (prev_trail, _, _) -> remove_up prev_trail context
@@ -363,8 +403,8 @@ let diverge (Cursor (trail, extender, _context)) (common_prefix, remaining_exten
   match extender with
   | View (Extender (_seg, n, _ir, _hit)) -> (* _seg = common_prefix @ remaining_extender *)
       begin match Segment.cut remaining_segment, Segment.cut remaining_extender with
-        | None, _ -> Error "diverge: remaining_segment is empty"
-        | _, None -> Error "diverge: remaining_extender is empty"
+        | None, _ -> error_cursor_invariant "diverge: remaining_segment is empty"
+        | _, None -> error_cursor_invariant "diverge: remaining_extender is empty"
         | Some (side, seg), Some (side', seg') -> 
             (* go down along common_prefix *)
             assert (side <> side');
@@ -385,17 +425,7 @@ let diverge (Cursor (trail, extender, _context)) (common_prefix, remaining_exten
                 else
                   Ok (_Extended (_Right (n', trail, Modified), seg, Modified))
       end
-  | _ -> Error "diverge: not an Extender"
-
-(* Follow the segment from the cursor. If the segment terminates 
-  or diverges in the middle of an extender, it returns the common prefix
-  information. 
-*)
-type access_result =
-  | Empty_bud (* The bud is empty *)
-  | Collide of cursor * view (* The segment was blocked by an existing leaf or bud *)
-  | Middle_of_extender of cursor * Segment.t * Segment.t * Segment.t (* The segment ends or diverges at the middle of an Extender with the common prefix, the remaining extender, and the rest of segment *)
-  | Reached of cursor * view (* just reached to a node *)
+  | _ -> error_cursor_invariant "diverge: not an Extender"
 
 let access_gen cur seg =
   let access_gen_aux cur segment =
@@ -411,21 +441,21 @@ let access_gen cur seg =
           | Internal (l, r, indexed, hashed) -> begin
               match dir with
               | Left ->
-                let new_trail = _Left (trail, r, Unmodified (indexed, hashed)) in
-                aux (_Cursor (new_trail, l, context)) segment_rest
+                  let new_trail = _Left (trail, r, Unmodified (indexed, hashed)) in
+                  aux (_Cursor (new_trail, l, context)) segment_rest
               | Right ->
-                let new_trail = _Right (l, trail, Unmodified (indexed, hashed)) in
-                aux (_Cursor (new_trail, r, context)) segment_rest
+                  let new_trail = _Right (l, trail, Unmodified (indexed, hashed)) in
+                  aux (_Cursor (new_trail, r, context)) segment_rest
             end
           | Extender (extender, node_below, indexed, hashed) ->
-            let (shared, remaining_extender, remaining_segment) =
-              Segment.common_prefix extender segment in
-            if remaining_extender = Segment.empty then
-              let new_trail =
-                _Extended (trail, extender, Unmodified (indexed, hashed)) in
-              aux (_Cursor (new_trail, node_below, context)) remaining_segment
-            else
-              Ok (Middle_of_extender (cur, shared, remaining_extender, remaining_segment))
+              let (shared, remaining_extender, remaining_segment) =
+                Segment.common_prefix extender segment in
+              if remaining_extender = Segment.empty then
+                let new_trail =
+                  _Extended (trail, extender, Unmodified (indexed, hashed)) in
+                aux (_Cursor (new_trail, node_below, context)) remaining_segment
+              else
+                Ok (Middle_of_extender (cur, shared, remaining_extender, remaining_segment))
     in
     aux cur segment
   in
@@ -433,19 +463,6 @@ let access_gen cur seg =
   | None -> Ok Empty_bud 
   | Some cur -> access_gen_aux cur seg
 
-let error_access = function
-  | Empty_bud -> Error "Nothing beneath this bud"
-  | Collide _ -> Error "Reached to a leaf or bud before finishing"
-  | Middle_of_extender (_, _, _, seg) when Segment.is_empty seg -> 
-      Error "Finished at the middle of an Extender"
-  | Middle_of_extender (_, _, _, _) -> 
-      Error "Diverged in the middle of an Extender"
-  | Reached (_, Bud _) -> Error "Reached to a Bud"
-  | Reached (_, Leaf _) -> Error "Reached to a Leaf"
-
-  | Reached (_, Internal _) -> Error "Reached to an Internal"
-  | Reached (_, Extender _) -> Error "Reached to an Extender"
-  
 let subtree cur seg =
    access_gen cur seg >>= function
    | Reached (cur, Bud _) -> Ok cur
@@ -509,23 +526,29 @@ let update cur segment value =
       go_up_to_a_bud (attach trail (View (_Leaf (value, Not_Indexed, Not_Hashed))) context)
   | res -> error_access res
 
+type Error.t +=
+  | Write of string
+let () = Error.register_printer @@ function
+  | Write s -> Some ("Write: " ^ s)
+  | _ -> None
+
 let upsert cur segment value =
   alter cur segment (fun x ->
      let y = Ok (new_leaf value) in 
      match x with
      | None -> y
      | Some (Leaf _) -> y
-     | Some _ -> Error "a non Leaf node already presents for this path")
+     | Some _ -> Error (Write "a non Leaf node already presents for this path"))
 
 let insert cur segment value =
   alter cur segment (function
       | None -> Ok (View (_Leaf (value, Not_Indexed, Not_Hashed)))
-      | Some _ -> Error "a node already presents for this path")
+      | Some _ -> Error (Write "a node already presents for this path"))
 
 let create_subtree cur segment =
   alter cur segment (function
       | None -> Ok (new_bud None)
-      | Some _ -> Error "a node already presents for this path")
+      | Some _ -> Error (Write "a node already presents for this path"))
 
 let subtree_or_create cur segment =
   (* XXX inefficient.  create_subtree should have an option not to go back to the original position *)

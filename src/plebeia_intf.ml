@@ -3,7 +3,8 @@ module type S = sig
   (** {2 Base} *)
 
   module Error : sig
-    type t = string
+    type t = Error.t = ..
+    val show : t -> string
   end
     
   module Result : module type of Result

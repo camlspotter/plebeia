@@ -69,7 +69,7 @@ let copy ~create_subtrees cur segs1 segs2 =
     | seg1::segs1, seg2::segs2 when seg1 = seg2 -> is_prefix segs1 segs2
     | _ -> false
   in
-  if is_prefix segs1 segs2 then Error "copy: it creates a loop!"
+  if is_prefix segs1 segs2 then Error (Cursor.Write "copy: it creates a loop!")
   else
     deep ~go_up:false ~create_subtrees:false cur segs1 
       (fun cur seg -> access_gen cur seg >>= function
@@ -83,6 +83,6 @@ let copy ~create_subtrees cur segs1 segs2 =
       (fun cur seg -> 
          alter cur seg (function
              | None -> Ok (View bud)
-             | Some _ -> Error "a node already presents for this segment") >>= fun cur ->
+             | Some _ -> Error (Cursor.Write "a node already presents for this segment")) >>= fun cur ->
          Ok (cur, ())) >>| fst
 
