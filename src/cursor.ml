@@ -179,7 +179,9 @@ let _Cursor (t, n, c) =
 
 let segs_of_trail trail =
   let rec aux (xs, xss) = function
-    | Top -> xs :: xss
+    | Top -> 
+        (* The previous trail must be Budded, therefore xs must be empty *)
+        assert (Segment.is_empty xs); xss
     | Budded (tr, _) -> aux (Segment.empty, xs::xss) tr
     | Left (tr, _, _) -> aux (Segment.(cons Left xs), xss) tr
     | Right (_, tr, _) -> aux (Segment.(cons Right xs), xss) tr

@@ -64,7 +64,7 @@ let path_of_string s = from_Some @@ Segment.of_string s
 
 let ok_or_fail = function
   | Ok x -> x
-  | Error s -> failwith s
+  | Error s -> Error.raise s
 
 let must_fail = function
   | Ok _ -> failwith "must fail"

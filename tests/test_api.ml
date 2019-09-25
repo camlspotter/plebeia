@@ -154,12 +154,12 @@ let test_segs_of_trail c seg =
         | Error e -> e
       in
       dump_cursor c;
-      failwith e
+      Error.raise e
         
   | Error e -> 
       (* no path ? *)
       dump_cursor c;
-      failwith e
+      Error.raise e
 
 let validate context n =
   default (Debug.validate_node context n) (fun e -> 
@@ -209,7 +209,7 @@ let add_random st sz c dumb =
           | Ok _, Error e -> 
               Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
           | Error e, Ok _ -> 
-              Format.eprintf "impl: %s (seg=%s)@." e s; 
+              Format.eprintf "impl: %s (seg=%s)@." (Error.show e) s; 
               Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
               assert false
         end;
@@ -249,7 +249,7 @@ let add_random st sz c dumb =
             | Error _, Error _ -> (c, dumb)
             | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
             | Error e, Ok _ -> 
-                Format.eprintf "impl: %s (seg=%s)@." e s; 
+                Format.eprintf "impl: %s (seg=%s)@." (Error.show e) s; 
                 Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
@@ -270,7 +270,7 @@ let add_random st sz c dumb =
             | Error _, Error _ -> (c, dumb)
             | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
             | Error e, Ok _ -> 
-                Format.eprintf "impl: %s (seg=%s)@." e s; 
+                Format.eprintf "impl: %s (seg=%s)@." (Error.show e) s; 
                 Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
@@ -290,7 +290,7 @@ let add_random st sz c dumb =
             | Error _, Error _ -> (c, dumb)
             | Ok _, Error e -> Format.eprintf "dumb: %s (seg=%s)@." e s; assert false
             | Error e, Ok _ -> 
-                Format.eprintf "impl: %s (seg=%s)@." e s; 
+                Format.eprintf "impl: %s (seg=%s)@." (Error.show e) s; 
                 Format.eprintf "%s@." @@ Debug.dot_of_cursor c;
                 assert false
           end
@@ -324,7 +324,7 @@ let random_insertions st sz =
   let rec loop (log, Cursor (trail, n, context) as pos) =
     begin match log, view context n with
     | ([] | From_above _ :: _), Leaf _ ->
-        let s = match segs_of_trail trail with [x; s] when Segment.is_empty x -> s | _ -> assert false in
+        let s = match segs_of_trail trail with [s] -> s | _ -> assert false in
         (* Format.eprintf "value seg: %s@." @@ Segment.to_string s; *)
         begin match Hashtbl.find_opt bindings' (Segment.to_side_list s) with
           | Some `Value _ -> Hashtbl.remove bindings' (Segment.to_side_list s)
@@ -332,8 +332,8 @@ let random_insertions st sz =
         end
     | ([] | From_above _ :: _), Bud _ ->
         begin match segs_of_trail trail with 
-          | [x] when Segment.is_empty x -> ()
-          | [x; s] when Segment.is_empty x ->
+          | [] -> ()
+          | [s] ->
               begin
                 (* Format.eprintf "subtree seg: %s@." @@ Segment.to_string s; *)
                 match Hashtbl.find_opt bindings' (Segment.to_side_list s) with
@@ -364,7 +364,7 @@ let random_insertions st sz =
               c
           | Error e -> 
               to_file "deletion.dot" @@ Debug.dot_of_cursor c;
-              failwith e
+              Error.raise e
         in
         let dumb = from_Ok @@ Dumb.delete dumb seg in
         assert (Dumb.get_node dumb = Dumb.of_plebeia_node context n);
