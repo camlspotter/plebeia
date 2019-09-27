@@ -452,7 +452,7 @@ let access_gen cur seg =
           | Extender (extender, node_below, indexed, hashed) ->
               let (shared, remaining_extender, remaining_segment) =
                 Segment.common_prefix extender segment in
-              if remaining_extender = Segment.empty then
+              if Segment.is_empty remaining_extender then
                 let new_trail =
                   _Extended (trail, extender, Unmodified (indexed, hashed)) in
                 aux (_Cursor (new_trail, node_below, context)) remaining_segment

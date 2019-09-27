@@ -199,7 +199,7 @@ let _Extender (p, n, ir, hit) =
 let new_leaf v = View (_Leaf (v, Not_Indexed, Not_Hashed))
 
 let new_extend : Segment.segment -> node -> node = fun segment node ->
-  if segment = Segment.empty then node
+  if Segment.is_empty segment then node
   else 
     match node with
     | View (Extender (seg, n, _, _)) ->
